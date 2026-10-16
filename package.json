@@ -1,0 +1,120 @@
+{
+  "name": "@restless-dreams/orbit",
+  "version": "0.1.0",
+  "description": "Markdown-first orbit/solar-system mind map renderer.",
+  "keywords": [
+    "markdown",
+    "mind-map",
+    "mindmap",
+    "svg",
+    "react",
+    "marked",
+    "visualization"
+  ],
+  "author": "Diana Islas Ocampo",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/restless-dreams/orbit.git"
+  },
+  "homepage": "https://orbit.hyuchia.com",
+  "bugs": {
+    "url": "https://github.com/restless-dreams/orbit/issues"
+  },
+  "packageManager": "bun@1.4.2",
+  "bin": {
+    "orbit": "./dist/bin/orbit.js"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "skills",
+    "llms.txt",
+    "llms-full.txt",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "default": "./dist/react/index.js"
+    },
+    "./marked": {
+      "types": "./dist/marked/index.d.ts",
+      "default": "./dist/marked/index.js"
+    },
+    "./web-page.js": {
+      "types": "./dist/web-page.d.ts",
+      "default": "./dist/web-page.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build:js": "bun run scripts/build.ts",
+    "build:types": "tsc -p tsconfig.build.json",
+    "build": "bun run build:js && bun run build:types",
+    "test": "bun test",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "verify": "bun run lint && bun run typecheck && bun run test && bun run build && bun run check:dist && bun run lint:package",
+    "check:dist": "bun run scripts/check-dist.ts",
+    "clean": "rm -rf dist",
+    "pack:lib": "bun run build && bun pm pack",
+    "prepack": "bun run build",
+    "lint:package": "publint --strict && attw --pack . --profile esm-only",
+    "test:browser": "bun run build && docker run --rm --ipc=host -e CI -v \"$PWD\":/work -w /work mcr.microsoft.com/playwright:v1.63.0-noble node node_modules/@playwright/test/cli.js test",
+    "bench": "bun run build && docker run --rm --ipc=host -v \"$PWD\":/work -w /work mcr.microsoft.com/playwright:v1.63.0-noble node scripts/bench-animations.mjs",
+    "docs:api": "typedoc",
+    "docs:llms": "bun run scripts/build-llms.ts"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0",
+    "marked": "^12.0.0 || ^13.0.0 || ^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0 || ^18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    },
+    "marked": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@eslint/js": "^9.0.0",
+    "@happy-dom/global-registrator": "^20.9.0",
+    "@playwright/test": "1.63.0",
+    "@types/react": "^19.2.5",
+    "@types/react-dom": "^19.2.3",
+    "bun-types": "^1.3.13",
+    "eslint": "^9.0.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^14.0.0",
+    "marked": "^18.0.3",
+    "publint": "^0.3.25",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "sass": "^1",
+    "typedoc": "^0.28",
+    "typedoc-plugin-markdown": "^4",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.0.0"
+  }
+}

@@ -1,0 +1,35 @@
+# Orbit
+
+> Mind maps written in markdown and explored like a solar system. The node in focus is the sun, its children orbit it as planets and their children are moons; readers click a planet to fly into it, zoom, and flick the orbit to spin it. Framework-agnostic and dependency-free, with a web component, React and marked integrations, SVG export without a browser, and a command line.
+
+- Install with `npm install @restless-dreams/orbit`. The package is ESM-only. React (`@restless-dreams/orbit/react`) and marked (`@restless-dreams/orbit/marked`) are optional peers.
+- A map fills its container: always give the container a height.
+- Write maps in orbit-md, Orbit's markdown (every heading and list item is a node, text under it is its note, `<!-- orbit key: value -->` comments set attributes), or in YAML (`nodes:` with `text` and `children`).
+- Check a map with `npx @restless-dreams/orbit validate --json map.md`: every problem comes with a suggested fix, and its line where it has one. `npx @restless-dreams/orbit example` prints a map with the main features, and `orbit convert --to yaml map.md` (or `--to md`) turns one flavor into the other.
+- Draw one with `createOrbitMap(element, markdown, options)`, the `<orbit-map>` element, `<OrbitMindMap source={markdown} />` from `@restless-dreams/orbit/react`, or `renderToSVGString(markdown, options)` without a browser.
+- Share a map as one web page, which opens in any browser, offline: `npx @restless-dreams/orbit export --html map.md --out map.html`.
+- Let people build the map on the map with `editable: true` (a + in the orbit, text typed inside nodes), and save what they make with `map.toMarkdown()` on the `edit` event.
+- Let a language model read and change a map with `createMapTools(map)`: `tools.for('anthropic' | 'openai' | 'openai-chat' | 'gemini')` lists the tools for its API, and `tools.run(name, input).text` is each call's result.
+- Maps speak the page's language (`lang`): English and Spanish are built in, `registerLanguage` adds more.
+- Themes: `paper` (default), `night`, `glass`, `glass-night`, `cosmos`, `blueprint`, `ink`, `contrast`, `flat`, `flat-night`, `material`, `material-night`, `liquid`, `liquid-night`, `auto`. Pass `theme: 'night'` or `theme: { preset: 'night', tokens: { … } }`, or set `--orbit-*` CSS custom properties.
+
+## Docs
+
+- [Map format](https://github.com/restless-dreams/orbit/blob/main/docs/format.md): headings, lists, notes, media, every attribute and document option, the YAML flavor, and every diagnostic code
+- [README](https://github.com/restless-dreams/orbit/blob/main/README.md): install and a quick start for each way to draw a map
+- [Guide](https://github.com/restless-dreams/orbit/blob/main/docs/guide.md): every renderer option, event and method, the React component, the element, marked, pictures and videos, SVG export and the command line
+- [Recipes](https://github.com/restless-dreams/orbit/blob/main/docs/recipes.md): plain HTML, React and Next.js, Vue, Svelte, Astro, remark and rehype, static sites
+- [Theming](https://github.com/restless-dreams/orbit/blob/main/docs/theming.md): the fourteen themes, Material themes from any color, and every CSS custom property
+- [Extending](https://github.com/restless-dreams/orbit/blob/main/docs/extending.md): node types, your own actions, status words and named themes, for one map or every map
+- [Editing](https://github.com/restless-dreams/orbit/blob/main/docs/editing.md): context menus on a long press, adding, renaming, moving and removing nodes on the map, and saving the result as orbit-md
+- [Map tools for AI](https://github.com/restless-dreams/orbit/blob/main/docs/map-tools.md): tools for any model to read and change a map, on screen or on a server, for each provider's API and MCP
+- [Languages](https://github.com/restless-dreams/orbit/blob/main/docs/languages.md): maps in the page's language, English and Spanish built in, adding languages and changing single words
+- [Pictures and videos](https://github.com/restless-dreams/orbit/blob/main/docs/media.md): the media viewer, its keys, YouTube and Vimeo, sound and autoplay, and opening, playing and following media from code
+- [Coding agents](https://github.com/restless-dreams/orbit/blob/main/docs/agents.md): the skill, validation as JSON, and messages for setup mistakes
+- [Everything in one file](https://cdn.jsdelivr.net/npm/@restless-dreams/orbit/llms-full.txt): the README and all of the guides above, for the latest release
+- [Website](https://orbit.hyuchia.com): live examples, the themes side by side, setup for each integration, and a playground to write a map and explore it in the browser
+
+## Optional
+
+- [Accessibility](https://github.com/restless-dreams/orbit/blob/main/docs/accessibility.md): keyboard, screen readers, reduced motion and contrast
+- [API reference](https://github.com/restless-dreams/orbit/blob/main/docs/api/README.md): every export, generated from the types

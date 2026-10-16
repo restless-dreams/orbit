@@ -1,0 +1,23 @@
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+build/
+**/build/
+*.tsbuildinfo
+.DS_Store
+.env
+.env.local
+.vite/
+**/.vite/
+coverage/
+**/coverage/
+*.tgz
+.agents/
+.codex/
+.claude/
+.kimi-code/
+
+# Browser tests
+playwright-report/
+test-results/

@@ -1,0 +1,6 @@
+theme: paper
+nodes:
+  - Alpha
+  - text: Beta
+    children: [B1, B2]
+  - Gamma

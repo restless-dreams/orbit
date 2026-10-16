@@ -1,0 +1,47 @@
+/**
+ * What each entry of the package exports at runtime. The tests hold the
+ * source to it and `bun run check:dist` the build, so a documented export
+ * can't go missing and an internal one can't slip out.
+ */
+export const PACKAGE_EXPORTS: Record<string, string[]> = {
+  '.': [
+    'DIAGNOSTIC_CODES',
+    'MATERIAL_SEED',
+    'ORBIT_THEME_PRESETS',
+    'OrbitParseError',
+    'OrbitSVGRenderer',
+    'SUPPORTED_SCHEMA_VERSION',
+    'THEME_TOKENS',
+    'createMapTools',
+    'createOrbitMap',
+    'defineOrbitMapElement',
+    'documentToRendererOptions',
+    'exportWebPage',
+    'findNodeById',
+    'formatDiagnostic',
+    'getNodePath',
+    'isOrbitThemePreset',
+    'isThemeName',
+    'languageTags',
+    'materialTheme',
+    'parseOrbit',
+    'parseOrbitMarkdown',
+    'parseOrbitYAML',
+    'registerAction',
+    'registerLanguage',
+    'registerNodeType',
+    'registerStatus',
+    'registerTheme',
+    'renderOrbitElement',
+    'renderNoteMarkdown',
+    'renderOrbitMarkdownBlocks',
+    'renderToSVGString',
+    'serializeOrbitMarkdown',
+    'serializeOrbitYAML',
+    'themeNames',
+    'themeTokens',
+    'upgradeNodeTypes',
+  ],
+  './react': ['OrbitMindMap'],
+  './marked': ['configureMarked', 'createOrbitExtension', 'hydrateOrbitBlocks', 'orbitMarked', 'renderOrbitMarkdown'],
+};

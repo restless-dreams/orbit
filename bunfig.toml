@@ -1,0 +1,7 @@
+[install]
+linker = "isolated"
+
+[test]
+# Unit tests live in tests/; the browser tests in e2e/ run with Playwright.
+root = "./tests"
+preload = ["./tests/setup.ts"]

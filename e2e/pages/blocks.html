@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maps in markdown blocks</title>
+<style>
+  /* Only the block that the page sizes itself has any CSS: the rest are as a plain page leaves them. */
+  #sized { height: 600px; }
+</style>
+</head>
+<body>
+<p>A page that draws maps from markdown, with no CSS for them.</p>
+
+<pre id="fenced"><code class="language-orbit"># Fenced
+## Alpha
+## Beta
+## Gamma</code></pre>
+
+<div id="placeholder" class="orbit-mind-map" data-orbit="# Placeholder&#10;## One&#10;## Two"><ul class="orbit-mind-map__outline"><li>Placeholder</li></ul></div>
+
+<div id="short" class="orbit-mind-map" data-height="300" data-orbit="# Short&#10;## One&#10;## Two"></div>
+
+<pre id="frontmatter"><code class="language-orbit">---
+height: 360
+---
+# From the frontmatter
+## One</code></pre>
+
+<div id="sized" class="orbit-mind-map" data-orbit="# Sized by the page&#10;## One&#10;## Two"></div>
+
+<script type="module">
+  import { renderOrbitMarkdownBlocks } from '../dist/index.js';
+  renderOrbitMarkdownBlocks();
+  document.body.dataset.ready = 'true';
+</script>
+</body>
+</html>

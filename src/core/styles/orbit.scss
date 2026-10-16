@@ -1,0 +1,1929 @@
+// Orbit component styles. Colors and sizes come from theme tokens
+// (`--_orbit-*`), which resolve to the public `--orbit-*` custom properties
+// or the active preset's defaults (generated in themes.ts).
+
+.orbit {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  // Its size comes from its container, never from what's drawn in it: a container
+  // without a height shows nothing (and says so), and nothing inside resizes the map.
+  contain: size layout style;
+  // The pattern (stars, a grid, a glow…) sits on top of the surface color.
+  background: var(--_orbit-surface-pattern), var(--_orbit-surface);
+  color: var(--_orbit-text);
+  font-family: var(--_orbit-font-family);
+  // Kerned in every browser: names are measured kerned.
+  font-kerning: normal;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+
+  &__canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    touch-action: none;
+    outline: none;
+    cursor: grab;
+    // A drag pans or spins the map: it never selects text, and the browser
+    // doesn't work out a selection on every move (slow on a big map).
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  // What's drawn takes its cursor from here, not from the canvas: the canvas
+  // shows the grabbing hand during a drag, and a cursor every node inherited
+  // from it would restyle all of them as each drag starts and ends.
+  &__world {
+    cursor: grab;
+  }
+
+  &--static &__canvas {
+    cursor: default;
+    touch-action: auto;
+  }
+
+  &--static &__world {
+    cursor: default;
+  }
+
+  &--dragging &__canvas,
+  &--dragging .orbit-ring-band {
+    cursor: grabbing;
+  }
+
+  // Embedded in a scrolling page: one finger scrolls the page past the map;
+  // spinning still works on the orbit itself.
+  &--embedded &__canvas {
+    touch-action: pan-x pan-y;
+  }
+
+  &--embedded[data-orbit-view='focus'] .orbit-node--planet,
+  &--embedded[data-orbit-view='focus'] .orbit-ring-band {
+    touch-action: none;
+  }
+
+  &__contents,
+  &__labels,
+  &__overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  // Moved as one while only the camera moves (see labelRide).
+  &__labels {
+    transform-origin: 0 0;
+  }
+
+  &__live {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  // Components set display themselves, which would otherwise beat `hidden`.
+  [hidden] {
+    display: none !important;
+  }
+}
+
+// A markdown block or placeholder with a map drawn in it (see auto-render.ts).
+// The block has a minimum height (420 px, or the map's `height`) but no height
+// of its own, so a map sized in percent would collapse: the map fills the
+// block instead. A height the page gives the block still wins.
+.orbit-rendered {
+  position: relative;
+
+  > .orbit {
+    position: absolute;
+    inset: 0;
+  }
+}
+
+.orbit-visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+}
+
+.orbit-icon {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+
+  &--filled {
+    fill: currentColor;
+  }
+
+  // An emoji, a symbol or a letter standing in for an icon.
+  &--glyph {
+    display: inline-grid;
+    place-items: center;
+    font-size: 16px;
+    font-weight: 650;
+    line-height: 1;
+  }
+}
+
+// What a node type draws inside its nodes
+
+// A 100 × 100 px box, moved and scaled with its node; clipped to the circle
+// like a picture. It is for showing, so clicks go to the node under it.
+.orbit-node-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 100px;
+  height: 100px;
+  overflow: hidden;
+  border-radius: 50%;
+  color: var(--_orbit-node-text);
+  font-family: var(--_orbit-label-font);
+  font-size: 22px;
+  line-height: 1.1;
+  text-align: center;
+  pointer-events: none;
+  contain: layout paint;
+}
+
+// Map content
+
+// Rings and links take the color of the node they belong to (set inline as
+// `--orbit-ring-color` and `--orbit-link-color`), mixed with the theme's.
+.orbit-ring {
+  fill: none;
+  stroke: color-mix(in oklab, var(--orbit-ring-color, var(--_orbit-ring-stroke)) var(--_orbit-ring-tint), var(--_orbit-ring-stroke));
+  stroke-width: var(--_orbit-ring-width);
+  stroke-dasharray: var(--_orbit-ring-dash);
+  stroke-linecap: round;
+  stroke-opacity: var(--_orbit-ring-opacity);
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.orbit-ring-band {
+  fill: none;
+  stroke: transparent;
+  pointer-events: stroke;
+}
+
+.orbit-link {
+  stroke: color-mix(in oklab, var(--orbit-link-color, var(--_orbit-link-stroke)) var(--_orbit-link-tint), var(--_orbit-link-stroke));
+  stroke-width: var(--_orbit-link-width);
+  stroke-dasharray: var(--_orbit-link-dash);
+  stroke-linecap: round;
+  stroke-opacity: var(--_orbit-link-opacity);
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+// Sphere shading: one gradient for every node, colored by the theme.
+.orbit-shade {
+  &__highlight {
+    stop-color: var(--_orbit-node-highlight);
+  }
+
+  &__highlight-fade {
+    stop-color: color-mix(in srgb, var(--_orbit-node-highlight) 20%, transparent);
+  }
+
+  &__terminator-start {
+    stop-color: var(--_orbit-node-terminator);
+    stop-opacity: 0;
+  }
+
+  &__terminator {
+    stop-color: var(--_orbit-node-terminator);
+  }
+
+  &__shading {
+    stop-color: var(--_orbit-node-shading);
+  }
+}
+
+.orbit-node {
+  cursor: pointer;
+  outline: none;
+
+  &__body {
+    transform-origin: 0 0;
+    transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  &:hover &__body {
+    transform: scale(1.045);
+  }
+
+  &:active &__body {
+    transform: scale(0.97);
+  }
+
+  // A drop shadow, or a glow when it takes the node's own color without an offset.
+  // A planet that becomes the sun mid-flight eases into the sun's.
+  &__shadow {
+    fill: color-mix(in oklab, var(--orbit-node-color) var(--_orbit-node-shadow-tint), var(--_orbit-node-shadow));
+    opacity: var(--_orbit-node-shadow-opacity);
+    transform: translate(0, calc(var(--_orbit-node-shadow-offset) * 1px)) scale(var(--_orbit-node-shadow-size));
+    transition: opacity 320ms ease, transform 320ms ease, display 320ms allow-discrete;
+
+    // Fading in where a body stops being drawn flat, as it lands or grows.
+    @starting-style {
+      opacity: 0;
+    }
+  }
+
+  &--sun &__shadow {
+    opacity: var(--_orbit-sun-shadow-opacity);
+    transform: translate(0, calc(var(--_orbit-node-shadow-offset) * 1px)) scale(var(--_orbit-sun-shadow-size));
+  }
+
+  // An overview node keeps the shadow it had as a planet only until the flight lands.
+  &--node &__shadow {
+    display: none;
+  }
+
+  // Only the sun shows its halo, fading it in as a planet becomes the sun. The
+  // others aren't drawn at all: their strokes would be laid out again on every
+  // frame the map moves.
+  &__halo {
+    display: none;
+    fill: none;
+    stroke: color-mix(in oklab, var(--orbit-node-color) var(--_orbit-sun-halo-tint), var(--_orbit-sun-halo));
+    stroke-width: var(--_orbit-sun-halo-width);
+    stroke-dasharray: var(--_orbit-sun-halo-dash);
+    stroke-opacity: var(--_orbit-sun-halo-opacity);
+    vector-effect: non-scaling-stroke;
+    transform: scale(var(--_orbit-sun-halo-size));
+    opacity: 0;
+    transition: opacity 320ms ease, display 320ms allow-discrete;
+  }
+
+  &--sun &__halo {
+    display: inline;
+    opacity: 1;
+
+    @starting-style {
+      opacity: 0;
+    }
+  }
+
+  // Too small for a shadow to show, one planet of a crowded orbit, or coming or going in a flight:
+  // none to blur (see drawsFlat).
+  &--flat &__shadow,
+  &--flat &__halo {
+    display: none;
+    opacity: 0;
+  }
+
+  &__disc {
+    fill-opacity: var(--_orbit-node-fill-opacity);
+  }
+
+  &__shade,
+  &__image,
+  &__shadow,
+  &__halo,
+  &__status,
+  &__marker,
+  &__play {
+    pointer-events: none;
+  }
+
+  // The rim: the theme's stroke color, mixed with the node's own.
+  &__shade {
+    stroke: color-mix(in oklab, var(--orbit-node-color, var(--_orbit-node-stroke)) var(--_orbit-node-stroke-tint), var(--_orbit-node-stroke));
+    stroke-width: var(--_orbit-node-stroke-width);
+    vector-effect: non-scaling-stroke;
+  }
+
+  // In a crowded orbit the rim grows and shrinks with its planet, like the
+  // badges (1.1 px on a 19 px planet with a 1.5 px theme rim): hundreds of
+  // rims kept the same width on screen are slow to zoom and fly.
+  &--crowded &__shade {
+    stroke-width: calc(var(--_orbit-node-stroke-width) * 0.04);
+    vector-effect: none;
+  }
+
+  // Drawn only while it shows, like the halo.
+  &__focus-ring {
+    display: none;
+    fill: none;
+    stroke: var(--_orbit-focus-ring);
+    stroke-width: 2.5;
+    vector-effect: non-scaling-stroke;
+    pointer-events: none;
+    transition: opacity 120ms ease;
+  }
+
+  &:focus-visible &__focus-ring {
+    display: inline;
+
+    @starting-style {
+      opacity: 0;
+    }
+  }
+
+  // Badges are drawn in the node's own units, so their outlines grow and
+  // shrink with them (1.5 px on a 40 px planet): an outline kept the same width
+  // on screen is laid out again on every frame the map moves.
+  &__status {
+    stroke: var(--_orbit-badge-stroke);
+    stroke-width: 0.04;
+
+    &--active {
+      fill: var(--_orbit-status-active);
+    }
+
+    &--done {
+      fill: var(--_orbit-status-done);
+    }
+
+    &--blocked {
+      fill: var(--_orbit-status-blocked);
+    }
+
+    &--todo {
+      fill: var(--_orbit-status-todo);
+    }
+
+    &--neutral {
+      fill: var(--_orbit-status-neutral);
+    }
+  }
+
+  &--sun &__status {
+    stroke-width: 0.025;
+  }
+
+  &__marker {
+    fill: var(--_orbit-note-indicator);
+    stroke: var(--_orbit-badge-stroke);
+    stroke-width: 0.04;
+  }
+
+  &__play {
+    fill: rgba(15, 23, 42, 0.62);
+
+    path {
+      fill: #ffffff;
+    }
+  }
+
+  &--moon {
+    cursor: pointer;
+  }
+
+  // The focused node's buttons already offer its note and media.
+  &--sun &__marker,
+  &--sun &__play {
+    display: none;
+  }
+
+  &--moon &__disc {
+    fill-opacity: var(--_orbit-moon-opacity);
+  }
+
+  &--moon &__shade {
+    stroke-width: calc(var(--_orbit-node-stroke-width) * 0.7);
+  }
+
+  // A speck (see speckRadius) is drawn with its circles' own coordinates, so
+  // it grows on hover about its own center. Its badges would be specks too.
+  &--speck &__body {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
+  &--speck &__marker,
+  &--speck &__status,
+  &--speck &__play {
+    display: none;
+  }
+
+  // A speck's rim grows and shrinks with it, as wide as a body's where it
+  // stops being a speck: rims kept the same width on screen are laid out
+  // again on every frame their orbit turns (--_orbit-speck-rim is one over
+  // the size specks stop at, in px).
+  &--speck &__shade {
+    stroke-width: calc(var(--_orbit-node-stroke-width) * var(--orbit-speck-radius) * var(--_orbit-speck-rim, 0.2));
+    vector-effect: none;
+  }
+
+  &--speck#{&}--moon &__shade {
+    stroke-width: calc(var(--_orbit-node-stroke-width) * 0.7 * var(--orbit-speck-radius) * var(--_orbit-speck-rim, 0.2));
+  }
+
+  // A crowded orbit's rims grow and shrink with their planets already.
+  &--speck#{&}--crowded &__shade {
+    stroke-width: calc(var(--_orbit-node-stroke-width) * 0.04 * var(--orbit-speck-radius));
+  }
+}
+
+// Labels (screen space, never scaled)
+
+.orbit-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: max-content;
+  color: var(--_orbit-node-text);
+  font-family: var(--_orbit-label-font);
+  font-size: 13px;
+  font-weight: var(--_orbit-label-weight);
+  line-height: 1.22;
+  text-align: center;
+  letter-spacing: var(--_orbit-label-letter-spacing);
+  overflow-wrap: break-word;
+  hyphens: auto;
+  will-change: transform, opacity;
+  user-select: none;
+
+  &__icon {
+    font-size: 1.45em;
+    line-height: 1;
+  }
+
+  // Inside its node, a name shows the lines its fitting chose (see insideLabelLayout), as they are.
+  &__text {
+    white-space: pre;
+  }
+
+  // No room for the icon above the name.
+  &--no-icon &__icon {
+    display: none;
+  }
+
+  &--sun {
+    color: var(--_orbit-root-text);
+    font-family: var(--_orbit-display-font);
+    font-size: 16px;
+    font-weight: var(--_orbit-display-weight);
+  }
+
+  &--node {
+    font-size: 12px;
+  }
+
+  &--light {
+    color: var(--_orbit-node-text-inverse);
+    text-shadow: var(--_orbit-label-shadow);
+  }
+
+  &--outside {
+    // Its widths include its padding: they're the box label planning keeps on the map (see outsideLabelBox).
+    box-sizing: border-box;
+    width: max-content;
+    max-width: 160px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--_orbit-control-background);
+    color: var(--_orbit-control-text);
+    font-size: 11.5px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  }
+
+  &--sun#{&}--outside {
+    max-width: 280px;
+  }
+
+  &--outside &__icon {
+    display: none;
+  }
+
+  // A pill wraps its name itself, on one line or two, ending with an ellipsis.
+  &--outside &__text {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+    white-space: normal;
+  }
+
+  &--sun#{&}--outside &__text {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  // A pill too wide for every side of its node, on two lines.
+  &--wrapped {
+    max-width: var(--orbit-pill-width, 120px);
+    border-radius: 11px;
+  }
+
+  &--wrapped &__text {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+}
+
+.orbit-count {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--_orbit-control-background);
+  color: var(--_orbit-control-muted-text);
+  z-index: 1;
+  font-size: 10.5px;
+  font-weight: 650;
+  // 15 px tall in any font: names inside the node keep clear of it (COUNT_HEIGHT in views.ts).
+  line-height: 13px;
+  // Figures of one width, so a count reads the same in every badge.
+  font-variant-numeric: tabular-nums;
+  translate: -50% -50%;
+  pointer-events: none;
+}
+
+// Action badges around the sun
+
+// Under the orbit beside the zoom buttons, a narrow map wraps a long row of
+// buttons onto more lines (its max-width is set inline).
+.orbit-actions {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  translate: -50% 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 180ms ease, visibility 0s linear 180ms;
+  pointer-events: auto;
+
+  &--visible {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 220ms ease 60ms;
+  }
+}
+
+.orbit-action {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--_orbit-action-border);
+  border-radius: 999px;
+  background: var(--_orbit-action-background);
+  color: var(--_orbit-action-text);
+  box-shadow: var(--_orbit-action-shadow);
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+
+  &:hover {
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: scale(0.96);
+  }
+
+  &:focus-visible {
+    outline: 2.5px solid var(--_orbit-focus-ring);
+    outline-offset: 2px;
+  }
+}
+
+// Editing on the map
+
+// The free place in the orbit for a new idea: a dashed planet with a plus.
+.orbit-add {
+  cursor: pointer;
+  outline: none;
+
+  &__body {
+    transform-origin: 0 0;
+    transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  &:hover &__body {
+    transform: scale(1.06);
+  }
+
+  &:active &__body {
+    transform: scale(0.95);
+  }
+
+  &__disc {
+    fill: var(--_orbit-control-background);
+    fill-opacity: 0.5;
+    stroke: var(--_orbit-muted-text);
+    stroke-opacity: 0.6;
+    stroke-width: 1.5;
+    stroke-dasharray: 5 4;
+    vector-effect: non-scaling-stroke;
+    transition: fill-opacity 160ms ease, stroke-opacity 160ms ease;
+  }
+
+  &:hover &__disc {
+    fill-opacity: 0.8;
+    stroke-opacity: 0.9;
+  }
+
+  &__plus {
+    fill: none;
+    stroke: var(--_orbit-muted-text);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+    pointer-events: none;
+  }
+
+  &__focus-ring {
+    fill: none;
+    stroke: var(--_orbit-focus-ring);
+    stroke-width: 2.5;
+    vector-effect: non-scaling-stroke;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease;
+  }
+
+  &:focus-visible &__focus-ring {
+    opacity: 1;
+  }
+
+  // A new idea being typed: the place fills in around the field.
+  &--pending &__disc {
+    fill-opacity: 1;
+    stroke: var(--_orbit-focus-ring);
+    stroke-opacity: 1;
+    stroke-width: 2;
+    stroke-dasharray: none;
+  }
+
+  &--pending &__plus {
+    display: none;
+  }
+
+  // Where a node being dragged would land in the orbit: a ring breathing in its place, without the plus.
+  &--drop &__plus {
+    display: none;
+  }
+
+  &--drop &__disc {
+    fill-opacity: 0.35;
+    stroke: var(--_orbit-focus-ring);
+    stroke-opacity: 0.9;
+  }
+
+  &--drop &__body {
+    animation: orbit-drop-place 900ms ease-in-out infinite alternate;
+  }
+
+  // Held open while the node being dragged is over another one, which it would go into instead.
+  &--waiting {
+    opacity: 0.45;
+  }
+
+  // The place held for a planet being dragged only shows where it would land: nothing to press.
+  &--held {
+    pointer-events: none;
+  }
+
+  &--waiting &__body {
+    animation: none;
+  }
+}
+
+@keyframes orbit-drop-place {
+  from {
+    transform: scale(0.92);
+  }
+
+  to {
+    transform: scale(1);
+  }
+}
+
+// The node whose text is being typed shows its focus ring.
+.orbit-node--editing .orbit-node__focus-ring {
+  display: inline;
+}
+
+.orbit-node {
+  // Held up to be dragged somewhere else: it grows, and its shadow deepens and falls further.
+  &--lifted &__body {
+    transform: scale(1.12);
+  }
+
+  &--lifted &__shadow {
+    opacity: min(1, calc(var(--_orbit-node-shadow-opacity) * 1.6));
+    transform: translate(0, calc(var(--_orbit-node-shadow-offset) * 2.5px)) scale(calc(var(--_orbit-node-shadow-size) * 1.08));
+  }
+
+  // Where a node being dragged would go if let go now: it grows to take it, ringed.
+  &--drop-target &__body {
+    transform: scale(1.1);
+  }
+
+  &--drop-target &__focus-ring {
+    display: inline;
+  }
+}
+
+// A node being dragged, and its moons, are drawn above everything; the press finds what's under them.
+.orbit__carried {
+  pointer-events: none;
+}
+
+// The field for typing a node's text, laid over the node in the label's
+// font. Its font size stays at 16 px or more, so phones don't zoom into it;
+// it is scaled down to the label's size.
+.orbit-editor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  display: block;
+  min-height: 0;
+  margin: 0;
+  padding: 1px 2px;
+  overflow: hidden;
+  border: none;
+  border-radius: 6px;
+  outline: none;
+  background: transparent;
+  color: var(--_orbit-node-text);
+  caret-color: var(--_orbit-focus-ring);
+  font-family: var(--_orbit-label-font);
+  font-size: 16px;
+  font-weight: var(--_orbit-label-weight);
+  line-height: 1.22;
+  letter-spacing: var(--_orbit-label-letter-spacing);
+  text-align: center;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  resize: none;
+  pointer-events: auto;
+  user-select: text;
+  -webkit-user-select: text;
+
+  &::placeholder {
+    color: currentColor;
+    opacity: 0.45;
+  }
+
+  &--sun {
+    color: var(--_orbit-root-text);
+    font-family: var(--_orbit-display-font);
+    font-weight: var(--_orbit-display-weight);
+  }
+
+  &--light {
+    color: var(--_orbit-node-text-inverse);
+  }
+
+  // In the +, which fills in with the control colors.
+  &--slot {
+    color: var(--_orbit-control-text);
+  }
+
+  // Over a node too small to hold it: a card of its own, at a readable size.
+  &--floating {
+    padding: 4px 8px;
+    border-radius: 10px;
+    background: var(--_orbit-control-background);
+    color: var(--_orbit-control-text);
+    box-shadow: var(--_orbit-control-shadow);
+  }
+
+  &[hidden] {
+    display: none;
+  }
+}
+
+// Empty map
+
+.orbit-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px;
+  color: var(--_orbit-muted-text);
+  font-size: 13px;
+  text-align: center;
+  pointer-events: none;
+
+  strong {
+    color: var(--_orbit-text);
+    font-size: 15px;
+    font-weight: 650;
+  }
+}
+
+// Outline (the map as a list)
+
+.orbit-outline--visible {
+  position: absolute;
+  top: 60px;
+  bottom: 12px;
+  left: 12px;
+  width: min(320px, calc(100% - 24px));
+  padding: 8px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--_orbit-control-border);
+  border-radius: 14px;
+  background: var(--_orbit-control-background);
+  box-shadow: var(--_orbit-control-shadow);
+  backdrop-filter: blur(var(--_orbit-control-blur));
+  -webkit-backdrop-filter: blur(var(--_orbit-control-blur));
+  color: var(--_orbit-control-text);
+  font-size: 13px;
+  z-index: 1;
+
+  ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  ul ul {
+    margin-left: 10px;
+    padding-left: 10px;
+    border-left: 1px solid var(--_orbit-control-border);
+  }
+
+  button,
+  span {
+    display: block;
+    width: 100%;
+    padding: 5px 8px;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  button {
+    cursor: pointer;
+
+    &:hover {
+      background: color-mix(in srgb, var(--_orbit-control-text) 8%, transparent);
+    }
+
+    &:focus-visible {
+      outline: 2.5px solid var(--_orbit-focus-ring);
+      outline-offset: -2px;
+    }
+
+    &[aria-current='true'] {
+      background: var(--_orbit-control-active-background);
+      color: var(--_orbit-control-active-text);
+    }
+  }
+}
+
+// Tooltip
+
+.orbit-tooltip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: 260px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--_orbit-tooltip-background);
+  color: var(--_orbit-tooltip-text);
+  font-size: 12.5px;
+  line-height: 1.4;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+  pointer-events: none;
+  translate: -50% calc(-100% - 10px);
+  opacity: 0;
+  transition: opacity 140ms ease;
+
+  &--visible {
+    opacity: 1;
+  }
+
+  &__title {
+    display: block;
+    font-weight: 650;
+  }
+
+  &__detail {
+    display: block;
+    margin-top: 2px;
+    opacity: 0.82;
+  }
+}
+
+// Controls
+
+.orbit-controls {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+
+  &__top {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    left: 12px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  &__start {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  &__zoom {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+  }
+}
+
+.orbit-panel {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 3px;
+  border: 1px solid var(--_orbit-control-border);
+  border-radius: 12px;
+  background: var(--_orbit-control-background);
+  box-shadow: var(--_orbit-control-shadow);
+  backdrop-filter: blur(var(--_orbit-control-blur));
+  -webkit-backdrop-filter: blur(var(--_orbit-control-blur));
+  pointer-events: auto;
+
+  &--vertical {
+    flex-direction: column;
+  }
+}
+
+.orbit-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--_orbit-control-muted-text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease;
+
+  &:hover {
+    color: var(--_orbit-control-text);
+    background: color-mix(in srgb, var(--_orbit-control-text) 8%, transparent);
+  }
+
+  &:focus-visible {
+    outline: 2.5px solid var(--_orbit-focus-ring);
+    outline-offset: 1px;
+  }
+
+  &[aria-pressed='true'],
+  &--active {
+    background: var(--_orbit-control-active-background);
+    color: var(--_orbit-control-active-text);
+  }
+
+  &--icon {
+    width: 32px;
+    padding: 0;
+  }
+}
+
+.orbit-breadcrumbs {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+
+  &__item {
+    max-width: 180px;
+    min-width: 0;
+
+    span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    &[aria-current='location'] {
+      color: var(--_orbit-control-text);
+      cursor: default;
+    }
+  }
+
+  &__separator {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    color: var(--_orbit-control-muted-text);
+    opacity: 0.7;
+  }
+}
+
+.orbit-back {
+  display: none;
+  max-width: 180px;
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.orbit-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  padding: 7px 14px;
+  border: 1px solid var(--_orbit-control-border);
+  border-radius: 999px;
+  background: var(--_orbit-control-background);
+  color: var(--_orbit-control-text);
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: var(--_orbit-control-shadow);
+  backdrop-filter: blur(var(--_orbit-control-blur));
+  translate: -50% 0;
+  opacity: 0;
+  transition: opacity 200ms ease;
+  pointer-events: none;
+
+  &--visible {
+    opacity: 1;
+  }
+}
+
+// A narrow map trades its breadcrumbs for a back chip, and its view switch's
+// labels for icons alone. The renderer sets the class from the map's width
+// (see NARROW_MAP): a size container around the whole map would make the
+// browser restyle and lay out all of it each time nodes come or go.
+.orbit--narrow {
+  .orbit-controls__crumbs {
+    display: none;
+  }
+
+  .orbit-back {
+    display: inline-flex;
+  }
+
+  .orbit-segmented__label {
+    display: none;
+  }
+}
+
+@media (pointer: coarse) {
+  .orbit-button {
+    min-width: 40px;
+    height: 40px;
+  }
+
+  .orbit-button--icon {
+    width: 40px;
+  }
+
+  .orbit-action {
+    width: 42px;
+    height: 42px;
+  }
+}
+
+// Detail sheet
+
+.orbit-sheet {
+  box-sizing: border-box;
+  width: min(560px, calc(100vw - 32px));
+  // `vh` first, for browsers before the `dvh` unit (Chromium 108), which drop the line that has it.
+  max-height: 86vh;
+  max-height: min(86vh, 86dvh);
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--_orbit-sheet-border);
+  border-radius: 20px;
+  background: var(--_orbit-sheet-background);
+  color: var(--_orbit-sheet-text);
+  font-family: var(--_orbit-font-family);
+  box-shadow: var(--_orbit-sheet-shadow);
+  backdrop-filter: blur(var(--_orbit-sheet-blur));
+  -webkit-backdrop-filter: blur(var(--_orbit-sheet-blur));
+  overflow: hidden;
+
+  &[open] {
+    display: flex;
+    flex-direction: column;
+    animation: orbit-sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  &::backdrop {
+    background: var(--_orbit-sheet-backdrop);
+    backdrop-filter: blur(6px);
+  }
+
+  &__header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 20px 20px 12px 24px;
+  }
+
+  &__handle {
+    display: none;
+  }
+
+  &__heading {
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__path {
+    margin: 0 0 4px;
+    color: var(--_orbit-sheet-muted-text);
+    font-size: 12px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__title {
+    margin: 0;
+    font-family: var(--_orbit-display-font);
+    font-size: 20px;
+    font-weight: var(--_orbit-display-weight);
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+
+  &__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  &__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--_orbit-chip-background);
+    color: var(--_orbit-chip-text);
+    font-size: 12px;
+    font-weight: 600;
+
+    &::before {
+      content: '';
+      display: none;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    &--status::before {
+      display: block;
+      background: var(--orbit-chip-dot, var(--_orbit-status-neutral));
+    }
+
+    &--type {
+      background: none;
+      box-shadow: inset 0 0 0 1px var(--_orbit-chip-background);
+    }
+  }
+
+  // A node type's own section.
+  &__details {
+    margin-bottom: 16px;
+  }
+
+  // Your actions, next to the link.
+  &__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-left: auto;
+  }
+
+  &__action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1px solid var(--_orbit-sheet-border);
+    border-radius: 999px;
+    background: none;
+    color: var(--_orbit-sheet-text);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+
+    &:hover {
+      background: color-mix(in srgb, var(--_orbit-sheet-text) 8%, transparent);
+    }
+
+    &:focus-visible {
+      outline: 2.5px solid var(--_orbit-focus-ring);
+      outline-offset: 2px;
+    }
+
+    .orbit-icon {
+      width: 16px;
+      height: 16px;
+    }
+
+    .orbit-icon--glyph {
+      font-size: 14px;
+    }
+  }
+
+  &__close {
+    flex: none;
+  }
+
+  &__body {
+    flex: 1;
+    min-height: 0;
+    padding: 0 24px 20px;
+    overflow: auto;
+    overscroll-behavior: contain;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  &__media {
+    margin: 0 0 16px;
+
+    img,
+    video {
+      display: block;
+      width: 100%;
+      max-height: 60vh;
+      object-fit: contain;
+      border-radius: 12px;
+      background: var(--_orbit-chip-background);
+    }
+
+    iframe {
+      display: block;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border: 0;
+      border-radius: 12px;
+      background: #000000;
+    }
+
+    figcaption {
+      margin-top: 8px;
+      color: var(--_orbit-sheet-muted-text);
+      font-size: 13px;
+    }
+  }
+
+  // A picture is a button that opens it in the media viewer.
+  &__picture {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: 12px;
+    background: none;
+    cursor: zoom-in;
+
+    &:focus-visible {
+      outline: 2.5px solid var(--_orbit-focus-ring);
+      outline-offset: 2px;
+    }
+  }
+
+  // Moves a video to the media viewer.
+  &__expand {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 5px 12px;
+    border: 1px solid var(--_orbit-sheet-border);
+    border-radius: 999px;
+    background: none;
+    color: var(--_orbit-sheet-text);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+
+    &:hover {
+      background: color-mix(in srgb, var(--_orbit-sheet-text) 8%, transparent);
+    }
+
+    &:focus-visible {
+      outline: 2.5px solid var(--_orbit-focus-ring);
+      outline-offset: 2px;
+    }
+
+    .orbit-icon {
+      width: 16px;
+      height: 16px;
+    }
+  }
+
+  &__note {
+    > :first-child {
+      margin-top: 0;
+    }
+
+    > :last-child {
+      margin-bottom: 0;
+    }
+
+    p,
+    ul,
+    ol,
+    blockquote,
+    pre {
+      margin: 0 0 12px;
+    }
+
+    ul,
+    ol {
+      padding-left: 22px;
+    }
+
+    h3,
+    h4,
+    h5 {
+      margin: 18px 0 8px;
+      font-size: 15px;
+      font-weight: 650;
+    }
+
+    a {
+      color: var(--_orbit-link-text);
+      text-underline-offset: 2px;
+    }
+
+    code {
+      padding: 1px 5px;
+      border-radius: 6px;
+      background: var(--_orbit-chip-background);
+      font-size: 0.92em;
+    }
+
+    pre {
+      padding: 12px;
+      border-radius: 10px;
+      background: var(--_orbit-chip-background);
+      overflow: auto;
+
+      code {
+        padding: 0;
+        background: none;
+      }
+    }
+
+    blockquote {
+      padding-left: 12px;
+      border-left: 3px solid var(--_orbit-sheet-border);
+      color: var(--_orbit-sheet-muted-text);
+    }
+  }
+
+  &__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--_orbit-sheet-border);
+  }
+
+  // A link to a page, or a button that goes to another node of the map.
+  &__link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--_orbit-link-text);
+    font: inherit;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .orbit-button {
+    color: var(--_orbit-sheet-muted-text);
+
+    &:hover {
+      color: var(--_orbit-sheet-text);
+      background: color-mix(in srgb, var(--_orbit-sheet-text) 8%, transparent);
+    }
+  }
+
+  @media (max-width: 640px) {
+    width: 100%;
+    max-width: 100%;
+    max-height: 88vh;
+    max-height: 88dvh;
+    margin: auto 0 0;
+    border-bottom: 0;
+    border-radius: 20px 20px 0 0;
+
+    &[open] {
+      animation-name: orbit-sheet-up;
+    }
+
+    &__handle {
+      display: block;
+      width: 40px;
+      height: 5px;
+      margin: 8px auto 0;
+      border-radius: 999px;
+      background: var(--_orbit-sheet-border);
+      touch-action: none;
+    }
+  }
+}
+
+// Wide screens: a panel along the right edge, so the map stays in view.
+@media (min-width: 960px) {
+  .orbit-sheet {
+    width: min(440px, 40vw);
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100vh;
+    max-height: 100dvh;
+    margin: 0 0 0 auto;
+    border-width: 0 0 0 1px;
+    border-radius: 0;
+
+    &[open] {
+      animation-name: orbit-sheet-side;
+    }
+
+    &::backdrop {
+      backdrop-filter: none;
+    }
+  }
+}
+
+@keyframes orbit-sheet-side {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes orbit-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+@keyframes orbit-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+// Media viewer
+
+// A picture or video over the whole window. It takes its colors from the
+// detail sheet's tokens and its buttons from the map's controls, so it
+// follows the map's theme, light or dark.
+.orbit-viewer {
+  position: fixed;
+  inset: 0;
+  box-sizing: border-box;
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  background: transparent;
+  color: var(--_orbit-sheet-text);
+  font-family: var(--_orbit-font-family);
+  outline: none;
+  overscroll-behavior: contain;
+  touch-action: none;
+
+  &[open] {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    animation: orbit-viewer-in 180ms ease-out;
+  }
+
+  &::backdrop {
+    background: transparent;
+  }
+
+  // The window behind the media, in the sheet's color. It fades as the media
+  // is pulled down to close.
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--_orbit-sheet-background);
+    backdrop-filter: blur(var(--_orbit-sheet-blur));
+    -webkit-backdrop-filter: blur(var(--_orbit-sheet-blur));
+    opacity: calc(1 - var(--_orbit-viewer-pull, 0) * 0.8);
+  }
+
+  // Each part keeps its row, so the stage fills the window whether the bar shows or not.
+  &__bar {
+    grid-row: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 40px;
+    padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 4px max(16px, env(safe-area-inset-left));
+    opacity: calc(1 - var(--_orbit-viewer-pull, 0));
+  }
+
+  &__counter {
+    margin: 0;
+    color: var(--_orbit-sheet-muted-text);
+    font-size: 13px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  &__tools {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-left: auto;
+  }
+
+  &__stage {
+    grid-row: 2;
+    position: relative;
+    overflow: hidden;
+    touch-action: none;
+  }
+
+  // What the media sits in: it follows a swipe across or down.
+  &__media {
+    position: absolute;
+    inset: 0;
+
+    &--entering {
+      animation: orbit-viewer-show 200ms ease-out;
+    }
+  }
+
+  &--settling &__media {
+    transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  &__picture {
+    position: absolute;
+    box-sizing: content-box;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    transform-origin: center;
+    cursor: zoom-in;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-user-drag: none;
+
+    &--gliding {
+      transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+  }
+
+  &--zoomed &__picture {
+    cursor: grab;
+  }
+
+  &--dragging &__picture {
+    cursor: grabbing;
+  }
+
+  &__player {
+    position: absolute;
+    overflow: hidden;
+    border-radius: 12px;
+    background: #000000;
+    box-shadow: var(--_orbit-sheet-shadow);
+
+    iframe,
+    video {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: #000000;
+    }
+  }
+
+  &__status {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 12px;
+    margin: 0;
+    padding: 24px;
+    color: var(--_orbit-sheet-muted-text);
+    font-size: 14px;
+    text-align: center;
+    pointer-events: none;
+
+    &--loading::before {
+      content: '';
+      width: 28px;
+      height: 28px;
+      border: 3px solid currentColor;
+      border-top-color: transparent;
+      border-radius: 50%;
+      opacity: 0.7;
+      animation: orbit-viewer-spin 800ms linear infinite;
+    }
+  }
+
+  // Previous and next: round buttons over the stage's sides.
+  &__step {
+    position: absolute;
+    top: calc(50% - 22px);
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--_orbit-control-border);
+    border-radius: 999px;
+    background: var(--_orbit-control-background);
+    color: var(--_orbit-control-text);
+    box-shadow: var(--_orbit-control-shadow);
+    backdrop-filter: blur(var(--_orbit-control-blur));
+    -webkit-backdrop-filter: blur(var(--_orbit-control-blur));
+
+    &:hover {
+      background: color-mix(in srgb, var(--_orbit-control-text) 8%, var(--_orbit-control-background));
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+
+    &--previous {
+      left: max(12px, env(safe-area-inset-left));
+    }
+
+    &--next {
+      right: max(12px, env(safe-area-inset-right));
+    }
+  }
+
+  &__caption {
+    grid-row: 3;
+    position: relative;
+    max-height: 30vh;
+    padding: 6px max(24px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+    overflow: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    text-align: center;
+    opacity: calc(1 - var(--_orbit-viewer-pull, 0));
+  }
+
+  &__title {
+    max-width: 72ch;
+    margin: 0 auto;
+    font-family: var(--_orbit-display-font);
+    font-size: 17px;
+    font-weight: var(--_orbit-display-weight);
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+
+  &__text,
+  &__description {
+    max-width: 72ch;
+    margin: 4px auto 0;
+    font-size: 14px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+
+  &__description {
+    color: var(--_orbit-sheet-muted-text);
+    font-size: 13px;
+  }
+
+  // On a map that isn't interactive, the page drives the viewer: no buttons, and the media doesn't take presses.
+  &--still &__bar,
+  &--still &__step {
+    display: none;
+  }
+
+  &--still &__media {
+    pointer-events: none;
+  }
+
+  @media (max-width: 640px) {
+    &__bar {
+      padding-right: max(12px, env(safe-area-inset-right));
+      padding-left: max(12px, env(safe-area-inset-left));
+    }
+
+    &__tools {
+      gap: 6px;
+    }
+
+    &__step {
+      &--previous {
+        left: max(8px, env(safe-area-inset-left));
+      }
+
+      &--next {
+        right: max(8px, env(safe-area-inset-right));
+      }
+    }
+
+    &__caption {
+      padding-right: max(16px, env(safe-area-inset-right));
+      padding-left: max(16px, env(safe-area-inset-left));
+    }
+
+    &__title {
+      font-size: 16px;
+    }
+  }
+}
+
+@keyframes orbit-viewer-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes orbit-viewer-show {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+@keyframes orbit-viewer-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.orbit-error {
+  box-sizing: border-box;
+  margin: 12px;
+  padding: 14px 16px;
+  border: 1px dashed var(--_orbit-error-border);
+  border-radius: 12px;
+  background: var(--_orbit-error-background);
+  color: var(--_orbit-error-text);
+  font: 14px/1.45 var(--_orbit-font-family);
+}
+
+// Older browsers
+
+// Without `color-mix()` (before Chromium 111, Safari 16.2 and Firefox 113), the
+// theme's own colors stand in where the stylesheet mixes in a node's: a line the
+// browser can't read would leave strokes empty and fills black. The presets
+// instead take whichever color their mix is mostly made of (themeStylesheet in
+// themes.ts), and siblings keep their branch's color (see browser.ts).
+@supports not (color: color-mix(in srgb, red, blue)) {
+  .orbit-ring {
+    stroke: var(--_orbit-ring-stroke);
+  }
+
+  .orbit-link {
+    stroke: var(--_orbit-link-stroke);
+  }
+
+  .orbit-shade {
+    &__highlight-fade {
+      stop-color: var(--_orbit-node-highlight);
+      stop-opacity: 0.2;
+    }
+  }
+
+  .orbit-node {
+    &__shadow {
+      fill: var(--_orbit-node-shadow);
+    }
+
+    &__halo {
+      stroke: var(--_orbit-sun-halo);
+    }
+
+    &__shade {
+      stroke: var(--_orbit-node-stroke);
+    }
+  }
+
+  .orbit-outline--visible button:hover,
+  .orbit-button:hover,
+  .orbit-sheet__action:hover,
+  .orbit-sheet__expand:hover,
+  .orbit-sheet .orbit-button:hover {
+    background: rgba(127, 127, 127, 0.14);
+  }
+
+  .orbit-viewer__step:hover {
+    background: var(--_orbit-control-background);
+  }
+}
+
+// Without the `translate` property (before Chromium 104), the hint is centered
+// through its transform. Overlays placed from script add their centering to the
+// transform that places them (see overlayTransform).
+@supports not (translate: 1px) {
+  .orbit-hint {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orbit *,
+  .orbit-sheet,
+  .orbit-viewer {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .orbit-node__focus-ring,
+  .orbit-add__focus-ring {
+    stroke: Highlight;
+  }
+
+  .orbit-add__disc,
+  .orbit-add__plus {
+    stroke: CanvasText;
+  }
+
+  .orbit-node__shade,
+  .orbit-node__halo {
+    stroke: CanvasText;
+  }
+
+  .orbit-node__shadow {
+    display: none;
+  }
+
+  .orbit-button[aria-pressed='true'] {
+    outline: 2px solid Highlight;
+  }
+}

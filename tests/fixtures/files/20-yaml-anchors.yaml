@@ -1,0 +1,10 @@
+title: Teams
+defaults: &defaults
+  color: "#F5A3A8"
+nodes:
+  - text: Teams
+    children:
+      - text: Design
+        <<: *defaults
+      - text: Engineering
+        <<: *defaults

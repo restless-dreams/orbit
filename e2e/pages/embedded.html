@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orbit in a long page</title>
+<style>
+  body { max-width: 720px; margin: 0 auto; padding: 24px; font: 16px/1.6 system-ui, sans-serif; color: #1e293b; }
+  #map { height: 420px; margin: 24px 0; border: 1px solid #e2e8f0; border-radius: 16px; }
+  .spacer { height: 1600px; }
+</style>
+</head>
+<body>
+<h1>A map inside an article</h1>
+<p>The page scrolls, so a plain scroll over the map should scroll the page, and Ctrl + scroll should zoom the map.</p>
+<div id="map"></div>
+<p class="spacer">More of the article.</p>
+<script type="module">
+  import { createOrbitMap } from '../dist/index.js';
+  import { createSamples } from './samples.js';
+  const samples = createSamples((name) => `img/${name}`);
+  window.map = createOrbitMap(document.getElementById('map'), samples.roadmap.source);
+  document.body.dataset.ready = 'true';
+</script>
+</body>
+</html>

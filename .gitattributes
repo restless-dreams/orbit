@@ -1,0 +1,16 @@
+# Pictures and videos are kept in Git LFS: the browser tests' screenshots
+# change often, and every version would otherwise stay in the history.
+*.png filter=lfs diff=lfs merge=lfs -text
+*.jpg filter=lfs diff=lfs merge=lfs -text
+*.jpeg filter=lfs diff=lfs merge=lfs -text
+*.webp filter=lfs diff=lfs merge=lfs -text
+*.gif filter=lfs diff=lfs merge=lfs -text
+*.avif filter=lfs diff=lfs merge=lfs -text
+*.mp4 filter=lfs diff=lfs merge=lfs -text
+*.webm filter=lfs diff=lfs merge=lfs -text
+*.mov filter=lfs diff=lfs merge=lfs -text
+
+# Except the README's and the docs' own pictures: npm's page for the package
+# and the agent skill's references load them from GitHub's raw files, which
+# serve LFS files as their pointers instead of the pictures.
+docs/media/** !filter !diff !merge -text
