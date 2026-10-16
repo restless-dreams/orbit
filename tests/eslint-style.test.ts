@@ -5,7 +5,6 @@ import orbit from '../scripts/eslint-style.js';
 
 RuleTester.describe = describe;
 RuleTester.it = it;
-RuleTester.itOnly = it.only;
 
 const ruleTester = new RuleTester({ languageOptions: { parser: tseslint.parser } });
 

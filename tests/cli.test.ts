@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from 'bun:test';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseOrbit } from '../src/core/dispatch';
@@ -258,7 +258,9 @@ describe('orbit export', () => {
   test('--html writes one page with Orbit, the map and the pictures beside it inside', () => {
     const directory = mkdtempSync(join(tmpdir(), 'orbit-export-'));
     mkdirSync(join(directory, 'photos'));
-    copyFileSync(join(root, 'e2e/pages/img/mountain.jpg'), join(directory, 'photos/summit.jpg'));
+    // A JPEG's first bytes, not a picture from the repository: those are in Git LFS, which the unit tests run without.
+    const summit = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01]);
+    writeFileSync(join(directory, 'photos/summit.jpg'), summit);
     const map = '# Trip\n## Summit\n![The view](photos/summit.jpg)\nWe made it. ![Again](photos/summit.jpg)\n## Lake\n![The lake](photos/lake.jpg)\n';
     writeFileSync(join(directory, 'trip.md'), map);
     const { code, stdout, stderr } = run(['export', '--html', join(directory, 'trip.md'), '--out', join(directory, 'trip.html'), '--theme', 'night']);
@@ -270,7 +272,7 @@ describe('orbit export', () => {
     expect(data.source).toBe(map);
     expect(data.theme).toBe('night');
     expect(Object.keys(data.media)).toEqual(['photos/summit.jpg']);
-    expect(data.media['photos/summit.jpg']).toStartWith('data:image/jpeg;base64,/9j/');
+    expect(data.media['photos/summit.jpg']).toBe(`data:image/jpeg;base64,${summit.toString('base64')}`);
     expect(html).toContain('<title>Trip</title>');
     expect(html).toContain('id="orbit-script"');
     rmSync(directory, { recursive: true, force: true });
