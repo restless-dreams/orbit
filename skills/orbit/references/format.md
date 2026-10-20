@@ -156,6 +156,7 @@ tags: [frontend, sprint-3]
 | Key | Value | Example | Effect |
 | --- | --- | --- | --- |
 | `color` | any CSS color | `"#F5A3A8"`, `tomato` | The node's color, instead of its branch's. Its children take shades of it. |
+| `paletteColor` | number | `3` | Which of the palette's colors the node takes when it has no `color`: `1` is the first after the root's, cycling. Its children take shades of it. Editing on the map writes it to keep an idea's color (see [Colors](#colors)). |
 | `icon` | emoji or short symbol | `🚀`, `"★"` | Shown before the text. Same as an emoji at the start of the title. |
 | `status` | text | `active`, `done`, `blocked` | Shown in the detail sheet; some words get a colored dot (see [Statuses](#statuses)). |
 | `priority` | number | `1` | Shown in the detail sheet. |
@@ -186,6 +187,18 @@ Any other key is kept as a **custom attribute** in `node.attrs`, for your own co
 | todo (gray) | `todo`, `to do`, `planned`, `backlog`, `next`, `open` |
 
 Other words get a neutral dot. Checkboxes set `todo` (`[ ]`), `done` (`[x]`) and `active` (`[/]`).
+
+### Colors
+
+The root takes the palette's first color: the theme's, or the frontmatter's `palette`. The top-level nodes take the others in turn, cycling, and deeper nodes take shades of their branch's color, so siblings stay apart. A node's own `color` wins, then its type's.
+
+`paletteColor` gives a node one of the palette's colors by number, so it still changes with the theme. The top-level nodes without one take turns with the colors no top-level node has by number: give two nodes the same number for them to share a color.
+
+Edits keep the colors of the nodes around them, on screen and through the map tools: adding, moving or removing a top-level node writes `paletteColor` where a color would change otherwise, as few times as it can.
+
+- A moved node keeps its color, and a new one takes a color no other top-level node has, while there is one.
+- A node moved under another one drops its `paletteColor` and takes its new branch's shade.
+- Where the top level has more nodes than the palette has colors, colors repeat, and an edit that would write more numbers than there are colors writes none.
 
 ## Document options
 
@@ -262,6 +275,21 @@ A document says which version of the format it's written for with `schemaVersion
 - **Older documents are upgraded as they're read.** When the format changes, Orbit brings documents written for the version before up to date as it reads them (a `format-upgraded` note says so), and the next save writes them as the new version, changing only what the upgrade changed.
 - **Newer documents are read as well as they can be,** and reported with `unsupported-schema-version`, an error: apps should open them without letting them be edited. Nothing in them is lost by saving, but what this version doesn't know of them isn't understood either.
 - **Node types have versions of their own,** for the fields their nodes keep in attributes: `type: task@2` says a node was written for version 2 of `task`, and none means 1. A type that changes its fields says so with `version` and brings older nodes up to date with `upgrade` (see [Extending Orbit](extending.md#versions)); a node written for a newer version of its type is left as it is.
+
+### Changing the format
+
+Maps outlive the version of Orbit that wrote them. Older and newer versions read them, and so do apps that bundle a copy of their own. So each change to the format is one of three kinds:
+
+- **Something older versions can do without:** a new attribute (like `paletteColor`) or a new document option. An older version keeps the attribute as a custom one, and the option as an unknown frontmatter key, which it reports. It writes both back unchanged and draws the map as it did before. No new version of the format is needed.
+- **Something an older version would misread:**
+  - a new kind of value for an attribute it already reads: Orbit 0.1.0 takes `color: 3` for a color and draws it wrong, without a word;
+  - new syntax in titles or notes: it shows `==First==` as text;
+  - an attribute renamed, removed, or given a new meaning.
+
+  These raise `schemaVersion`, with a step in `FORMAT_UPGRADES` (`src/core/format-upgrades.ts`) that brings documents written for the version before up to date. Older versions then report `unsupported-schema-version`, and apps open those maps read-only.
+- **A change to a node type's own fields:** the type gets a new `version` and an `upgrade` (see [Extending Orbit](extending.md#versions)), not a new version of the format.
+
+`tests/fixtures/releases/` holds maps as each released version wrote them. Every version must read each one without errors, write it back exactly, and understand it the same way, after its upgrades.
 
 ## Node ids
 

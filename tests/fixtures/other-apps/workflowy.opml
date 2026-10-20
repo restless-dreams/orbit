@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<opml version="2.0">
+  <head>
+    <ownerEmail>
+      someone@example.com
+    </ownerEmail>
+  </head>
+  <body>
+    <outline text="Weekly review">
+      <outline text="&lt;b&gt;Inbox&lt;/b&gt; zero #home" _note="Clear the &lt;i&gt;whole&lt;/i&gt; inbox.&#10;Then archive."/>
+      <outline text="Call the bank" _complete="true" />
+      <outline text="Read &lt;a href=&quot;https://example.com/article&quot;&gt;the article&lt;/a&gt;" />
+      <outline text="Ideas @someday">
+        <outline text="Learn the cello" />
+      </outline>
+    </outline>
+  </body>
+</opml>

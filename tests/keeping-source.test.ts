@@ -184,7 +184,8 @@ describe('an edit changes only its own lines', () => {
     const root = renderer.getDocument()!.root;
     renderer.moveNode(root.children[root.children.length - 1].id, root.id, 0);
     const saved = renderer.toMarkdown();
-    expect(saved.split('\n')[1]).toBe('- [x] Heading checkbox');
+    // Moved to the front, it keeps its color: its line says which of the palette's it is.
+    expect(saved.split('\n')[1]).toBe('- [x] Heading checkbox <!-- orbit paletteColor: 6 -->');
     expect(saved).toContain('## Heading task');
     expect(saved).toContain('- [?] Question item');
   });

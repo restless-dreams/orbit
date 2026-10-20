@@ -85,6 +85,10 @@ const serializeNode = (n: OrbitNode, explicitIds: ReadonlySet<OrbitNode>): YamlV
     obj.color = n.color;
   }
 
+  if (n.paletteColor !== undefined) {
+    obj.paletteColor = n.paletteColor;
+  }
+
   if (n.type) {
     obj.type = n.typeVersion === undefined ? n.type : `${n.type}@${n.typeVersion}`;
   }

@@ -1,0 +1,92 @@
+title: Everything a map can say
+theme: night
+view: focus
+showRings: true
+interactive: true
+animation: false
+speed: 120
+palette:
+  - "#F8D978"
+  - "#F5A3A8"
+  - "#9ED5FD"
+  - "#99E0BA"
+height: 480
+maxDepth: 4
+className: release-fixture
+baseUrl: "https://example.com/maps/"
+schemaVersion: 1
+cssclasses: [wide, cards]
+generator: release-fixtures
+nodes:
+  - text: Everything a map can say
+    icon: 🚀
+    note: "What ships this year, written by hand."
+    children:
+      - text: Research
+        status: done
+        priority: 1
+        note: Six weeks of interviews before we commit to scope.
+        children:
+          - text: User interviews
+            tags: [ux]
+            status: done
+          - text: Survey
+            color: "#E5484D"
+            status: active
+          - text: Competitor teardown
+            tags: [market, q3]
+            status: todo
+          - text: Questions to answer
+            note: |
+              - Who buys it?
+              - Why now?
+          - text: Typo kept
+            stauts: done
+      - text: Build
+        id: build-phase
+        type: "milestone@2"
+        tags: [engineering, sprint-3]
+        collapsed: false
+        owner: Ana
+        due: "2026-11-01"
+        children:
+          - text: Frontend
+            icon: ★
+            paletteColor: 3
+            children:
+              - text: App shell
+              - text: Offline sync
+                status: blocked
+                note: "Waits on the [backend](#backend) sync API."
+          - text: Backend
+            note: "Plain text, shown as written: *not emphasis*."
+            noteFormat: plain
+      - text: Launch
+        link: "https://example.com/launch-plan"
+        image:
+          src: images/poster.png
+          alt: The launch poster
+          caption: Printed for the stores
+        children:
+          - text: Trailer
+            video:
+              src: "https://vimeo.com/76979871"
+              provider: vimeo
+              thumbnail: images/thumbnail.jpg
+              caption: Ninety seconds
+          - text: Demo page
+            embed:
+              src: "https://example.com/demo"
+          - text: Read the research
+            link: "#research"
+          - text: Old poster
+            note: "![Kept as text](images/old.png)"
+          - text: Folded idea
+            collapsed: true
+            children:
+              - text: Hidden child
+          - text: Video file
+            video:
+              src: clips/teaser.mp4
+              provider: native
+              caption: Ten seconds

@@ -6,6 +6,7 @@ import { parseOrbit } from '../src/core/dispatch';
 import { EXAMPLE_MAP } from '../bin/example';
 import { buildWebPageScript } from '../scripts/build-web-page';
 import type { OrbitNode } from '../src/core/types';
+import { folderFiles, makeZip, ONE_PIXEL_PNG } from './helpers/zip';
 
 /** Runs the command in its own process, as people and agents do, with `input` on stdin. */
 const run = (argumentsList: string[], input = ''): { code: number; stdout: string; stderr: string } => {
@@ -128,6 +129,68 @@ describe('orbit example', () => {
   });
 });
 
+describe('orbit convert from other apps', () => {
+  const fixtures = join(import.meta.dir, 'fixtures/other-apps');
+
+  test('reads OPML, FreeMind and Freeplane into orbit-md', () => {
+    const opml = run(['convert', '--to', 'md', join(fixtures, 'mindnode.opml')]);
+    expect(opml).toEqual({ code: 0, stdout: '# Garden\nSpring planting plan\n\n## 🌱 Seeds\n- Tomatoes\n- Basil\n\n## Tools\n', stderr: '' });
+
+    const freemind = run(['convert', '--to', 'yaml', join(fixtures, 'freemind.mm')]);
+    expect(freemind.code).toBe(0);
+    expect(parseOrbit(freemind.stdout).root.text).toBe('Product launch');
+    expect(freemind.stderr).toContain('freemind.mm: warning: One link (“../specs/launch.mm”) to files on the computer the map was made on was left out. [local-links-not-kept]');
+  });
+
+  test('writes OPML, from a map or from another app\'s', () => {
+    const { code, stdout } = run(['convert', '--to', 'opml', '-'], '# Plan\n## Research <!-- orbit status: done -->\n');
+    expect(code).toBe(0);
+    expect(stdout).toContain('<outline text="Research" _status="checked" _complete="true"/>');
+    expect(run(['convert', '--to', 'opml', join(fixtures, 'freeplane.mm')]).stdout).toContain('<outline text="📖 Chapter 1"');
+  });
+
+  test('writes every sheet of a workbook, and its pictures in media/, with --out', () => {
+    const folder = mkdtempSync(join(tmpdir(), 'orbit-convert-'));
+
+    try {
+      const workbook = join(folder, 'Garden.xmind');
+      writeFileSync(workbook, makeZip([
+        ...folderFiles(join(fixtures, 'xmind-2020')),
+        { name: 'resources/3a7bd3e2360a3d29eea436fcfb7e44c735d117c42d1c1835420b6b9942dd4f1b.png', data: ONE_PIXEL_PNG, stored: true },
+      ]));
+      const out = join(folder, 'out', 'garden.md');
+      mkdirSync(join(folder, 'out'));
+      const { code, stderr } = run(['convert', '--to', 'md', '--out', out, workbook]);
+      expect(code).toBe(0);
+      expect(stderr).toContain('(sheet 1, Garden plan): warning: One floating topic (“Compost?”)');
+      expect(readFileSync(out, 'utf8')).toStartWith('# Garden plan\n![](media/3a7bd3e2360a3d29eea436fcfb7e44c735d117c42d1c1835420b6b9942dd4f1b.png)');
+      expect(readFileSync(join(folder, 'out', 'garden-2.md'), 'utf8')).toBe('# Shopping\n\n## Hose\nTwenty meters\n');
+      expect([...readFileSync(join(folder, 'out', 'media', '3a7bd3e2360a3d29eea436fcfb7e44c735d117c42d1c1835420b6b9942dd4f1b.png'))]).toEqual([...ONE_PIXEL_PNG]);
+
+      const toStdout = run(['convert', '--to', 'md', workbook]);
+      expect(toStdout.stdout).toStartWith('# Garden plan');
+      expect(toStdout.stderr).toContain('the workbook has 2 sheets: this is the first. Write them all with --out.');
+      expect(toStdout.stderr).toContain('one picture inside the file was left out: write the map with --out to save them in media/ next to it.');
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+
+  test('a file it can\'t read exits 1 and says why', () => {
+    const folder = mkdtempSync(join(tmpdir(), 'orbit-convert-'));
+
+    try {
+      const broken = join(folder, 'broken.xmind');
+      writeFileSync(broken, makeZip([{ name: 'map.md', data: '# Not XMind' }]));
+      const { code, stderr } = run(['convert', '--to', 'md', broken]);
+      expect(code).toBe(1);
+      expect(stderr).toContain("broken.xmind: error: The file is a zip archive, but not an XMind workbook: it has no content.json or content.xml. [unreadable]");
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('orbit convert', () => {
   const MAP = '# Plan\n\n## Research <!-- orbit status: done -->\n- Interviews #users\n\n## Build\n';
 
@@ -150,7 +213,7 @@ describe('orbit convert', () => {
     for (const argumentsList of [['convert', '-'], ['convert', '--to', 'json', '-'], ['convert', '--to', 'yaml']]) {
       const { code, stderr } = run(argumentsList, MAP);
       expect(code).toBe(2);
-      expect(stderr).toContain('expected --to <md|yaml> <file|->');
+      expect(stderr).toContain('expected --to <md|yaml|opml> <file|->');
     }
   });
 

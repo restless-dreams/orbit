@@ -393,6 +393,29 @@ const html = exportWebPage(markdown, { script, theme: 'night', media: { 'photos/
 
 Options: `title`, `theme`, `viewMode`, `focus`, `language`, `strings` and `media`, the pictures to put inside the page by the address the map gives them.
 
+## Printing and PDF
+
+A map's web page prints laid out for paper, so the browser's Print, or Save as PDF, gives a document to email, hand in or print: the title, the map as a picture the width of the page, then every idea in reading order with its status, tags, priority, link (its address printed, and still a link in a PDF), note, picture and video. An idea never breaks across pages, a heading stays with what follows it, and the map prints on a light theme ([Printing](theming.md#printing)).
+
+`renderPrintLayout` lays a map out that way in any page. It fills an element, which you show only in print:
+
+```ts
+import { renderPrintLayout } from '@restless-dreams/orbit';
+
+renderPrintLayout(document.querySelector('#print'), markdown, { viewMode: 'all', language: 'es' });
+```
+
+```css
+#print { display: none; }
+
+@media print {
+  #app { display: none; }
+  #print { display: block; }
+}
+```
+
+Options: `title`, `picture` (`false` leaves the map's picture out), `viewMode` and `focus` (what the picture shows), `theme`, `palette`, `language`, `strings`, `baseUrl`, `nodeTypes`, `statuses`, `nodeTypeFor` (a node type's `label`, `icon` and `details` print with its nodes) and `idPrefix`. A headless browser makes the PDF without anyone printing: `chromium --headless --no-pdf-header-footer --print-to-pdf=map.pdf map.html`, or Playwright's `page.pdf()`.
+
 ## Map tools for AI
 
 `createMapTools` gives a language model tools to read a map and change it: read it as an outline with each node's id, search it, add branches written as markdown, rename, mark, move, sort and remove nodes. `tools.for('anthropic')`, `'openai'`, `'openai-chat'` or `'gemini'` lists them in the shape that provider's API takes, `tools.definitions` as MCP lists tools, and `tools.run(name, input)` carries out each call. On a map on screen, each change animates and fires `edit`; on a document, it changes the document in place. A call a model gets wrong changes nothing, and its result says what to send instead. [Map tools for AI](map-tools.md) has the loop for each provider.
@@ -446,11 +469,12 @@ npx @restless-dreams/orbit validate --json my-map.md           # the same as JSO
 npx @restless-dreams/orbit validate --tree my-map.md           # the map as Orbit reads it, a node a line with its #id
 npx @restless-dreams/orbit render my-map.md --out my-map.svg   # draw a map to SVG (--theme, --view, --focus, --width, --height, --language)
 npx @restless-dreams/orbit convert --to yaml my-map.md         # markdown ↔ YAML (either direction)
+npx @restless-dreams/orbit convert --to md Plan.xmind --out plan.md  # a map from XMind, FreeMind, Freeplane or OPML; --to opml writes OPML
 npx @restless-dreams/orbit example > my-map.md                 # a map with the main features (--yaml for YAML)
 npx @restless-dreams/orbit --version                           # the installed version
 ```
 
-Use `-` as the file to read from stdin, and `--help` after any command for its options. `validate` exits with 1 while the map has a problem (`--loose` accepts the ones the map works around, but never a map it can't read); every command exits with 2 for a mistake in the command itself. `render` links pictures on your computer from where the SVG goes, so it can move with them. The command itself is `orbit`: where the package is installed, scripts can call `orbit validate my-map.md` directly.
+Use `-` as the file to read from stdin, and `--help` after any command for its options. `validate` exits with 1 while the map has a problem (`--loose` accepts the ones the map works around, but never a map it can't read); every command exits with 2 for a mistake in the command itself. `render` links pictures on your computer from where the SVG goes, so it can move with them. `convert` reads other apps' maps as [Maps from other apps](import-export.md) says, and writes `--out`'s pictures next to the map. The command itself is `orbit`: where the package is installed, scripts can call `orbit validate my-map.md` directly.
 
 ## Languages
 

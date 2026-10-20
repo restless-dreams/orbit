@@ -22,7 +22,6 @@ import type {
   OrbitEditorEvent,
   OrbitEventMap,
   OrbitEventName,
-  OrbitInsets,
   OrbitMediaEvent,
   OrbitMediaOptions,
   OrbitMediaState,
@@ -32,23 +31,22 @@ import type {
   OrbitNewNode,
   OrbitNodeInput,
   OrbitRendererTheme,
-  OrbitSpinOptions,
   OrbitThemePreset,
   RendererOptions,
   ViewMode,
 } from './types.js';
 import { DEFAULT_OPTIONS } from './types.js';
-import { overlayTransform } from './browser.js';
 import { findNodeById, getNodePath } from './utils.js';
 import { addToTree, moveInTree, removeFromTree, updateInTree } from './editing.js';
+import { branchPalette, type BranchColorRules } from './branch-colors.js';
 import { serializeOrbitMarkdown } from './serializer-markdown.js';
 
 import { documentToRendererOptions } from './document-options.js';
-import { documentSource, setDocumentSource, type NodeRecord } from './document-source.js';
+
 import { parseOrbit } from './dispatch.js';
 import { guardUrl, resolveUrl } from './url-guard.js';
-import { hasMediaSource } from './media.js';
-import { THEME_TOKENS, expandTheme, isThemeName, mergeThemes, resolvePalette, resolveThemeTokens, themeName, themeNames, themeOverrides, type OrbitThemeToken } from './themes.js';
+
+import { THEME_TOKENS, expandTheme, isThemeName, resolvePalette, resolveThemeTokens, themeName, themeNames, themeOverrides, type OrbitThemeToken } from './themes.js';
 import { ensureStyles } from './styles.js';
 import { InputController, wheelZoomFactor, type DragGesture, type Point } from './input-controller.js';
 import { AnimationClock, easeInOutCubic, type FrameTask } from './engine/animation-clock.js';
@@ -66,55 +64,50 @@ import {
   type Similarity,
   type Viewport,
 } from './engine/camera.js';
-import { AngularVelocityTracker, DEFAULT_SPIN_SETTINGS, SpinPhysics, normalizeDelta, type SpinSettings } from './engine/spin.js';
+import { AngularVelocityTracker, SpinPhysics, normalizeDelta } from './engine/spin.js';
 import { Glide, PointVelocityTracker } from './engine/glide.js';
 import { alignScene, assignNodeColors, buildFocusScene, buildOverviewScene, fitScene, toDegrees, type NodeRole, type Scene, type SceneNode, type SceneOptions } from './engine/scene.js';
-import { fadeDisplay, placedFrame, sceneDisplay, transitionDisplay, type Cluster, type Display, type DisplayNode, type DisplayRing, type DisplaySlot, type Transition } from './engine/display.js';
+import { fadeDisplay, placedFrame, sceneDisplay, transitionDisplay, type Display, type DisplayNode, type DisplaySlot, type Transition } from './engine/display.js';
 import {
   AddSlotView,
   COUNT_HEIGHT,
   COUNT_POSITION,
-  NodeLabel,
-  NodeView,
-  applyTypeTokens,
   createDefinitions,
   describeNode,
   insideFontSize,
   insideLabelLayout,
   insideLabelReach,
   insideLabelWidth,
-  markNode,
   measureCount,
-  ringPath,
   showsCount,
-  speckRadius,
   svgElement,
-  turnShading,
   placeShading,
   readShadeCircle,
-  type NodeDrawing,
   type ViewIds,
 } from './engine/views.js';
-import { labelOrder, planLabels, type PlannedLabel } from './engine/labels.js';
 import { nodeUnder, orbitPlaceAt, samePlace, unreachableIds, type DropPlace } from './engine/node-drag.js';
 import { exportDisplay } from './engine/export.js';
 import { LabelFonts, onMeasurementsReset } from './engine/text-measure.js';
-import { prefersLightText, resolveColor } from './engine/colors.js';
+import { resolveColor } from './engine/colors.js';
 import { Controls } from './ui/controls.js';
 import { AccessibleOutline, Tooltip } from './ui/outline.js';
 import { DetailSheet, type DetailSection } from './ui/detail-sheet.js';
 import { MediaViewer, galleryItems, showsMedia, type MediaItem, type MediaKind } from './ui/media-viewer.js';
 import type { PlaybackState } from './ui/media-players.js';
 import { ActionBar, actionRows, type ActionRows, type LinkDescription } from './ui/actions.js';
-import { InlineEditor, type EditorPlacement, type EditorText } from './ui/inline-editor.js';
+import { InlineEditor, type EditorPlacement } from './ui/inline-editor.js';
 import { findLinkedNode, isNodeLink } from './node-links.js';
 import { MapExtensions, actionLabel, guarded, upgradeTypes } from './extensions.js';
 import { noteToPlainText } from './ui/note-markdown.js';
 import { OrbitWords, languageOf } from './languages.js';
-
-type ResolvedRendererOptions = RendererOptions &
-  Required<Pick<RendererOptions, 'viewMode' | 'showRings' | 'interactive' | 'orbitAnimation' | 'orbitSpeed' | 'showControls'>>;
-
+import { RingsAndLinks } from './renderer/rings-and-links.js';
+import { LabelPainter } from './renderer/label-painter.js';
+import { NodePainter } from './renderer/node-painter.js';
+import { ContentPainter } from './renderer/content-painter.js';
+import { mergeRendererOptions, resolveInsets, spinSettings, type ResolvedRendererOptions } from './renderer/options.js';
+import { SLOT_STOP, createEmptyState, fillEmptyState, isAddSlot, isApplePlatform, isFocusVisible, nodeIdFrom, reportListenerError, scrollsAround } from './renderer/dom.js';
+import { clockwiseFromTop, closeInSize, innerOrbitEdge, orderedPlanets, overlayPlacement, renameNodes, visiblePart, withArrival, type Arrival } from './renderer/scene-helpers.js';
+import { definedEntries, expectObject, isEmptyTree, isOrbitDocument, newIdeaText, sameTree, sameValues, transplantSource } from './renderer/trees.js';
 
 /** Zoom (relative to the fitted view) past which zooming toward a planet or moon enters it. */
 const ENTER_ZOOM = 1.75;
@@ -167,21 +160,6 @@ const CLICK_GUARD = 350;
  * is the same press.
  */
 const CONTEXT_REPEAT = 700;
-/**
- * While only the camera moves, labels ride along as one layer until they're this much bigger or
- * smaller than where they were placed, or have moved `RIDE_ALONG_PAN` of the map's shorter side.
- */
-const RIDE_ALONG_ZOOM = 1.25;
-const RIDE_ALONG_PAN = 0.3;
-/**
- * Names that start to show, at most, on one frame of an animated map: when a
- * zoom brings hundreds of names into view at once (a crowded orbit), the rest
- * show over the next frames instead of stalling one (see paintLabels).
- */
-const LABELS_SHOWN_PER_FRAME = 24;
-/** A flight's hidden newcomers get their views over this many frames, at least `NEWCOMERS_PER_FRAME` a frame (see paintNodes). */
-const NEWCOMER_FRAMES = 6;
-const NEWCOMERS_PER_FRAME = 40;
 /** Maps this wide (px) or narrower trade their breadcrumbs for a back chip (the `orbit--narrow` class). */
 const NARROW_MAP = 560;
 /** The drift paints a turn once it moves the outermost body this far (px); a slow drift moves less than that most frames. */
@@ -193,28 +171,12 @@ const ACTION_RIM_INSET = 10;
 /** Buttons under the orbit sit this far below its edge, and keep this far from the map's edges and its zoom buttons (px). */
 const ACTION_ORBIT_GAP = 12;
 const ACTION_EDGE_MARGIN = 12;
-/** While the orbit drifts, specks are lit again each time it has turned this far (degrees) since they last were (see `paintTurn`). */
-const RELIGHT_STEP = 10;
-/** At most this many nodes become specks, or stop being them, in one frame (see `NodeDrawing`). */
-const SPECK_SWITCHES_PER_FRAME = 60;
-/** Resizes within this share of the size a view was laid out for keep its layout: no one sees 2% in a node's size. */
-const RELAYOUT_THRESHOLD = 0.02;
 
 /** Where the focused node's buttons go: the middle of their top edge (px), and the width they wrap at (0 keeps them on one line). */
 interface ActionsPlace {
   x: number;
   y: number;
   wrap: number;
-}
-
-/** What a node type draws inside one node, and how it was last placed. */
-interface NodeContent {
-  element: HTMLDivElement;
-  node: OrbitNode;
-  cleanup?: () => void;
-  transform: string;
-  opacity: string;
-  visible: boolean;
 }
 
 /** What the field for typing on the map is for: a node's text, or a new idea at `index` among `parentId`'s children. */
@@ -279,30 +241,8 @@ interface NodeDrag {
   scale: number;
 }
 
-/** A node an edit just added, and where it was typed: its first frame is there. */
-interface Arrival {
-  id: string;
-  x: number;
-  y: number;
-  radius: number;
-}
-
 /** Orbit's own buttons; any other action is one of yours. */
 const CONTENT_ACTIONS = new Set<string>(['details', 'image', 'video', 'embed', 'note', 'link']);
-
-interface RingView {
-  group: SVGGElement;
-  line: SVGPathElement;
-  band: SVGPathElement;
-  shape: string;
-
-  /** The gaps and radius the shape was last checked for: a spin keeps them, so the shape isn't worked out again. */
-  gaps: DisplayRing['gaps'] | null;
-
-  radius: number;
-  transform: string;
-  color: string;
-}
 
 interface CameraFlight {
   path: CameraPath;
@@ -337,24 +277,12 @@ export class OrbitSVGRenderer {
   /** The camera as last written to the world: a spin repaints every frame without moving it. */
   private worldTransform = '';
 
-  /** The orbit's turn as last written to the layers of its planets and moons (see `paintTurn`). */
-  private turnTransform = '';
 
   /** The theme the shading was last placed for (see `placeShading`). */
   private shadingTheme = '';
 
-  /** The turn the shading of specks is turned back by (see `turnShading`). */
-  private speckLighting = 0;
 
-  /** The on-screen radius (px) below which bodies were last drawn as specks (see `speckRadius`). */
-  private specksBelow = 0;
 
-  /**
-   * The nodes as last painted at rest, with what they were drawn for: while
-   * only the camera or the orbit's turn changes, they hold still, all but
-   * the bodies turned back upright (see `paintNodes`).
-   */
-  private stillNodes: { scene: Scene; scale: number; speckRadius: number; editedId: string | null; turnedBack: NodeView[] } | null = null;
 
   private readonly layers: Record<'rings' | 'links' | 'moons' | 'nodes' | 'suns' | 'carried', SVGGElement>;
   private readonly labelLayer: HTMLDivElement;
@@ -362,13 +290,16 @@ export class OrbitSVGRenderer {
   /** The fonts the labels are drawn with, which names are measured and fitted in. */
   private readonly labelFonts: LabelFonts;
 
+  private readonly labelPainter: LabelPainter;
+
   /** Stops listening for fonts that finish loading. */
   private readonly stopWatchingFonts: () => void;
 
   /** What node types draw inside their nodes, between the nodes and the labels. */
   private readonly contentLayer: HTMLDivElement;
 
-  private readonly contents = new Map<string, NodeContent>();
+  private readonly contentPainter: ContentPainter;
+
 
   /** This map's node types, actions and status words, then the registered ones. */
   private extensions: MapExtensions;
@@ -453,43 +384,17 @@ export class OrbitSVGRenderer {
   private display: Display | null = null;
   private restingDisplay: { scene: Scene; rotation: number; display: Display } | null = null;
 
-  /**
-   * Nodes in the order their labels are placed, for one display, and their
-   * ids for a scene at rest: the order holds while the orbit spins, only the
-   * entries are new each frame.
-   */
-  private labelOrder: { nodes: Map<string, DisplayNode>; order: DisplayNode[]; scene: Scene | null; ids: string[] } | null = null;
 
-  private readonly nodeViews = new Map<string, NodeView>();
 
-  /** The family group each node's element is in (see `Family`). */
-  private readonly nodeGroups = new Map<string, Family>();
 
-  private readonly families = new Map<string, Family>();
 
-  /** Counts flights, so each one's arrivals get groups of their own. */
-  private flightCount = 0;
 
-  private familyCount = 0;
-  private readonly labels = new Map<string, NodeLabel>();
-  private readonly ringViews = new Map<string, RingView>();
+  private readonly ringsAndLinks: RingsAndLinks;
+  private readonly nodePainter: NodePainter;
 
-  /** Each view keeps what it last wrote, so the elements of a map that didn't move aren't touched. */
-  private readonly linkViews = new Map<string, { element: SVGLineElement; geometry: string; opacity: string }>();
 
-  private readonly counts = new Map<string, { element: HTMLSpanElement; text: string; transform: string }>();
 
-  /** The camera labels and counts were last placed for, and the nodes they were placed for. */
-  private labelsPlaced: { camera: Camera; nodes: Map<string, DisplayNode> } | null = null;
 
-  /** Names planned to show that wait for a later frame (see `LABELS_SHOWN_PER_FRAME`), placed for `labelsPlaced`'s camera, and whether the map moved then. */
-  private waitingLabels: { plans: PlannedLabel[]; moving: boolean } | null = null;
-
-  private labelLayerTransform = '';
-  private readonly lightText = new Map<string, { color: string; light: boolean }>();
-
-  /** The theme's label colors, resolved when first needed after each theme change. */
-  private textColors: { light: string; dark: string; root: string } | null = null;
 
   /** The node that holds the map's single tab stop. */
   private activeId: string | null = null;
@@ -533,8 +438,6 @@ export class OrbitSVGRenderer {
   /** A long press no one took a menu for, on a node it lifts: let go without moving, the node is typed into. */
   private editOnLift: string | null = null;
 
-  /** The lifted node and the drop target last drawn, so a change draws every node again. */
-  private dragMarks = '\n';
 
   private ambientRunning = false;
 
@@ -587,6 +490,34 @@ export class OrbitSVGRenderer {
       carried: svgElement('g', { class: 'orbit__carried' }),
     };
     this.world.append(this.layers.rings, this.layers.links, this.layers.moons, this.layers.nodes, this.layers.suns, this.layers.carried);
+    this.ringsAndLinks = new RingsAndLinks(this.layers);
+    this.nodePainter = new NodePainter(this.root, this.definitions, this.ids, this.layers, {
+      extensions: () => this.extensions,
+      words: () => this.words,
+      baseUrl: () => this.options.baseUrl,
+      scene: () => this.scene,
+      inFlight: () => this.transition !== null,
+      spinResting: () => this.spinPhysics.mode === 'idle',
+      driftRunning: () => this.ambientRunning,
+      editedId: () => this.editedId(),
+      drag: () => {
+        const drag = this.nodeDrag;
+        return {
+          liftedId: drag?.id ?? null,
+          carried: drag?.moving ? new Set(drag.bodies.map((body) => body.id)) : null,
+          targetId: drag?.moving && drag.place?.into ? drag.place.parentId : null,
+        };
+      },
+      changedIds: () => this.changedIds,
+      requestPaint: () => this.clock.requestPaint(),
+      tabStopsChanged: () => {
+        this.tabStopsChanged = true;
+      },
+      viewRemoved: (id) => {
+        this.labelPainter.forgetNode(id);
+        this.tabStopsChanged = true;
+      },
+    });
     this.layers.nodes.appendChild(this.addSlotView.element);
     this.layers.nodes.appendChild(this.heldPlaceView.element);
     this.svg.appendChild(this.world);
@@ -594,10 +525,28 @@ export class OrbitSVGRenderer {
     this.contentLayer = document.createElement('div');
     this.contentLayer.className = 'orbit__contents';
     this.contentLayer.setAttribute('aria-hidden', 'true');
+    this.contentPainter = new ContentPainter(this.contentLayer, {
+      extensions: () => this.extensions,
+      viewport: () => this.viewport,
+      changedIds: () => this.changedIds,
+    });
     this.labelLayer = document.createElement('div');
     this.labelLayer.className = 'orbit__labels';
     this.labelLayer.setAttribute('aria-hidden', 'true');
     this.labelFonts = new LabelFonts(this.labelLayer, () => this.extensions);
+    this.labelPainter = new LabelPainter(this.labelLayer, this.labelFonts, {
+      extensions: () => this.extensions,
+      viewport: () => this.viewport,
+      restingScene: () => (this.transition ? null : this.scene),
+      inFlight: () => this.transition !== null,
+      cameraMoving: () => this.cameraFlight !== null || this.wheelZoom !== null || this.glide.isMoving || this.dragging,
+      changedIds: () => this.changedIds,
+      editedId: () => this.editedId(),
+      animationsEnabled: () => this.animationsEnabled(),
+      requestPaint: () => this.clock.requestPaint(),
+      nodeView: (id) => this.nodePainter.view(id),
+      themeTokens: () => this.exportTokens(),
+    });
     this.overlayLayer = document.createElement('div');
     this.overlayLayer.className = 'orbit__overlay';
     this.actionBar = new ActionBar({
@@ -659,7 +608,7 @@ export class OrbitSVGRenderer {
     // A font that finishes loading changes how wide names are: fit them again, where they are.
     this.stopWatchingFonts = onMeasurementsReset(() => {
       this.labelFonts.refresh();
-      this.fitLabelsAgain();
+      this.labelPainter.refit();
     });
 
     this.input = new InputController(this.root, {
@@ -869,7 +818,7 @@ export class OrbitSVGRenderer {
       showRings: this.options.showRings !== false,
       title: this.options.ariaLabel || this.tree?.text || this.words.text('mindMap'),
       words: this.words,
-      fills: (node) => this.nodeViews.get(node.id)?.resolvedFill() ?? '',
+      fills: (node) => this.nodePainter.view(node.id)?.resolvedFill() ?? '',
       // The file will be opened away from the page: resolve relative URLs now.
       baseUrl: this.options.baseUrl ?? this.root.ownerDocument.baseURI,
       // Names break where they do on the map.
@@ -1133,7 +1082,7 @@ export class OrbitSVGRenderer {
    */
   updateNode(id: string, changes: OrbitNodeInput): OrbitNode | null {
     expectObject('updateNode', changes, `updateNode('${id}', { text: 'New title' })`);
-    const updated = this.tree ? updateInTree(this.tree, id, changes) : null;
+    const updated = this.tree ? updateInTree(this.tree, id, changes, this.branchColorRules()) : null;
 
     if (!updated) {
       return null;
@@ -1156,7 +1105,7 @@ export class OrbitSVGRenderer {
    * Returns the removed node, or null.
    */
   removeNode(id: string): OrbitNode | null {
-    const removed = this.tree ? removeFromTree(this.tree, id) : null;
+    const removed = this.tree ? removeFromTree(this.tree, id, this.branchColorRules()) : null;
 
     if (!removed) {
       return null;
@@ -1175,7 +1124,7 @@ export class OrbitSVGRenderer {
    * `parentId` is inside the node.
    */
   moveNode(id: string, parentId: string, index?: number): OrbitNode | null {
-    const moved = this.tree ? moveInTree(this.tree, id, parentId, index) : null;
+    const moved = this.tree ? moveInTree(this.tree, id, parentId, index, this.branchColorRules()) : null;
 
     if (!moved) {
       return null;
@@ -1291,9 +1240,7 @@ export class OrbitSVGRenderer {
     this.root.removeEventListener('focusin', this.handleFocusIn);
     this.root.removeEventListener('focusout', this.handleFocusOut);
 
-    for (const id of Array.from(this.contents.keys())) {
-      this.removeContent(id);
-    }
+    this.contentPainter.clear();
 
     this.viewer.destroy();
     this.sheet.destroy();
@@ -1346,7 +1293,7 @@ export class OrbitSVGRenderer {
 
     this.focusPath = path.length > 0 ? path.map((node) => node.id) : [tree.id];
     this.actionBar.reset();
-    this.lightText.clear();
+    this.labelPainter.forgetLightText();
     this.updateEmbedding();
     this.updateControls();
     this.updateOutline();
@@ -1387,6 +1334,11 @@ export class OrbitSVGRenderer {
     this.clock.requestPaint();
   }
 
+  /** How edits keep top-level nodes' colors: the palette's colors after the root's, and each node's own color or its type's. */
+  private branchColorRules(): BranchColorRules {
+    return { count: branchPalette(resolvePalette(this.options.palette)).length, ownColor: (node) => this.extensions.color(node) };
+  }
+
   /** Shows an edit, keeping the reader's place, and reports it. */
   private afterEdit(kind: OrbitEdit['kind'], node: OrbitNode, announcement?: string): void {
     const tree = this.tree as OrbitNode;
@@ -1408,7 +1360,7 @@ export class OrbitSVGRenderer {
 
   /** Adds a node; `arrival`, where a new idea was typed, is where it first shows. */
   private insertNode(parentId: string, input: OrbitNewNode, index?: number, arrival?: Omit<Arrival, 'id'>): OrbitNode | null {
-    const added = this.tree ? addToTree(this.tree, parentId, input, index) : null;
+    const added = this.tree ? addToTree(this.tree, parentId, input, index, this.branchColorRules()) : null;
 
     if (!added) {
       return null;
@@ -1676,7 +1628,7 @@ export class OrbitSVGRenderer {
     this.actionBar.reset();
     fillEmptyState(this.emptyState, this.words);
 
-    for (const view of this.nodeViews.values()) {
+    for (const [, view] of this.nodePainter.entries()) {
       view.element.setAttribute('aria-label', describeNode(view.node, 0, view.node.children.length, this.extensions, this.words));
     }
 
@@ -1804,8 +1756,7 @@ export class OrbitSVGRenderer {
     }
 
     this.themeProperties = Object.keys(overrides);
-    this.lightText.clear();
-    this.textColors = null;
+    this.labelPainter.forgetTextColors();
     const shading = JSON.stringify([this.themePreset(), this.themeOption()]);
 
     if (shading !== this.shadingTheme) {
@@ -1961,7 +1912,7 @@ export class OrbitSVGRenderer {
     // The planets come round to every angle as the orbit turns: the row's farthest point from the sun stays inside them.
     const offset = (actionRows(count, size).width - size) / 2;
     const reach = (top: number): number => Math.hypot(offset, top + size / 2) + size / 2;
-    const labelBelow = this.labels.get(sun.id)?.currentPlacement === 'outside';
+    const labelBelow = this.labelPainter.placementOf(sun.id) === 'outside';
     const under = radius + (labelBelow ? 36 : 12);
 
     if (reach(under) <= clear) {
@@ -2199,7 +2150,7 @@ export class OrbitSVGRenderer {
   }
 
   private startTransition(from: Display, target: Scene, placement: Similarity, now: number, duration?: number, landing?: Camera): void {
-    this.flightCount += 1;
+    this.nodePainter.startFlight();
     const destination = landing ?? placedFrame(target, placement);
     const cameraPath = smoothZoomPath(from.camera, destination, this.viewport);
     this.transition = {
@@ -2356,7 +2307,7 @@ export class OrbitSVGRenderer {
    */
   private rebuild(mode: 'enter' | 'morph' | 'instant'): void {
     // The page may have switched the map's fonts since the last draw: check once it's idle.
-    this.labelFonts.recheckWhenIdle(() => this.fitLabelsAgain());
+    this.labelFonts.recheckWhenIdle(() => this.labelPainter.refit());
     const renamed = this.renamedIds;
     this.renamedIds = new Map();
     const arrival = this.arrival;
@@ -2409,7 +2360,7 @@ export class OrbitSVGRenderer {
 
     this.scene = target;
     this.camera = this.clampCamera(this.camera);
-    this.lightText.clear();
+    this.labelPainter.forgetLightText();
     this.paint();
   }
 
@@ -2468,24 +2419,13 @@ export class OrbitSVGRenderer {
       this.worldTransform = worldTransform;
     }
 
-    this.paintRings(display);
-    this.paintLinks(display);
-    const turn = this.paintTurn(display);
-    this.paintNodes(display, turn);
+    this.ringsAndLinks.paint(display, this.options.showRings !== false);
+    const turn = this.nodePainter.paintTurn(display);
+    this.nodePainter.paintNodes(display, turn);
     this.paintAddSlot(display, turn);
     this.paintHeldPlace(settled, turn);
-    this.paintContents(display);
-    const ride = this.labelRide(display);
-    this.setLabelLayerTransform(ride ?? '');
-
-    if (this.waitingLabels && (ride !== null || this.labelsStill(display))) {
-      // Names still waiting to show, where they were planned: the labels ride along, or nothing moved since.
-      this.showWaitingLabels();
-    } else if (ride === null) {
-      this.paintLabels(display);
-      this.paintCounts(display);
-      this.labelsPlaced = { camera: { ...display.camera }, nodes: display.nodes };
-    }
+    this.contentPainter.paint(display);
+    this.labelPainter.paint(display);
 
     this.changedIds.clear();
     this.paintOverlay(display);
@@ -2497,398 +2437,6 @@ export class OrbitSVGRenderer {
 
     if (this.tooltip.isVisible) {
       this.positionTooltip();
-    }
-  }
-
-  private paintRings(display: Display): void {
-    const seen = new Set<string>();
-
-    if (this.options.showRings !== false) {
-      for (const ring of display.rings) {
-        if (ring.opacity <= 0.01 || ring.radius <= 0) {
-          continue;
-        }
-
-        seen.add(ring.id);
-        let view = this.ringViews.get(ring.id);
-
-        if (!view) {
-          view = createRingView(ring);
-          this.ringViews.set(ring.id, view);
-          this.layers.rings.appendChild(view.group);
-        }
-
-        if (ring.gaps !== view.gaps || ring.radius !== view.radius) {
-          const shape = `${round(ring.radius)}|${ring.gaps.map((gap) => `${round(gap.angle)}:${round(gap.halfWidth)}`).join(',')}`;
-
-          if (shape !== view.shape) {
-            view.line.setAttribute('d', ringPath(ring.radius, ring.gaps));
-            view.band.setAttribute('d', ringPath(ring.radius, []));
-            view.shape = shape;
-          }
-
-          view.gaps = ring.gaps;
-          view.radius = ring.radius;
-        }
-
-        const transform = `translate(${round(ring.cx)} ${round(ring.cy)}) rotate(${round(ring.rotation)})`;
-
-        if (transform !== view.transform) {
-          view.group.setAttribute('transform', transform);
-          view.transform = transform;
-        }
-
-        const ringOpacity = ring.opacity >= 0.999 ? '' : String(round(ring.opacity));
-
-        if (view.group.style.opacity !== ringOpacity) {
-          view.group.style.opacity = ringOpacity;
-        }
-
-        if (view.color !== ring.color) {
-          view.line.style.setProperty('--orbit-ring-color', ring.color);
-          view.color = ring.color;
-        }
-      }
-    }
-
-    for (const [id, view] of this.ringViews) {
-      if (!seen.has(id)) {
-        view.group.remove();
-        this.ringViews.delete(id);
-      }
-    }
-  }
-
-  private paintLinks(display: Display): void {
-    const seen = new Set<string>();
-
-    for (const link of display.links) {
-      const from = display.nodes.get(link.fromId);
-      const to = display.nodes.get(link.toId);
-      const opacity = Math.min(link.opacity, from?.opacity ?? 0, to?.opacity ?? 0);
-
-      if (!from || !to || opacity <= 0.01) {
-        continue;
-      }
-
-      // Edge to edge, so lines never show through translucent nodes.
-      const length = Math.hypot(to.x - from.x, to.y - from.y);
-
-      if (length <= from.radius + to.radius) {
-        continue;
-      }
-
-      seen.add(link.id);
-      let view = this.linkViews.get(link.id);
-
-      if (!view) {
-        view = { element: svgElement('line', { class: 'orbit-link' }), geometry: '', opacity: '' };
-        this.linkViews.set(link.id, view);
-        this.layers.links.appendChild(view.element);
-      }
-
-      const unitX = (to.x - from.x) / length;
-      const unitY = (to.y - from.y) / length;
-      const x1 = String(round(from.x + unitX * from.radius));
-      const y1 = String(round(from.y + unitY * from.radius));
-      const x2 = String(round(to.x - unitX * to.radius));
-      const y2 = String(round(to.y - unitY * to.radius));
-      const geometry = `${x1} ${y1} ${x2} ${y2} ${link.color}`;
-
-      if (geometry !== view.geometry) {
-        view.element.setAttribute('x1', x1);
-        view.element.setAttribute('y1', y1);
-        view.element.setAttribute('x2', x2);
-        view.element.setAttribute('y2', y2);
-        view.element.style.setProperty('--orbit-link-color', link.color);
-        view.geometry = geometry;
-      }
-
-      const lineOpacity = opacity >= 0.999 ? '' : String(round(opacity));
-
-      if (lineOpacity !== view.opacity) {
-        view.element.style.opacity = lineOpacity;
-        view.opacity = lineOpacity;
-      }
-    }
-
-    for (const [id, view] of this.linkViews) {
-      if (!seen.has(id)) {
-        view.element.remove();
-        this.linkViews.delete(id);
-      }
-    }
-  }
-
-  /**
-   * Turns the layers of the planets and moons with the orbit (see
-   * `OrbitTurn`). Returns the turn (degrees) its bodies are drawn in, or
-   * undefined when each is drawn where it is.
-   */
-  private paintTurn(display: Display): number | undefined {
-    const { turn } = display;
-    const rotation = turn ? round(normalizeDelta(turn.rotation), 3) : 0;
-    const transform = turn && rotation !== 0 ? `rotate(${rotation} ${round(turn.cx)} ${round(turn.cy)})` : '';
-
-    if (transform !== this.turnTransform) {
-      for (const layer of [this.layers.moons, this.layers.nodes]) {
-        if (transform) {
-          layer.setAttribute('transform', transform);
-        } else {
-          layer.removeAttribute('transform');
-        }
-      }
-
-      this.turnTransform = transform;
-    }
-
-    // Specks turn with the orbit, shading and all, while it spins or flies;
-    // lighting them all again takes a while, so they're lit from the top left once it rests.
-    const lighting = transform ? rotation : 0;
-    const resting = !this.transition && this.spinPhysics.mode === 'idle';
-
-    if (resting && Math.abs(normalizeDelta(lighting - this.speckLighting)) > (this.ambientRunning ? RELIGHT_STEP : 0)) {
-      turnShading(this.definitions, this.ids, lighting);
-      this.speckLighting = lighting;
-    }
-
-    return turn ? rotation : undefined;
-  }
-
-  private paintNodes(display: Display, turn: number | undefined): void {
-    const editedId = this.editedId();
-    const flying = this.transition !== null;
-    const drawing: NodeDrawing = { turn, speckRadius: this.speckRadius(), switches: SPECK_SWITCHES_PER_FRAME, waiting: false, flight: flying };
-    // A node lifted to be dragged, carried under the press, and the node it would be dropped into.
-    const drag = this.nodeDrag;
-    const liftedId = drag?.id ?? null;
-    const carried = drag?.moving ? new Set(drag.bodies.map((body) => body.id)) : null;
-    const targetId = drag?.moving && drag.place?.into ? drag.place.parentId : null;
-    const marks = `${liftedId}\n${targetId}`;
-
-    if (carried || marks !== this.dragMarks) {
-      this.stillNodes = null;
-    }
-
-    this.dragMarks = marks;
-    // Only the camera or the orbit's turn changed since the last frame at rest: the bodies turned back upright are all that move.
-    const still = this.stillNodes;
-
-    if (!flying && still && still.scene === this.scene && still.scale === display.camera.scale && still.speckRadius === drawing.speckRadius && still.editedId === editedId && this.changedIds.size === 0) {
-      for (const view of still.turnedBack) {
-        const entry = display.nodes.get(view.id);
-
-        if (entry) {
-          view.update(entry, entry.radius * display.camera.scale, drawing);
-        }
-      }
-
-      return;
-    }
-
-    this.stillNodes = null;
-    const placed: FamilyMember[] = [];
-    // Ideas a flight brings in stay hidden for its first quarter: their views are created over its
-    // first frames, a share at a time, instead of all at once as it starts.
-    let waiting = 0;
-
-    if (this.transition) {
-      for (const entry of display.nodes.values()) {
-        if (entry.cluster && clusterHidden(entry.cluster) && !this.nodeViews.has(entry.id)) {
-          waiting += 1;
-        }
-      }
-    }
-
-    let creatable = Math.max(NEWCOMERS_PER_FRAME, Math.ceil(waiting / NEWCOMER_FRAMES));
-
-    for (const entry of display.nodes.values()) {
-      let view = this.nodeViews.get(entry.id);
-
-      if (view && (view.node !== entry.node || this.changedIds.has(entry.id) || view.typeName !== this.extensions.typeName(entry.node))) {
-        this.removeNodeView(entry.id);
-        view = undefined;
-      }
-
-      if (!view && this.transition && entry.cluster && clusterHidden(entry.cluster)) {
-        if (creatable <= 0) {
-          continue;
-        }
-
-        creatable -= 1;
-      }
-
-      if (!view) {
-        view = new NodeView(entry, entry.radius * display.camera.scale, this.ids, this.options.baseUrl, this.extensions, drawing, () => this.clock.requestPaint());
-        view.element.setAttribute('aria-label', describeNode(entry.node, 0, entry.node.children.length, this.extensions, this.words));
-        this.nodeViews.set(entry.id, view);
-        this.tabStopsChanged = true;
-      }
-
-      if (carried?.has(entry.id)) {
-        // Carried above everything, where the press is, outside the orbit's turn.
-        if (view.element.parentNode !== this.layers.carried) {
-          this.nodeGroups.delete(entry.id);
-          this.layers.carried.appendChild(view.element);
-        }
-
-        view.update(entry, entry.radius * display.camera.scale, { ...drawing, turn: undefined }, true);
-        view.setLifted(entry.id === liftedId);
-        view.setDropTarget(false);
-        continue;
-      }
-
-      const family = this.placeInFamily(entry, view);
-
-      if (flying) {
-        const member = { entry, view, family };
-        family.members.push(member);
-        placed.push(member);
-      } else {
-        // At rest no family moves as one: each node is drawn where it is.
-        view.update(entry, entry.radius * display.camera.scale, drawing);
-        view.setEditing(entry.id === editedId);
-        view.setLifted(entry.id === liftedId);
-        view.setDropTarget(entry.id === targetId);
-      }
-    }
-
-    for (const id of Array.from(this.nodeViews.keys())) {
-      if (!display.nodes.has(id)) {
-        this.removeNodeView(id);
-      }
-    }
-
-    if (flying) {
-      for (const family of Array.from(this.families.values())) {
-        this.splitIfMixed(family);
-      }
-
-      for (const { entry, view, family } of placed) {
-        // A family moving as one holds still in its group, each member where it rests, and the group moves.
-        const resting = familyMotion(family) ? entry.cluster : undefined;
-
-        if (resting) {
-          view.update({ ...entry, x: resting.x, y: resting.y, radius: resting.radius, opacity: resting.nodeOpacity }, entry.radius * display.camera.scale, drawing);
-        } else {
-          view.update(entry, entry.radius * display.camera.scale, drawing, true);
-        }
-
-        view.setEditing(entry.id === editedId);
-        view.setLifted(entry.id === liftedId);
-        view.setDropTarget(entry.id === targetId);
-      }
-    }
-
-    for (const [key, family] of this.families) {
-      if (family.group.childElementCount === 0) {
-        family.group.remove();
-        this.families.delete(key);
-        continue;
-      }
-
-      moveFamily(family, familyMotion(family));
-      family.members = [];
-      family.motion = undefined;
-    }
-
-    if (drawing.waiting) {
-      this.clock.requestPaint();
-    } else if (!flying && this.scene) {
-      const turnedBack = Array.from(this.nodeViews.values()).filter((view) => view.isTurnedBack);
-      this.stillNodes = { scene: this.scene, scale: display.camera.scale, speckRadius: drawing.speckRadius, editedId, turnedBack };
-    }
-  }
-
-  /**
-   * The on-screen radius (px) below which flat bodies are specks, for this
-   * screen's pixels; the stylesheet sizes specks' rims from it.
-   */
-  private speckRadius(): number {
-    const radius = speckRadius(this.root.ownerDocument.defaultView?.devicePixelRatio ?? 1);
-
-    if (radius !== this.specksBelow) {
-      this.root.style.setProperty('--_orbit-speck-rim', String(round(1 / radius, 4)));
-      this.specksBelow = radius;
-    }
-
-    return radius;
-  }
-
-  /**
-   * A family whose members don't all move alike in this flight (some travel
-   * on, the rest leave) splits in two, the fewer of them moving to a group of
-   * their own, so each part moves as one.
-   */
-  private splitIfMixed(family: Family): void {
-    const first = family.members.find((member) => member.entry.cluster)?.entry.cluster;
-
-    if (!first) {
-      return;
-    }
-
-    const alike = family.members.filter((member) => member.entry.cluster && sameMotion(member.entry.cluster, first));
-    const others = family.members.filter((member) => !(member.entry.cluster && sameMotion(member.entry.cluster, first)));
-
-    if (others.length === 0 || alike.length < 2) {
-      return;
-    }
-
-    const [moving, staying] = alike.length <= others.length ? [alike, others] : [others, alike];
-    this.familyCount += 1;
-    const part = this.createFamily(`${family.layer}|${family.parentId}|${this.flightCount}.${this.familyCount}`, family.layer, family.parentId);
-
-    for (const member of moving) {
-      this.moveIntoFamily(member.view, member.entry.id, part);
-      member.family = part;
-      part.members.push(member);
-    }
-
-    family.members = staying;
-  }
-
-  /**
-   * The group a node is drawn in: its family's, in the layer of its role. A
-   * node stays in its group while its parent and role do, so nothing moves
-   * between groups when a flight lands; the ideas a flight brings in get a
-   * group of their own, so they can move as one while their siblings travel.
-   */
-  private placeInFamily(entry: DisplayNode, view: NodeView): Family {
-    const layer = entry.role === 'sun' ? 'sun' : entry.role === 'moon' ? 'moon' : 'node';
-    const parentId = entry.parentId ?? '';
-    const current = this.nodeGroups.get(entry.id);
-
-    if (current && current.layer === layer && current.parentId === parentId) {
-      return current;
-    }
-
-    const key = `${layer}|${parentId}${entry.cluster && this.transition ? `|${this.flightCount}` : ''}`;
-    const family = this.families.get(key) ?? this.createFamily(key, layer, parentId, entry.cluster !== undefined && clusterHidden(entry.cluster));
-    this.moveIntoFamily(view, entry.id, family);
-    return family;
-  }
-
-  /** A new family's group; one that starts hidden (newcomers yet to appear) is hidden before it joins the map, so its members aren't styled until they show. */
-  private createFamily(key: string, layer: Family['layer'], parentId: string, hidden = false): Family {
-    const group = svgElement('g', { class: 'orbit-family' });
-
-    if (hidden) {
-      group.style.display = 'none';
-    }
-
-    this.layers[layer === 'sun' ? 'suns' : layer === 'moon' ? 'moons' : 'nodes'].appendChild(group);
-    const family: Family = { group, layer, parentId, transform: '', opacity: '', hidden, members: [] };
-    this.families.set(key, family);
-    return family;
-  }
-
-  private moveIntoFamily(view: NodeView, id: string, family: Family): void {
-    const hadFocus = this.root.ownerDocument.activeElement === view.element;
-    family.group.appendChild(view.element);
-    this.nodeGroups.set(id, family);
-
-    if (hadFocus) {
-      view.element.focus({ preventScroll: true });
     }
   }
 
@@ -2939,7 +2487,7 @@ export class OrbitSVGRenderer {
 
     const entry = display.nodes.get(session.nodeId);
     const shown = entry && entry.opacity > 0.5;
-    this.editor.place(shown ? this.editorPlacement(worldToScreen(camera, this.viewport, entry), entry.radius * camera.scale, entry.role, this.usesLightText(entry), false, entry.hiddenChildren) : null);
+    this.editor.place(shown ? this.editorPlacement(worldToScreen(camera, this.viewport, entry), entry.radius * camera.scale, entry.role, this.labelPainter.usesLightText(entry), false, entry.hiddenChildren) : null);
   }
 
   /**
@@ -2965,334 +2513,6 @@ export class OrbitSVGRenderer {
     };
   }
 
-  private removeNodeView(id: string): void {
-    this.nodeViews.get(id)?.element.remove();
-    this.nodeViews.delete(id);
-    this.stillNodes = null;
-    this.nodeGroups.delete(id);
-    this.lightText.delete(id);
-    this.tabStopsChanged = true;
-  }
-
-  /**
-   * While only the camera moves (a pan, a pinch, a zoom, a glide), labels and counts ride along
-   * as one layer instead of being placed again on every frame, which for a big view means
-   * restyling hundreds of them. They're placed again once the camera rests, or has gone far
-   * enough that they'd be too big or too small, or missing for nodes coming into view. Returns
-   * the layer's transform from where they were placed, or null to place them now.
-   */
-  private labelRide(display: Display): string | null {
-    const placed = this.labelsPlaced;
-    const moving = this.cameraFlight !== null || this.wheelZoom !== null || this.glide.isMoving || this.dragging;
-
-    if (!placed || !moving || placed.nodes !== display.nodes || this.transition || this.changedIds.size > 0) {
-      return null;
-    }
-
-    const { camera } = display;
-    const { width, height } = this.viewport;
-    const ratio = camera.scale / placed.camera.scale;
-    const panX = (placed.camera.x - camera.x) * camera.scale;
-    const panY = (placed.camera.y - camera.y) * camera.scale;
-
-    if (ratio > RIDE_ALONG_ZOOM || ratio < 1 / RIDE_ALONG_ZOOM || Math.hypot(panX, panY) > RIDE_ALONG_PAN * Math.min(width, height)) {
-      return null;
-    }
-
-    return `translate(${round((width / 2) * (1 - ratio) + panX, 2)}px, ${round((height / 2) * (1 - ratio) + panY, 2)}px) scale(${round(ratio, 5)})`;
-  }
-
-  /** Fits and places every label again, where it is (the fonts changed). */
-  private fitLabelsAgain(): void {
-    this.labelsPlaced = null;
-    this.waitingLabels = null;
-    this.clock.requestPaint();
-  }
-
-  /** Whether the labels were placed for this very view: the same nodes, the camera where it was, nothing changed. */
-  private labelsStill(display: Display): boolean {
-    const placed = this.labelsPlaced;
-    return placed !== null
-      && placed.nodes === display.nodes
-      && placed.camera.x === display.camera.x
-      && placed.camera.y === display.camera.y
-      && placed.camera.scale === display.camera.scale
-      && this.transition === null
-      && this.changedIds.size === 0;
-  }
-
-  private setLabelLayerTransform(transform: string): void {
-    if (transform !== this.labelLayerTransform) {
-      this.labelLayer.style.transform = transform;
-      this.labelLayerTransform = transform;
-    }
-  }
-
-  private paintLabels(display: Display): void {
-    if (this.labelOrder?.nodes !== display.nodes) {
-      const scene = this.transition ? null : this.scene;
-      const ids = scene && this.labelOrder?.scene === scene ? this.labelOrder.ids : null;
-      const order = ids ? ids.map((id) => display.nodes.get(id) as DisplayNode) : labelOrder(display.nodes.values());
-      this.labelOrder = { nodes: display.nodes, order, scene, ids: ids ?? order.map((entry) => entry.id) };
-    }
-
-    const moving = this.transition !== null || this.cameraFlight !== null || this.wheelZoom !== null || this.glide.isMoving || this.dragging;
-    const planned = planLabels(display, this.labelOrder.order, {
-      viewport: this.viewport,
-      hasImage: (entry) => this.showsImage(entry.node),
-      // A picture or a type's content fills the node: its icon goes on the pill, before its name.
-      pillIcon: (entry) => (this.showsImage(entry.node) ? this.extensions.icon(entry.node) : undefined),
-      hasIcon: (entry) => Boolean(this.extensions.icon(entry.node)),
-      previousSide: (id) => this.labels.get(id)?.direction ?? null,
-      inFlight: this.transition !== null,
-      measures: this.labelFonts,
-      moving,
-      isShown: (id) => this.labels.get(id)?.isShown ?? false,
-      counts: true,
-    });
-    const shown = new Set<string>();
-    const editedId = this.editedId();
-    // On an animated map, only so many names start to show on one frame; the rest wait for the next.
-    let showable = this.animationsEnabled() ? LABELS_SHOWN_PER_FRAME : Infinity;
-    const waiting: PlannedLabel[] = [];
-
-    // Read every new node's text color before writing any label, so the browser works out styles once, not once per label.
-    for (const plan of planned) {
-      if (plan.placement === 'inside') {
-        this.usesLightText(plan.entry);
-      }
-    }
-
-    for (const plan of planned) {
-      const { entry } = plan;
-
-      // The field shows this node's text while it is typed.
-      if (entry.id === editedId) {
-        continue;
-      }
-
-      let label = this.labels.get(entry.id);
-
-      if (label && (label.node !== entry.node || this.changedIds.has(entry.id) || label.typeName !== this.extensions.typeName(entry.node))) {
-        label.element.remove();
-        this.labels.delete(entry.id);
-        label = undefined;
-      }
-
-      if (!label?.isShown) {
-        if (showable <= 0) {
-          waiting.push(plan);
-          continue;
-        }
-
-        showable -= 1;
-      }
-
-      shown.add(entry.id);
-      this.showLabel(plan, label, moving);
-    }
-
-    this.waitingLabels = waiting.length > 0 ? { plans: waiting, moving } : null;
-
-    if (this.waitingLabels) {
-      this.clock.requestPaint();
-    }
-
-    // Labels that aren't shown this frame stay in the DOM, hidden, while their node is on the map.
-    for (const [id, label] of this.labels) {
-      if (shown.has(id)) {
-        continue;
-      }
-
-      const entry = display.nodes.get(id);
-
-      if (entry) {
-        label.update({ x: 0, y: 0, screenRadius: 0, role: entry.role, placement: 'hidden', opacity: 0 });
-      } else {
-        label.element.remove();
-        this.labels.delete(id);
-      }
-    }
-  }
-
-  /** Shows a planned label: its view (made when it has none yet) placed and fitted as planned. */
-  private showLabel(plan: PlannedLabel, existing: NodeLabel | undefined, moving: boolean): void {
-    const { entry } = plan;
-    let label = existing;
-
-    if (!label) {
-      label = new NodeLabel(entry.node, this.extensions);
-      this.labels.set(entry.id, label);
-      this.labelLayer.appendChild(label.element);
-    }
-
-    label.update({
-      x: plan.x,
-      y: plan.y,
-      screenRadius: plan.screenRadius,
-      role: entry.role,
-      placement: plan.placement,
-      opacity: plan.opacity,
-      light: plan.placement === 'inside' && this.usesLightText(entry),
-      measure: this.labelFonts.inside(entry.role, entry.node),
-      narrower: !moving,
-      countWidth: plan.countWidth,
-      direction: plan.direction,
-      distance: plan.distance,
-      offset: plan.offset,
-      lines: plan.lines,
-      width: plan.width,
-      pillText: plan.text,
-    });
-  }
-
-  /**
-   * While the labels ride along with the camera, shows the next names
-   * waiting to: placed as planned, for the camera the labels were placed
-   * at, so they ride along with the rest.
-   */
-  private showWaitingLabels(): void {
-    const waiting = this.waitingLabels;
-
-    if (!waiting) {
-      return;
-    }
-
-    const editedId = this.editedId();
-    const now = waiting.plans.splice(0, LABELS_SHOWN_PER_FRAME);
-
-    for (const plan of now) {
-      const label = this.labels.get(plan.entry.id);
-
-      if (plan.entry.id !== editedId && (!label || label.node === plan.entry.node)) {
-        this.showLabel(plan, label, waiting.moving);
-      }
-    }
-
-    if (waiting.plans.length > 0) {
-      this.clock.requestPaint();
-    } else {
-      this.waitingLabels = null;
-    }
-  }
-
-  /** Whether the node shows a picture or its type's own content, so its label goes outside. */
-  private showsImage(node: OrbitNode): boolean {
-    return (this.nodeViews.get(node.id)?.hasImage ?? false) || Boolean(this.extensions.nodeType(node)?.render);
-  }
-
-  /**
-   * Draws what node types render inside their nodes: a 100 × 100 px box per
-   * node, moved and scaled with it each frame, created when the node comes
-   * on the map and cleaned up when it leaves.
-   */
-  private paintContents(display: Display): void {
-    const { camera } = display;
-    const seen = new Set<string>();
-
-    for (const entry of display.nodes.values()) {
-      const type = this.extensions.nodeType(entry.node);
-
-      if (!type?.render) {
-        continue;
-      }
-
-      let content = this.contents.get(entry.id);
-
-      if (content && (content.node !== entry.node || this.changedIds.has(entry.id))) {
-        this.removeContent(entry.id);
-        content = undefined;
-      }
-
-      if (!content) {
-        const element = document.createElement('div');
-        element.className = 'orbit-node-content';
-        element.dataset.orbitFor = entry.id;
-        markNode(element, entry.node, this.extensions.typeName(entry.node));
-        applyTypeTokens(element, type);
-        this.contentLayer.appendChild(element);
-        const render = type.render;
-        const cleanup = guarded(`The "${this.extensions.typeName(entry.node)}" node type's render()`, undefined, () => render(entry.node, element));
-        content = { element, node: entry.node, cleanup: typeof cleanup === 'function' ? cleanup : undefined, transform: '', opacity: '', visible: true };
-        this.contents.set(entry.id, content);
-      }
-
-      seen.add(entry.id);
-      const radius = entry.radius * camera.scale;
-      const visible = entry.opacity > 0.01 && radius >= 6;
-
-      if (visible !== content.visible) {
-        content.element.style.display = visible ? '' : 'none';
-        content.visible = visible;
-      }
-
-      if (!visible) {
-        continue;
-      }
-
-      const point = worldToScreen(camera, this.viewport, entry);
-      const transform = `translate3d(${round(point.x - 50, 1)}px, ${round(point.y - 50, 1)}px, 0) scale(${round(radius / 50, 4)})`;
-
-      if (transform !== content.transform) {
-        content.element.style.transform = transform;
-        content.transform = transform;
-      }
-
-      const opacity = entry.opacity >= 0.999 ? '' : String(round(entry.opacity, 3));
-
-      if (opacity !== content.opacity) {
-        content.element.style.opacity = opacity;
-        content.opacity = opacity;
-      }
-    }
-
-    for (const id of Array.from(this.contents.keys())) {
-      if (!seen.has(id)) {
-        this.removeContent(id);
-      }
-    }
-  }
-
-  private removeContent(id: string): void {
-    const content = this.contents.get(id);
-
-    if (!content) {
-      return;
-    }
-
-    content.element.remove();
-    this.contents.delete(id);
-
-    if (content.cleanup) {
-      guarded('A node type\'s render() cleanup', undefined, content.cleanup);
-    }
-  }
-
-  /** Whether the theme's light text has more contrast on this node's color than its dark text. Measured once per node and color. */
-  private usesLightText(entry: DisplayNode): boolean {
-    const cached = this.lightText.get(entry.id);
-
-    if (cached && cached.color === entry.color) {
-      return cached.light;
-    }
-
-    const fill = this.nodeViews.get(entry.id)?.resolvedFill() ?? '';
-    const text = this.textColors ??= this.resolveTextColors();
-    const light = fill !== '' && prefersLightText(fill, text.light, entry.role === 'sun' ? text.root : text.dark);
-    this.lightText.set(entry.id, { color: entry.color, light });
-    return light;
-  }
-
-  /** The theme's label colors as plain values. */
-  private resolveTextColors(): { light: string; dark: string; root: string } {
-    const tokens = this.exportTokens();
-    return {
-      light: resolveColor(tokens['node-text-inverse'], tokens),
-      dark: resolveColor(tokens['node-text'], tokens),
-      root: resolveColor(tokens['root-text'], tokens),
-    };
-  }
-
   private paintOverlay(display: Display): void {
     const { camera } = display;
     const scene = this.scene;
@@ -3307,101 +2527,13 @@ export class OrbitSVGRenderer {
     }
   }
 
-  /** The "+N" of nodes with children that aren't drawn, at their lower right. In the label layer, so they ride along with the labels. */
-  private paintCounts(display: Display): void {
-    const { camera } = display;
-    const seen = new Set<string>();
-
-    if (!this.transition) {
-      for (const entry of display.nodes.values()) {
-        const radius = entry.radius * camera.scale;
-
-        if (!showsCount(entry.role, radius, entry.hiddenChildren) || entry.opacity < 0.5) {
-          continue;
-        }
-
-        const point = worldToScreen(camera, this.viewport, entry);
-        let badge = this.counts.get(entry.id);
-
-        if (!badge) {
-          const element = document.createElement('span');
-          element.className = 'orbit-count';
-          element.setAttribute('aria-hidden', 'true');
-          element.dataset.orbitFor = entry.id;
-          this.labelLayer.appendChild(element);
-          badge = { element, text: '', transform: '' };
-          this.counts.set(entry.id, badge);
-        }
-
-        // New text means laying the badge out again: only when the count changes.
-        const count = `+${entry.hiddenChildren}`;
-
-        if (count !== badge.text) {
-          badge.element.textContent = count;
-          badge.text = count;
-        }
-
-        const transform = overlayTransform(round(point.x + radius * COUNT_POSITION, 1), round(point.y + radius * COUNT_POSITION, 1), '-50%, -50%');
-
-        if (transform !== badge.transform) {
-          badge.element.style.transform = transform;
-          badge.transform = transform;
-        }
-
-        seen.add(entry.id);
-      }
-    }
-
-    for (const [id, badge] of this.counts) {
-      if (!seen.has(id)) {
-        badge.element.remove();
-        this.counts.delete(id);
-      }
-    }
-  }
-
   private clearViews(): void {
-    this.labelsPlaced = null;
-    this.waitingLabels = null;
-    this.setLabelLayerTransform('');
+    this.labelPainter.clear();
 
-    for (const id of Array.from(this.nodeViews.keys())) {
-      this.removeNodeView(id);
-    }
+    this.nodePainter.clear();
+    this.ringsAndLinks.clear();
 
-    for (const label of this.labels.values()) {
-      label.element.remove();
-    }
-
-    this.labels.clear();
-
-    for (const view of this.ringViews.values()) {
-      view.group.remove();
-    }
-
-    this.ringViews.clear();
-
-    for (const view of this.linkViews.values()) {
-      view.element.remove();
-    }
-
-    this.linkViews.clear();
-
-    for (const badge of this.counts.values()) {
-      badge.element.remove();
-    }
-
-    this.counts.clear();
-
-    for (const family of this.families.values()) {
-      family.group.remove();
-    }
-
-    this.families.clear();
-
-    for (const id of Array.from(this.contents.keys())) {
-      this.removeContent(id);
-    }
+    this.contentPainter.clear();
 
     this.actionBar.reset();
   }
@@ -3412,11 +2544,11 @@ export class OrbitSVGRenderer {
     const interactive = this.options.interactive !== false;
     const scene = this.transition?.target ?? this.scene;
 
-    if (!this.activeId || !scene?.nodes.has(this.activeId) || !this.nodeViews.has(this.activeId)) {
+    if (!this.activeId || !scene?.nodes.has(this.activeId) || !this.nodePainter.view(this.activeId)) {
       this.activeId = scene?.focusId ?? null;
     }
 
-    for (const [id, view] of this.nodeViews) {
+    for (const [id, view] of this.nodePainter.entries()) {
       const tabStop = interactive ? (id === this.activeId ? '0' : '-1') : null;
 
       // Only a real change is written: newcomer flights run this once per frame, over every node.
@@ -3431,7 +2563,7 @@ export class OrbitSVGRenderer {
   }
 
   private focusNodeElement(id: string): void {
-    const view = this.nodeViews.get(id);
+    const view = this.nodePainter.view(id);
 
     if (!view) {
       return;
@@ -3501,7 +2633,7 @@ export class OrbitSVGRenderer {
 
     const node = entry.node;
     const typeLabel = this.extensions.nodeType(node)?.label;
-    const placement = this.labels.get(entry.id)?.currentPlacement ?? 'hidden';
+    const placement = this.labelPainter.placementOf(entry.id) ?? 'hidden';
     // The tooltip shows a little of the note: bound the text before stripping
     // its markdown, whose link markup is slow to unpack on a huge note.
     const note = node.note ? noteToPlainText(node.note.slice(0, 400)).replace(/\s+/g, ' ').trim() : '';
@@ -4238,7 +3370,7 @@ export class OrbitSVGRenderer {
       return;
     }
 
-    this.nodeViews.get(id)?.showFocusRing();
+    this.nodePainter.view(id)?.showFocusRing();
 
     if (id !== this.activeId) {
       this.activeId = id;
@@ -5071,412 +4203,3 @@ export class OrbitSVGRenderer {
     return typeof performance !== 'undefined' ? performance.now() : Date.now();
   }
 }
-
-/**
- * Children of one parent, drawn in one group in the layer of their role. In
- * a flight, the members of a family often come or go together, growing out
- * of their parent or shrinking into it, and then the group moves instead of
- * each of them: one transform per frame instead of hundreds.
- */
-interface Family {
-  group: SVGGElement;
-  layer: 'sun' | 'moon' | 'node';
-  parentId: string;
-  transform: string;
-  opacity: string;
-  hidden: boolean;
-
-  /** This frame's members, and the motion they all share (null if they don't), once worked out. */
-  members: FamilyMember[];
-
-  motion?: Cluster | null;
-}
-
-interface FamilyMember {
-  entry: DisplayNode;
-  view: NodeView;
-  family: Family;
-}
-
-const sameMotion = (first: Cluster, second: Cluster): boolean => {
-  return first.scale === second.scale && first.opacity === second.opacity && first.pivotX === second.pivotX && first.pivotY === second.pivotY;
-};
-
-/** The motion all of a family's members share this frame, or null when they move each on their own. */
-const familyMotion = (family: Family): Cluster | null => {
-  if (family.motion === undefined) {
-    const first = family.members[0]?.entry.cluster ?? null;
-    family.motion = first && family.members.every((member) => member.entry.cluster && sameMotion(member.entry.cluster, first)) ? first : null;
-  }
-
-  return family.motion;
-};
-
-/** A cluster too faint or too small to draw. */
-const clusterHidden = (cluster: Cluster): boolean => {
-  return cluster.opacity <= 0.01 || cluster.scale <= 0.001;
-};
-
-const moveFamily = (family: Family, motion: Cluster | null): void => {
-  const hidden = motion !== null && clusterHidden(motion);
-
-  if (hidden !== family.hidden) {
-    family.group.style.display = hidden ? 'none' : '';
-    family.hidden = hidden;
-  }
-
-  const scale = round(motion?.scale ?? 1, 4);
-  const transform = motion && scale !== 1 ? `matrix(${scale} 0 0 ${scale} ${round(motion.pivotX * (1 - scale))} ${round(motion.pivotY * (1 - scale))})` : '';
-
-  if (transform !== family.transform) {
-    if (transform) {
-      family.group.setAttribute('transform', transform);
-    } else {
-      family.group.removeAttribute('transform');
-    }
-
-    family.transform = transform;
-  }
-
-  const opacity = motion && motion.opacity < 0.999 ? String(round(motion.opacity, 3)) : '';
-
-  if (opacity !== family.opacity) {
-    family.group.style.opacity = opacity;
-    family.opacity = opacity;
-  }
-};
-
-/** Whether `size` is within `RELAYOUT_THRESHOLD` of `laidOut` in both directions. */
-const closeInSize = (size: Viewport, laidOut: Viewport): boolean => {
-  return Math.abs(size.width - laidOut.width) <= laidOut.width * RELAYOUT_THRESHOLD
-    && Math.abs(size.height - laidOut.height) <= laidOut.height * RELAYOUT_THRESHOLD;
-};
-
-const reportListenerError = (error: unknown): void => {
-  const report = (globalThis as { reportError?: (error: unknown) => void }).reportError;
-
-  if (typeof report === 'function') {
-    report(error);
-  } else {
-    setTimeout(() => {
-      throw error;
-    });
-  }
-};
-
-const createRingView = (ring: DisplayRing): RingView => {
-  const group = svgElement('g', { class: 'orbit-ring-group' });
-  const band = svgElement('path', { class: 'orbit-ring-band' });
-  const line = svgElement('path', { class: 'orbit-ring' });
-  group.append(band, line);
-  group.setAttribute('data-orbit-ring', ring.centerId);
-  return { group, line, band, shape: '', gaps: null, radius: 0, transform: '', color: '' };
-};
-
-const createEmptyState = (words: OrbitWords): HTMLDivElement => {
-  const empty = document.createElement('div');
-  empty.className = 'orbit-empty';
-  empty.hidden = true;
-  fillEmptyState(empty, words);
-  return empty;
-};
-
-/** The empty map's message and hint, in `words`' language. */
-const fillEmptyState = (empty: HTMLDivElement, words: OrbitWords): void => {
-  const title = document.createElement('strong');
-  title.textContent = words.text('emptyMap');
-  const hint = document.createElement('span');
-  hint.textContent = words.text('emptyMapHint');
-  empty.replaceChildren(title, hint);
-};
-
-/** How far the nearest planet's edge (or the +'s) is from the sun, in world units: the room around the sun. */
-const innerEdges = new WeakMap<Scene, number>();
-
-const innerOrbitEdge = (scene: Scene): number => {
-  let edge = innerEdges.get(scene);
-
-  if (edge === undefined) {
-    edge = Infinity;
-
-    for (const node of scene.nodes.values()) {
-      if (node.role === 'planet' && node.orbitRadius !== undefined) {
-        edge = Math.min(edge, node.orbitRadius - node.radius);
-      }
-    }
-
-    if (scene.addSlot) {
-      edge = Math.min(edge, scene.addSlot.orbitRadius - scene.addSlot.radius);
-    }
-
-    innerEdges.set(scene, edge);
-  }
-
-  return edge;
-};
-
-/** Planets clockwise from the top. */
-const orderedPlanets = (scene: Scene): SceneNode[] => {
-  return Array.from(scene.nodes.values())
-    .filter((node) => node.role === 'planet')
-    .sort((left, right) => clockwiseFromTop(left.orbitAngle ?? 0) - clockwiseFromTop(right.orbitAngle ?? 0));
-};
-
-const clockwiseFromTop = (angle: number): number => {
-  return (((angle + 90) % 360) + 360) % 360;
-};
-
-/** Places `target` so its fitted view matches `camera`: the views cross-fade without the camera moving. */
-const overlayPlacement = (target: Scene, camera: Camera): Similarity => {
-  const scale = target.frame.scale / camera.scale;
-  return { scale, x: camera.x - target.frame.x * scale, y: camera.y - target.frame.y * scale };
-};
-
-/** Drops what has already faded out, so it isn't carried into the next flight. */
-const visiblePart = (display: Display): Display => {
-  const nodes = new Map<string, DisplayNode>();
-
-  for (const [id, node] of display.nodes) {
-    if (node.opacity > 0.01 && node.radius > 0.01) {
-      nodes.set(id, node);
-    }
-  }
-
-  return {
-    nodes,
-    rings: display.rings.filter((ring) => ring.opacity > 0.01),
-    links: display.links.filter((link) => link.opacity > 0.01),
-    camera: display.camera,
-    addSlot: display.addSlot && display.addSlot.opacity > 0.01 ? display.addSlot : undefined,
-  };
-};
-
-/** The + in arrow-key order around the orbit. */
-const SLOT_STOP = '\u0000slot';
-
-const isAddSlot = (target: EventTarget | null): boolean => {
-  return Boolean(target && typeof (target as Element).closest === 'function' && (target as Element).closest('[data-orbit-add]'));
-};
-
-const nodeIdFrom = (target: EventTarget | null): string | null => {
-  const element = target && typeof (target as Element).closest === 'function' ? (target as Element).closest('[data-orbit-node-id]') : null;
-  return element?.getAttribute('data-orbit-node-id') ?? null;
-};
-
-/** The field's text for a new idea under `parent`. */
-const newIdeaText = (parent: OrbitNode, words: OrbitWords): EditorText => {
-  return { label: words.text('newIdeaFor', { name: parent.text || words.text('thisIdea') }), placeholder: words.text('newIdea'), enterKey: 'next' };
-};
-
-/** `display` with a node an edit just added already where it was typed, so it stays there as the others make room. */
-const withArrival = (display: Display, arrival: Arrival | null, target: Scene): Display => {
-  if (!arrival || display.nodes.has(arrival.id)) {
-    return display;
-  }
-
-  const end = sceneDisplay(target, 0, target.frame).nodes.get(arrival.id);
-
-  if (!end) {
-    return display;
-  }
-
-  const nodes = new Map(display.nodes);
-  nodes.set(arrival.id, { ...end, x: arrival.x, y: arrival.y, radius: arrival.radius });
-  return { ...display, nodes };
-};
-
-/** `display` with the nodes an edit gave new ids under the new ones, so they move rather than leave and arrive. */
-const renameNodes = (display: Display, renamed: ReadonlyMap<string, string>): Display => {
-  if (renamed.size === 0) {
-    return display;
-  }
-
-  const rename = (id: string): string => renamed.get(id) ?? id;
-  const nodes = new Map<string, DisplayNode>();
-
-  for (const node of display.nodes.values()) {
-    const id = rename(node.id);
-    nodes.set(id, {
-      ...node,
-      id,
-      parentId: node.parentId === undefined ? undefined : rename(node.parentId),
-      hostId: node.hostId === undefined ? undefined : rename(node.hostId),
-    });
-  }
-
-  return {
-    ...display,
-    nodes,
-    rings: display.rings.map((ring) => ({ ...ring, centerId: rename(ring.centerId) })),
-    links: display.links.map((link) => {
-      const fromId = rename(link.fromId);
-      const toId = rename(link.toId);
-      return { ...link, id: `${fromId}->${toId}`, fromId, toId };
-    }),
-  };
-};
-
-const isFocusVisible = (target: EventTarget | null): boolean => {
-  try {
-    return (target as Element).matches(':focus-visible');
-  } catch {
-    return true;
-  }
-};
-
-const isApplePlatform = (): boolean => {
-  return typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-};
-
-/** Whether the document, or any element around `element`, can scroll. */
-const scrollsAround = (element: Element): boolean => {
-  const document = element.ownerDocument;
-  const scroller = document.scrollingElement;
-
-  if (scroller && scroller.scrollHeight > scroller.clientHeight + 1) {
-    return true;
-  }
-
-  let current: Element | null = parentAcrossShadow(element);
-
-  while (current && current !== document.documentElement && current !== document.body) {
-    if (current.scrollHeight > current.clientHeight + 1 && typeof getComputedStyle === 'function') {
-      const overflow = getComputedStyle(current).overflowY;
-
-      if (overflow === 'auto' || overflow === 'scroll') {
-        return true;
-      }
-    }
-
-    current = parentAcrossShadow(current);
-  }
-
-  return false;
-};
-
-const parentAcrossShadow = (element: Element): Element | null => {
-  if (element.parentElement) {
-    return element.parentElement;
-  }
-
-  const root = element.getRootNode();
-  return typeof ShadowRoot !== 'undefined' && root instanceof ShadowRoot ? root.host : null;
-};
-
-const spinSettings = (options: OrbitSpinOptions | undefined): SpinSettings => {
-  return {
-    ...DEFAULT_SPIN_SETTINGS,
-    ...(options?.decay !== undefined && options.decay > 0 ? { decay: options.decay } : {}),
-    ...(options?.maxSpeed !== undefined && options.maxSpeed > 0 ? { maxSpeed: options.maxSpeed } : {}),
-    snap: options?.snap === 'planet',
-  };
-};
-
-const mergeRendererOptions = (base: RendererOptions, overrides: RendererOptions): ResolvedRendererOptions => {
-  const merged: Record<string, unknown> = { ...base };
-
-  for (const [key, value] of Object.entries(overrides)) {
-    if (value !== undefined) {
-      merged[key] = value;
-    }
-  }
-
-  merged.theme = mergeThemes(base.theme, overrides.theme);
-  return merged as unknown as ResolvedRendererOptions;
-};
-
-/** The room the page's controls take at the map's edges, as numbers of px (none for anything else). */
-const resolveInsets = (insets: OrbitInsets | undefined): Insets => {
-  const side = (value: number | undefined) => (typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0);
-  return { top: side(insets?.top), right: side(insets?.right), bottom: side(insets?.bottom), left: side(insets?.left) };
-};
-
-const sameValues = (first: unknown, second: unknown): boolean => {
-  if (first === second) {
-    return true;
-  }
-
-  if (!first || !second || typeof first !== 'object' || typeof second !== 'object') {
-    return false;
-  }
-
-  const firstKeys = Object.keys(first);
-  const secondKeys = Object.keys(second);
-  return firstKeys.length === secondKeys.length
-    && firstKeys.every((key) => sameValues((first as Record<string, unknown>)[key], (second as Record<string, unknown>)[key]));
-};
-
-/** Says how to call an editing method that got something other than an object. */
-const expectObject = (method: string, value: unknown, example: string): void => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new TypeError(`${method}() takes the node's text and attributes as an object, like ${example}, but got ${value === null ? 'null' : Array.isArray(value) ? 'an array' : typeof value}.`);
-  }
-};
-
-/** Whether two trees hold the same map: the same nodes, ids and attributes, wherever their source wrote them. */
-const sameTree = (first: OrbitNode, second: OrbitNode): boolean => {
-  const attributes = (node: OrbitNode): Record<string, unknown> =>
-    Object.fromEntries(Object.entries(node).filter(([key, value]) => key !== 'source' && key !== 'children' && value !== undefined));
-  return sameValues(attributes(first), attributes(second))
-    && first.children.length === second.children.length
-    && first.children.every((child, index) => sameTree(child, second.children[index]));
-};
-
-/**
- * Moves where a fresh parse of the same map came from onto the tree as drawn:
- * each node's own place, and the source itself (keyed by node, see
- * `documentSource`), so saving writes the new text against the nodes the map
- * already shows.
- */
-const transplantSource = (kept: OrbitNode, fresh: OrbitNode): void => {
-  const pairs = new Map<OrbitNode, OrbitNode>();
-
-  const pair = (keptNode: OrbitNode, freshNode: OrbitNode): void => {
-    pairs.set(freshNode, keptNode);
-    keptNode.source = freshNode.source;
-    freshNode.children.forEach((child, index) => pair(keptNode.children[index], child));
-  };
-
-  pair(kept, fresh);
-  const source = documentSource({ root: fresh });
-
-  if (!source) {
-    return;
-  }
-
-  const records = new WeakMap<OrbitNode, NodeRecord>();
-
-  for (const [freshNode, keptNode] of pairs) {
-    const record = source.records.get(freshNode);
-
-    if (record) {
-      records.set(keptNode, { ...record, children: record.children.map((child) => pairs.get(child) ?? child) });
-    }
-  }
-
-  setDocumentSource({ root: kept }, {
-    ...source,
-    root: kept,
-    records,
-    owners: source.owners.map((owner) => (owner === null ? null : (pairs.get(owner) ?? owner))),
-  });
-};
-
-/** An object's entries that have a value. */
-const definedEntries = (value: object): Record<string, unknown> => {
-  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
-};
-
-const isOrbitDocument = (input: OrbitNode | OrbitDocument): input is OrbitDocument => {
-  return typeof (input as OrbitDocument).root === 'object' && (input as OrbitDocument).root !== null && !('children' in input);
-};
-
-const isEmptyTree = (tree: OrbitNode): boolean => {
-  return tree.text.trim() === '' && !tree.icon && tree.children.length === 0
-    && !hasMediaSource(tree.image) && !hasMediaSource(tree.video) && !hasMediaSource(tree.embed);
-};
-
-const round = (value: number, decimals = 2): number => {
-  const factor = 10 ** decimals;
-  return Math.round(value * factor) / factor;
-};

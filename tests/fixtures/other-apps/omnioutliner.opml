@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<opml version="2.0">
+  <head>
+    <title>Trip planning</title>
+    <expansionState>0,1,3</expansionState>
+  </head>
+  <body>
+    <outline text="Trip to Lisbon" _note="Five days in May.&#10;Flights booked.">
+      <outline text="Book flights" _status="checked"/>
+      <outline text="Find a hotel" _status="indeterminate" _note="Alfama or Baixa?"/>
+      <outline text="Pack" _status="unchecked">
+        <outline text="Passport"/>
+        <outline text="Sunscreen"/>
+      </outline>
+    </outline>
+  </body>
+</opml>

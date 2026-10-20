@@ -46,15 +46,20 @@ const MIN_SUN_RADIUS = 34;
 const MIN_PLANET_RADIUS = 18;
 const MAX_SUN_RADIUS = 76;
 const MAX_PLANET_RADIUS = 48;
-const MAX_FOCUS_RING_COUNT = 7;
+/**
+ * An orbit's planets fill rings out from the sun until they all fit. Past
+ * this many rings, the last of them may stretch to take the rest instead,
+ * when that keeps the orbit smaller than more rings would.
+ */
+const ROOMY_RING_LIMIT = 7;
 const FOCUS_RING_GAP_FACTOR = 2.15;
 /**
  * Crowded orbits of planets without moons pack closer: rings start right
- * outside the sun and sit a planet's width apart, with more of them, so the
- * planets come out as big as the screen allows.
+ * outside the sun and sit a planet's width apart, with more of them before
+ * the last may stretch, so the planets come out as big as the screen allows.
  */
 const COMPACT_RING_GAP = 8;
-const MAX_COMPACT_RING_COUNT = 12;
+const COMPACT_RING_LIMIT = 12;
 /** An orbit of this many rings or more is crowded: its sun grows (see calculateFocusLayout). */
 const CROWDED_RING_COUNT = 4;
 
@@ -350,7 +355,7 @@ const calculateFocusRingPlan = (
     planetRadius,
     Math.max(baseDim * 0.26, sunRadius + planetRadius + NODE_GAP * 1.3),
     planetRadius * FOCUS_RING_GAP_FACTOR + NODE_GAP,
-    MAX_FOCUS_RING_COUNT,
+    ROOMY_RING_LIMIT,
   );
 
   // One ring keeps its roomy layout. Planets without moons that need several
@@ -359,7 +364,7 @@ const calculateFocusRingPlan = (
     return roomy;
   }
 
-  const close = ringPlan(childCount, planetRadius, sunRadius + planetRadius + NODE_GAP, planetRadius * 2 + COMPACT_RING_GAP, MAX_COMPACT_RING_COUNT);
+  const close = ringPlan(childCount, planetRadius, sunRadius + planetRadius + NODE_GAP, planetRadius * 2 + COMPACT_RING_GAP, COMPACT_RING_LIMIT);
   return (close.rings.at(-1) ?? 0) < (roomy.rings.at(-1) ?? 0) ? close : roomy;
 };
 
@@ -370,25 +375,38 @@ interface RingPlan {
   ringGap: number;
 }
 
-/** Rings from `innerRingRadius` out, `ringGap` apart, until they hold every child (or there are `maximumRings`). */
+/**
+ * Rings from `innerRingRadius` out, `ringGap` apart, until they hold every
+ * child. Past `ringLimit` rings, the last of the first `ringLimit` may
+ * stretch to take the rest instead, when that keeps the orbit smaller: for a
+ * few more planets it does, but a big orbit's last ring would stretch so far
+ * out that every planet came out a speck.
+ */
 const ringPlan = (
   childCount: number,
   planetRadius: number,
   innerRingRadius: number,
   ringGap: number,
-  maximumRings: number,
+  ringLimit: number,
 ): RingPlan => {
   const rings: number[] = [];
   let totalCapacity = 0;
 
-  while (totalCapacity < childCount && rings.length < maximumRings) {
+  while (totalCapacity < childCount) {
     const radius = innerRingRadius + ringGap * rings.length;
     rings.push(radius);
     totalCapacity += focusRingCapacity(radius, planetRadius);
   }
 
-  const counts = distributeAcrossRings(childCount, rings, planetRadius);
-  return { rings, counts, ringGap };
+  const fewer = rings.slice(0, ringLimit);
+  const stretched: RingPlan = { rings: fewer, counts: distributeAcrossRings(childCount, fewer, planetRadius), ringGap };
+
+  if (rings.length <= ringLimit) {
+    return stretched;
+  }
+
+  const all: RingPlan = { rings, counts: distributeAcrossRings(childCount, rings, planetRadius), ringGap };
+  return (all.rings.at(-1) ?? 0) < (stretched.rings.at(-1) ?? 0) ? all : stretched;
 };
 
 /** The first planet on each ring is at the top; every other ring is turned half a step. */

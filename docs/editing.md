@@ -112,10 +112,11 @@ To let a language model make these changes, see [Map tools for AI](map-tools.md)
 
 `editNode` and `editNewNode` return false, and the others `null`, when there's nothing to do: an id that isn't in the map, removing or moving the root, or moving a node inside itself. They work on any interactive map. `editable` adds the ways people edit by themselves: the +, editing on a long press, a right click, the context menu key or F2, and dragging.
 
-Besides `text`, `addNode` and `updateNode` take the node's attributes: `icon`, `color`, `status`, `priority`, `tags`, `collapsed`, `type`, `link`, `note`, `noteFormat`, `image`, `video`, `embed`, and `attrs` for your own.
+Besides `text`, `addNode` and `updateNode` take the node's attributes: `icon`, `color`, `paletteColor`, `status`, `priority`, `tags`, `collapsed`, `type`, `link`, `note`, `noteFormat`, `image`, `video`, `embed`, and `attrs` for your own.
 
 - **Ids come from the text,** as when a map is read from markdown: "Night markets" is `night-markets`, and a second "Ideas" is `ideas-2`. New text gives a node a new id, so the saved file needs no `id` attribute. A node keeps its id when a `#id` link points at it, or when the id was set by hand. Read a node's current id from what the method returns.
 - **Titles are one line:** line breaks become spaces, typed or pasted.
+- **Colors stay with their ideas.** Adding, moving or removing a top-level node leaves every other node's color as it was: the nodes whose turn in the palette would change get a `paletteColor` that keeps theirs, and a new node takes a color no other top-level node has (see [Colors](format.md#colors)).
 - **The reader keeps their place.** When the node in focus, or a node above it, is removed, the nearest node left takes the focus and `focus-change` fires. A node in focus that gets a new id stays in focus.
 - **Edits change the tree in place:** `getDocument().root`, which is the tree you passed to `render()` if you passed one.
 

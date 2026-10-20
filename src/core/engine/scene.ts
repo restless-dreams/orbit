@@ -10,6 +10,7 @@
  */
 
 import type { OrbitNode } from '../types.js';
+import { branchNumbers, branchPalette, isPaletteNumber, paletteColorOf } from '../branch-colors.js';
 import { calculateAllLayout, calculateFocusLayout, getOrbitRings, MOON_LIMIT, moonPlacement } from '../layout.js';
 import { findNodeById } from '../utils.js';
 import { browser } from '../browser.js';
@@ -177,10 +178,11 @@ const RING_GAP_PADDING = 7;
 
 /**
  * One color per node, the same in every view. The root uses the first
- * palette entry; each top-level branch takes the next; deeper nodes use
- * their branch's color, mixed toward the theme's `shade-light` or
- * `shade-dark` by position so siblings stay distinguishable. A node's own
- * color always wins: its `color`, or its type's (see `ownColor`).
+ * palette entry; top-level branches take the others in turn (see
+ * `branchNumbers`); deeper nodes use their branch's color, mixed toward the
+ * theme's `shade-light` or `shade-dark` by position so siblings stay
+ * distinguishable. A node's own color always wins: its `color`, or its
+ * type's (see `ownColor`); then its `paletteColor`.
  */
 export const assignNodeColors = (
   tree: OrbitNode,
@@ -188,23 +190,25 @@ export const assignNodeColors = (
   ownColor: (node: OrbitNode) => string | undefined = (node) => node.color,
 ): Map<string, string> => {
   const colors = new Map<string, string>();
-  const branchColors = palette.length > 1 ? palette.slice(1) : palette;
-  colors.set(tree.id, ownColor(tree) ?? palette[0]);
+  const branchColors = branchPalette(palette);
+  const numbers = branchNumbers(tree.children, branchColors.length);
+  const chosen = (node: OrbitNode): string | undefined => ownColor(node) ?? (isPaletteNumber(node.paletteColor) ? paletteColorOf(branchColors, node.paletteColor) : undefined);
+  colors.set(tree.id, chosen(tree) ?? palette[0]);
 
-  tree.children.forEach((branch, branchIndex) => {
-    const branchColor = ownColor(branch) ?? branchColors[branchIndex % branchColors.length];
+  for (const branch of tree.children) {
+    const branchColor = ownColor(branch) ?? paletteColorOf(branchColors, numbers.get(branch) as number);
     colors.set(branch.id, branchColor);
 
     const visit = (node: OrbitNode, inherited: string) => {
       node.children.forEach((child, siblingIndex) => {
-        const own = ownColor(child);
+        const own = chosen(child);
         colors.set(child.id, own ?? shade(inherited, siblingIndex));
         visit(child, own ?? inherited);
       });
     };
 
     visit(branch, branchColor);
-  });
+  }
 
   return colors;
 };

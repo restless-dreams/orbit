@@ -6,7 +6,7 @@ Mind maps written in markdown and explored like a solar system.
 
 ![A map of a product roadmap: the orbit spins, the camera flies into a branch and out to the overview of the whole map](docs/media/tour.webp)
 
-**[Website](https://orbit.hyuchia.com)** · [Playground](https://orbit.hyuchia.com/playground) · [Guide](docs/guide.md) · [Map format](docs/format.md) · [Recipes](docs/recipes.md) · [Theming](docs/theming.md) · [Extending](docs/extending.md) · [Editing](docs/editing.md) · [Map tools for AI](docs/map-tools.md) · [Pictures and videos](docs/media.md) · [Languages](docs/languages.md) · [Accessibility](docs/accessibility.md) · [Coding agents](docs/agents.md) · [API reference](docs/api/README.md)
+**[Website](https://orbit.hyuchia.com)** · [Playground](https://orbit.hyuchia.com/playground) · [Guide](docs/guide.md) · [Map format](docs/format.md) · [Recipes](docs/recipes.md) · [Theming](docs/theming.md) · [Extending](docs/extending.md) · [Editing](docs/editing.md) · [Map tools for AI](docs/map-tools.md) · [Maps from other apps](docs/import-export.md) · [Pictures and videos](docs/media.md) · [Languages](docs/languages.md) · [Accessibility](docs/accessibility.md) · [Coding agents](docs/agents.md) · [API reference](docs/api/README.md)
 
 - Real-markdown authoring: headers and bullet lists nest the tree.
 - YAML alternative for app-generated maps.
@@ -87,6 +87,8 @@ hydrateOrbitBlocks(container);                         // turns them into live m
 
 **Without a browser,** `renderToSVGString(markdown, { width: 1200, height: 800 })` draws a standalone SVG, for static sites, emails and print.
 
+**On paper,** `renderPrintLayout(element, markdown)` lays a map out for print or PDF: the map as a picture, then every idea with its note. Maps shared as web pages print that way.
+
 [The guide](docs/guide.md) covers every option, event and method, and [Recipes](docs/recipes.md) shows Orbit in Vue, Svelte, Astro, Next.js and static sites.
 
 ## Write a map
@@ -130,8 +132,9 @@ npx @restless-dreams/orbit validate my-map.md                  # every problem a
 npx @restless-dreams/orbit validate --json my-map.md           # the same as JSON, for scripts and coding agents
 npx @restless-dreams/orbit validate --tree my-map.md           # the map as Orbit reads it, with each node's id
 npx @restless-dreams/orbit render my-map.md --out my-map.svg   # draw a map to SVG (--view all for the whole map)
-npx @restless-dreams/orbit export --html my-map.md --out my-map.html  # one web page to explore or present the map, offline
+npx @restless-dreams/orbit export --html my-map.md --out my-map.html  # one web page to explore, present or print the map, offline
 npx @restless-dreams/orbit convert --to yaml my-map.md         # markdown ↔ YAML (either direction)
+npx @restless-dreams/orbit convert --to md Plan.xmind --out plan.md  # a map from XMind, FreeMind, Freeplane or OPML (--to opml writes OPML)
 npx @restless-dreams/orbit example > my-map.md                 # a map with the main features (--yaml for YAML)
 ```
 

@@ -38,7 +38,7 @@ export type NodeShape =
   | { kind: 'generated'; lead: boolean };
 
 /** A node's own fields, as they were read: to tell which ones an edit changed. */
-export type NodeFields = Pick<OrbitNode, 'id' | 'text' | 'icon' | 'link' | 'status' | 'tags' | 'color' | 'priority' | 'collapsed' | 'type' | 'typeVersion' | 'note' | 'noteFormat' | 'image' | 'video' | 'embed' | 'attrs'>;
+export type NodeFields = Pick<OrbitNode, 'id' | 'text' | 'icon' | 'link' | 'status' | 'tags' | 'color' | 'paletteColor' | 'priority' | 'collapsed' | 'type' | 'typeVersion' | 'note' | 'noteFormat' | 'image' | 'video' | 'embed' | 'attrs'>;
 
 export interface NodeRecord {
   shape: NodeShape;
@@ -143,6 +143,7 @@ export const nodeFields = (node: OrbitNode): NodeFields => {
     status: node.status,
     tags: copy(node.tags) as string[] | undefined,
     color: node.color,
+    paletteColor: node.paletteColor,
     priority: node.priority,
     collapsed: node.collapsed,
     type: node.type,

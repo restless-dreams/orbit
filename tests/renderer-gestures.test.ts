@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import type { OrbitNode } from '../src/core/types';
 import { wheelZoomFactor } from '../src/core/input-controller';
 import { click, internals, manualClock, mount, node, pointer, useMapSize, wheel, type ManualClock, type RendererInternals } from './helpers/renderer';
@@ -186,6 +186,22 @@ describe('panning and zooming', () => {
     expect(state.camera.x).toBeLessThan(movedX);
     const after = Array.from(host.querySelectorAll('.orbit-node'));
     expect(after.every((element, index) => element === before[index])).toBe(true);
+  });
+
+  test('a drag asks where the map is on the page once, not on every move', () => {
+    const { host, renderer } = mount(MAP, { viewMode: 'all' });
+    const svg = renderer.getSVGElement();
+    const asked = spyOn(host.querySelector<HTMLElement>('.orbit')!, 'getBoundingClientRect');
+    let time = clock.now;
+    svg.dispatchEvent(pointer('pointerdown', { x: 100, y: 100, time }));
+
+    for (let step = 1; step <= 6; step += 1) {
+      time += 10;
+      svg.dispatchEvent(pointer('pointermove', { x: 100 + step * 10, y: 100, time }));
+    }
+
+    svg.dispatchEvent(pointer('pointerup', { x: 160, y: 100, time }));
+    expect(asked).toHaveBeenCalledTimes(1);
   });
 
   test('the wheel zooms around the pointer, keeping the point under it in place', () => {

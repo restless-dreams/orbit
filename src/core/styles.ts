@@ -1,7 +1,8 @@
 import componentStyles from './styles/orbit.scss';
+import printStyles from './styles/print.scss';
 import { themeStylesheet } from './themes.js';
 
-const STYLESHEET = componentStyles + themeStylesheet();
+const STYLESHEET = componentStyles + printStyles + themeStylesheet();
 const styledRoots = new WeakSet<Document | ShadowRoot>();
 let sharedSheet: CSSStyleSheet | null = null;
 

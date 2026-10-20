@@ -36,6 +36,10 @@ bun run docs:llms      # rebuild llms-full.txt and the skill's references after 
   core package remains usable without optional peers.
 - Run `bun run verify` before requesting review.
 - Update the README and `docs/` when user-facing behavior changes.
+- A change to the format follows "Changing the format" in
+  [`docs/format.md`](./docs/format.md#changing-the-format). After a change to
+  how maps are written, run `bun scripts/release-fixtures.ts` to rewrite
+  `tests/fixtures/releases/next/`, and include its diff.
 
 ## Coding standards
 

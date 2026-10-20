@@ -79,6 +79,10 @@ const genNode = (rnd: () => number, level: number, path: string): OrbitNode => {
     node.color = '#F5A3A8';
   }
 
+  if (rnd() < 0.2) {
+    node.paletteColor = 1 + Math.floor(rnd() * 9);
+  }
+
   if (rnd() < 0.25) {
     node.status = pick(rnd, STATUSES);
   }
@@ -123,7 +127,7 @@ const genNode = (rnd: () => number, level: number, path: string): OrbitNode => {
 };
 
 interface Snapshot {
-  text: string; note?: string; color?: string; status?: string; priority?: number;
+  text: string; note?: string; color?: string; paletteColor?: number; status?: string; priority?: number;
   tags?: string[]; collapsed?: boolean;
   image?: { src: string; alt?: string; caption?: string };
   video?: { src: string; thumbnail?: string; caption?: string };
@@ -136,6 +140,7 @@ const snapshot = (n: OrbitNode): Snapshot => {
     text: n.text,
     note: n.note,
     color: n.color,
+    paletteColor: n.paletteColor,
     status: n.status,
     priority: n.priority,
     tags: n.tags,

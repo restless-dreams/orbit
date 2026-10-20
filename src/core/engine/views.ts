@@ -195,10 +195,21 @@ const SMALL_BODY_RADIUS = 12;
  * `NodeView.update`).
  */
 const SPECK_DEVICE_RADIUS = 5;
+/**
+ * A crowded orbit's planets without badges are specks below this instead.
+ * Drawn flat, with rims that grow with them, they look the same as specks,
+ * and their shading, which turns with the orbit while it spins, is too faint
+ * at this size to show which way is up.
+ */
+const CROWDED_SPECK_DEVICE_RADIUS = 16;
 
-/** The on-screen radius (px) below which flat bodies are specks, at `pixelRatio` device pixels per px. */
-export const speckRadius = (pixelRatio: number): number => {
-  return SPECK_DEVICE_RADIUS / (pixelRatio > 0 ? pixelRatio : 1);
+/**
+ * The on-screen radius (px) below which flat bodies are specks, at
+ * `pixelRatio` device pixels per px: bigger for a `plainCrowded` planet, one
+ * of a crowded orbit without badges (a status, a note's marker, a play button).
+ */
+export const speckRadius = (pixelRatio: number, plainCrowded = false): number => {
+  return (plainCrowded ? CROWDED_SPECK_DEVICE_RADIUS : SPECK_DEVICE_RADIUS) / (pixelRatio > 0 ? pixelRatio : 1);
 };
 
 /** The focus ring's radius, in node radii. */
@@ -211,6 +222,9 @@ export interface NodeDrawing {
 
   /** The on-screen radius (px) below which flat bodies are specks (see `speckRadius`). */
   speckRadius: number;
+
+  /** The same for a crowded orbit's planets without badges. */
+  crowdedSpeckRadius: number;
 
   /**
    * How many more nodes may become specks, or stop being them, this frame.
@@ -251,6 +265,9 @@ export class NodeView {
 
   /** Shows a picture (an image, or a video's thumbnail) rather than a plain color. */
   hasImage = false;
+
+  /** Shows a status, a note's marker or a play button: a crowded orbit's planet with one stays a body down to the usual size (see `speckRadius`). */
+  private readonly hasBadges: boolean;
 
   private readonly body: SVGGElement;
   private readonly disc: SVGCircleElement;
@@ -331,14 +348,18 @@ export class NodeView {
     this.shade = svgElement('circle', { class: 'orbit-node__shade', r: '1', fill: this.shadeFills.body });
     this.body.appendChild(this.shade);
 
+    const hasMarker = node.note || hasMediaSource(node.image) || hasMediaSource(node.embed) || node.link || type?.details;
+
     if (hasMediaSource(node.video)) {
       const play = svgElement('g', { class: 'orbit-node__play', transform: 'translate(0.62 0.62) scale(0.3)' });
       play.appendChild(svgElement('circle', { r: '1' }));
       play.appendChild(svgElement('path', { d: 'M-0.32 -0.48 L0.52 0 L-0.32 0.48 Z' }));
       this.body.appendChild(play);
-    } else if (node.note || hasMediaSource(node.image) || hasMediaSource(node.embed) || node.link || type?.details) {
+    } else if (hasMarker) {
       this.body.appendChild(svgElement('circle', { class: 'orbit-node__marker', cx: '0.72', cy: '0.72', r: '0.13' }));
     }
+
+    this.hasBadges = hasMediaSource(node.video) || Boolean(hasMarker) || Boolean(node.status);
 
     if (node.status) {
       const look = extensions.status(node.status);
@@ -433,7 +454,8 @@ export class NodeView {
     }
 
     // Decided while hidden too: a hidden node switches at almost no cost, and needn't wait.
-    const speck = !moving && flat && !this.hasImage && screenRadius < (drawing?.speckRadius ?? speckRadius(1));
+    const below = crowded && !this.hasBadges ? drawing?.crowdedSpeckRadius ?? speckRadius(1, true) : drawing?.speckRadius ?? speckRadius(1);
+    const speck = !moving && flat && !this.hasImage && screenRadius < below;
 
     if (speck !== this.speck && !(visible && speck && drawing?.flight)) {
       // A speck that starts moving can't wait either: each frame it waited would cost more than the switch.

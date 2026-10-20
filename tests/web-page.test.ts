@@ -51,6 +51,14 @@ describe('exportWebPage', () => {
     expect(automatic).toContain('@media (prefers-color-scheme: dark)');
   });
 
+  it('prints the map laid out for paper instead of the map on screen', () => {
+    const { page } = readPage(exportWebPage('# Launch', { script: '' }));
+    expect(page.getElementById('page-print')).not.toBeNull();
+    const styles = page.querySelector('style')!.textContent!;
+    expect(styles).toContain('.page__print { display: none; }');
+    expect(styles).toMatch(/@media print \{[^}]*@page[\s\S]*\.page \{ display: none; \}[\s\S]*\.page__print \{ display: block; \}/);
+  });
+
   it('takes a parsed document as orbit-md, a YAML map included', () => {
     const { data } = readPage(exportWebPage(parseOrbit('nodes:\n  - text: Launch\n    children: [Research]'), { script: '' }));
     expect(data.source).toBe('# Launch\n\n## Research\n');
@@ -92,5 +100,20 @@ describe('the page', () => {
     // The page keeps its listener on the window: stopped, it leaves the keys of later tests to their maps.
     key('Escape');
     clock.restore();
+  });
+
+  it('lays the map out for print before printing, once, with the pictures inside the page', () => {
+    openPage(exportWebPage(MAP, { script: '', theme: 'night', language: 'es', media: { 'photos/summit.jpg': PICTURE } }));
+    const print = document.getElementById('page-print')!;
+    window.dispatchEvent(new Event('beforeprint'));
+    const layout = print.querySelector<HTMLElement>('.orbit-print')!;
+    expect(layout.querySelector('.orbit-print__title')!.textContent).toBe('Trip');
+    expect(layout.lang).toBe('es');
+    expect(Array.from(layout.querySelectorAll('.orbit-print__name')).map((name) => name.textContent)).toEqual(['Summit', 'Camp', 'Tent']);
+    expect(layout.querySelector<HTMLImageElement>('.orbit-print__image')!.src).toBe(PICTURE);
+    // Night prints as paper.
+    expect(layout.style.getPropertyValue('--_orbit-print-text')).toBe(themeTokens('paper').text.toLowerCase());
+    window.dispatchEvent(new Event('beforeprint'));
+    expect(print.querySelector('.orbit-print')).toBe(layout);
   });
 });

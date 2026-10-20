@@ -1,5 +1,6 @@
 import type { DiagnosticCollector } from './diagnostics.js';
 import type { OrbitNode } from './types.js';
+import { isPaletteNumber } from './branch-colors.js';
 import { didYouMean } from './suggest.js';
 import { assignKey } from './yaml-mini.js';
 
@@ -137,7 +138,7 @@ export const readEmbed = (value: unknown): EmbedMedia | undefined => {
 
 /** The attributes every node takes, in `<!-- orbit … -->` blocks and in YAML. */
 export const NODE_ATTRIBUTE_KEYS = [
-  'color', 'icon', 'status', 'priority', 'tags', 'collapsed', 'link',
+  'color', 'paletteColor', 'icon', 'status', 'priority', 'tags', 'collapsed', 'link',
   'note', 'noteFormat', 'image', 'video', 'embed', 'caption', 'id', 'type',
 ] as const;
 
@@ -211,6 +212,17 @@ export const assignNodeAttribute = (
         keepUnread(node, key, value, diagnostics, line, 'one value');
       } else {
         node[key] = text;
+      }
+
+      return;
+    }
+    case 'paletteColor': {
+      const paletteNumber = typeof value === 'number' || (typeof value === 'string' && value.trim() !== '') ? Number(value) : Number.NaN;
+
+      if (isPaletteNumber(paletteNumber)) {
+        node.paletteColor = paletteNumber;
+      } else {
+        keepUnread(node, key, value, diagnostics, line, 'a whole number from 1');
       }
 
       return;

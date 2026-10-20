@@ -1,0 +1,54 @@
+title: Everything in YAML
+theme: paper
+view: all
+palette: "#F8D978, #F5A3A8, #9ED5FD"
+maxDepth: 3
+showRings: false
+interactive: true
+animation: true
+speed: 60
+height: 360
+baseUrl: https://example.com/maps/
+className: release-fixture
+schemaVersion: 1
+flavor: yaml
+generator: release-fixtures
+nodes:
+  - text: Everything in YAML
+    icon: 🧭
+    note: |
+      A note in a block scalar,
+      over two lines.
+    children:
+      - text: Research
+        status: done
+        priority: 2
+        tags: [ux, q3]
+        children: [Interviews, Survey]
+      - text: Build
+        id: build-phase
+        type: milestone@2
+        owner: Ana
+        color: "#E5484D"
+        collapsed: true
+        children:
+          - text: Frontend
+            link: "#research"
+            paletteColor: 2
+          - text: Backend
+            noteFormat: plain
+            note: Plain text.
+      - text: Launch
+        link: https://example.com/launch-plan
+        image:
+          src: images/poster.png
+          alt: The launch poster
+          caption: Printed for the stores
+          width: 640
+        video:
+          src: https://vimeo.com/76979871
+          thumbnail: images/thumbnail.jpg
+          caption: Ninety seconds
+        embed:
+          src: https://example.com/demo
+          caption: The demo

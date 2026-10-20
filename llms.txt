@@ -5,7 +5,7 @@
 - Install with `npm install @restless-dreams/orbit`. The package is ESM-only. React (`@restless-dreams/orbit/react`) and marked (`@restless-dreams/orbit/marked`) are optional peers.
 - A map fills its container: always give the container a height.
 - Write maps in orbit-md, Orbit's markdown (every heading and list item is a node, text under it is its note, `<!-- orbit key: value -->` comments set attributes), or in YAML (`nodes:` with `text` and `children`).
-- Check a map with `npx @restless-dreams/orbit validate --json map.md`: every problem comes with a suggested fix, and its line where it has one. `npx @restless-dreams/orbit example` prints a map with the main features, and `orbit convert --to yaml map.md` (or `--to md`) turns one flavor into the other.
+- Check a map with `npx @restless-dreams/orbit validate --json map.md`: every problem comes with a suggested fix, and its line where it has one. `npx @restless-dreams/orbit example` prints a map with the main features, and `orbit convert --to yaml map.md` (or `--to md`) turns one flavor into the other, and `orbit convert --to md Plan.xmind --out plan.md` brings in a map from XMind, FreeMind, Freeplane or OPML.
 - Draw one with `createOrbitMap(element, markdown, options)`, the `<orbit-map>` element, `<OrbitMindMap source={markdown} />` from `@restless-dreams/orbit/react`, or `renderToSVGString(markdown, options)` without a browser.
 - Share a map as one web page, which opens in any browser, offline: `npx @restless-dreams/orbit export --html map.md --out map.html`.
 - Let people build the map on the map with `editable: true` (a + in the orbit, text typed inside nodes), and save what they make with `map.toMarkdown()` on the `edit` event.
@@ -23,6 +23,7 @@
 - [Extending](https://github.com/restless-dreams/orbit/blob/main/docs/extending.md): node types, your own actions, status words and named themes, for one map or every map
 - [Editing](https://github.com/restless-dreams/orbit/blob/main/docs/editing.md): context menus on a long press, adding, renaming, moving and removing nodes on the map, and saving the result as orbit-md
 - [Map tools for AI](https://github.com/restless-dreams/orbit/blob/main/docs/map-tools.md): tools for any model to read and change a map, on screen or on a server, for each provider's API and MCP
+- [Maps from other apps](https://github.com/restless-dreams/orbit/blob/main/docs/import-export.md): bringing in OPML, FreeMind, Freeplane and XMind maps with their notes, links and pictures, what each warning means, and writing OPML
 - [Languages](https://github.com/restless-dreams/orbit/blob/main/docs/languages.md): maps in the page's language, English and Spanish built in, adding languages and changing single words
 - [Pictures and videos](https://github.com/restless-dreams/orbit/blob/main/docs/media.md): the media viewer, its keys, YouTube and Vimeo, sound and autoplay, and opening, playing and following media from code
 - [Coding agents](https://github.com/restless-dreams/orbit/blob/main/docs/agents.md): the skill, validation as JSON, and messages for setup mistakes

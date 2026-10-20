@@ -64,7 +64,7 @@ describe('spinning', () => {
       const { host, renderer } = mount(table(600));
       const specks = () => host.querySelectorAll('.orbit-node--speck').length;
       expect(specks()).toBe(600);
-      internals(renderer).zoomAt(2, { x: 300, y: 200 });
+      internals(renderer).zoomAt(4, { x: 300, y: 200 });
       clock.advance(16);
       expect(specks()).toBe(540);
       clock.advance(16 * 9);
@@ -842,6 +842,40 @@ describe('crowded orbits', () => {
     expect(lines.length).toBeGreaterThan(1);
     // Lines break after underscores, never inside a word piece.
     expect(lines.slice(0, -1).every((line) => line.endsWith('_'))).toBe(true);
+  });
+
+  test('a crowded orbit\'s planets without badges stay specks bigger than others, which show their badges sooner', () => {
+    const map = `# accounts\n\n${Array.from({ length: 600 }, (_, index) => `- column_${index}_with_a_name${index === 0 ? ' <!-- orbit status: done -->' : ''}`).join('\n')}`;
+    const { host } = mount(map);
+    const isSpeck = (id: string) => node(host, id).classList.contains('orbit-node--speck');
+    // At this size a status shows, so its planet is a body; a plain planet's shading wouldn't, so it stays a speck.
+    expect(isSpeck('column_0_with_a_name')).toBe(false);
+    expect(isSpeck('column_1_with_a_name')).toBe(true);
+  });
+
+  test('in a flight, the planets a crowded orbit brings in show their names once it lands', () => {
+    const clock = manualClock();
+
+    try {
+      const columns = Array.from({ length: 60 }, (_, index) => `- C${index + 1}`).join('\n');
+      const { host, renderer } = mount(`# Root\n\n## Table\n${columns}\n\n## Other`, { transitionDuration: 600 });
+      clock.advance(1000);
+
+      const shows = (id: string) => {
+        const label = host.querySelector<HTMLElement>(`.orbit-label[data-orbit-for="${id}"]`);
+        return label !== null && label.style.display !== 'none';
+      };
+
+      renderer.focusNode('table');
+      clock.advance(450);
+      expect(internals(renderer).transition).not.toBeNull();
+      expect(shows('c30')).toBe(false);
+      clock.advance(1500);
+      expect(internals(renderer).transition).toBeNull();
+      expect(shows('c30')).toBe(true);
+    } finally {
+      clock.restore();
+    }
   });
 
   test('planets of a crowded orbit are drawn flat; those of an ordinary one keep their shadows', () => {

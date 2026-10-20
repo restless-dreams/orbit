@@ -96,6 +96,41 @@ describe('calculateFocusLayout', () => {
     expect(orbit(13, 6).orbitRings[0]).toBeGreaterThan(orbit(13, 1).orbitRings[0]);
   });
 
+  test('a huge orbit fills as many rings as it needs, evenly, instead of stretching its last', () => {
+    const config = { cx: 300, cy: 300, containerWidth: 600, containerHeight: 600 };
+
+    for (const moons of [0, 1]) {
+      const children = Array.from({ length: 1000 }, (_, index) => `## C${index + 1}${moons ? '\n- Moon' : ''}`).join('\n');
+      const layout = calculateFocusLayout(parse(`# Root\n\n${children}`), config);
+      expect(layout.planets).toHaveLength(1000);
+      expect(countOverlaps([layout.sun, ...layout.planets])).toBe(0);
+      // Rings step out evenly: the last one isn't stretched far out to hold the rest.
+      const rings = layout.orbitRings;
+      const steps = rings.slice(1).map((radius, index) => radius - rings[index]);
+      expect(Math.max(...steps)).toBeLessThan(Math.min(...steps) * 1.5);
+      const lastRing = layout.planets.filter((planet) => Math.abs(planet.orbitRadius - rings[rings.length - 1]) < 0.5);
+      expect(lastRing.length).toBeLessThan(1000 / 4);
+    }
+  });
+
+  test('an orbit a few planets past its rings stretches the last one rather than adding more', () => {
+    const config = { cx: 300, cy: 300, containerWidth: 600, containerHeight: 600 };
+    const sizes = [60, 80, 100, 140, 200, 300];
+
+    const outer = sizes.map((count) => {
+      const children = Array.from({ length: count }, (_, index) => `## C${index + 1}\n- Moon`).join('\n');
+      const layout = calculateFocusLayout(parse(`# Root\n\n${children}`), config);
+      expect(layout.planets).toHaveLength(count);
+      expect(countOverlaps([layout.sun, ...layout.planets])).toBe(0);
+      return layout.orbitRadius;
+    });
+
+    // More planets never make a smaller orbit.
+    for (let index = 1; index < outer.length; index += 1) {
+      expect(outer[index]).toBeGreaterThanOrEqual(outer[index - 1]);
+    }
+  });
+
   test('an orbit that fits on one ring keeps its roomy layout', () => {
     const config = { cx: 300, cy: 300, containerWidth: 600, containerHeight: 600 };
     const leaves = calculateFocusLayout(parse('# Root\n\n## A\n## B\n## C\n## D\n## E'), config);

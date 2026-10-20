@@ -2,7 +2,8 @@
  * A map as a web page: one HTML file with Orbit, the map and its pictures
  * inside, which opens in any browser, offline. Readers explore it with
  * Orbit's own controls, or present it: one idea at a time, in reading order,
- * with its note as a caption (see runtime.ts, the page's script).
+ * with its note as a caption (see runtime.ts, the page's script). Printed,
+ * it's the map laid out for paper (print-layout.ts) instead.
  */
 
 import { parseOrbit } from '../dispatch.js';
@@ -115,6 +116,7 @@ ${pageStyles(theme)}
     <button class="page__button" type="button" data-close aria-label="${escapeAttribute(words.text('close'))}">✕</button>
   </nav>
 </div>
+<div class="page__print" id="page-print"></div>
 <script type="application/json" id="orbit-page">${scriptJson(data)}</script>
 <script type="application/json" id="orbit-script">${scriptJson(options.script)}</script>
 <script>
@@ -183,7 +185,14 @@ body { font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; 
 .page--presenting .page__present { display: none; }
 .page--presenting:not(.page--controls) .page__controls { opacity: 0; }
 .page--presenting:not(.page--controls) { cursor: none; }
-[hidden] { display: none !important; }`;
+[hidden] { display: none !important; }
+.page__print { display: none; }
+@media print {
+  @page { margin: 16mm 14mm; }
+  html, body { height: auto; background: #ffffff; }
+  .page { display: none; }
+  .page__print { display: block; }
+}`;
 };
 
 /** JSON inside a script element: `<` written as `\\u003c`, so nothing in it can end the element or open a comment. */

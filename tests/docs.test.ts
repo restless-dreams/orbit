@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseOrbit } from '../src/core/dispatch';
 import { DIAGNOSTIC_CODES } from '../src/core/diagnostics';
+import { IMPORT_ERROR_CODES, IMPORT_WARNING_CODES } from '../src/core/other-apps/ideas';
 import { DOCUMENT_OPTION_KEYS } from '../src/core/document-options';
 import { NODE_ATTRIBUTE_KEYS } from '../src/core/node-attributes';
 import { statusTone } from '../src/core/ui/detail-sheet';
@@ -124,6 +125,15 @@ const listedThemes = (content: string): string[] => {
   const line = content.split('\n').find((text) => /^(- )?Themes: /.test(text)) ?? '';
   return [...line.matchAll(/`([\w-]+)`/g)].map((match) => match[1]);
 };
+
+describe('the guide to maps from other apps', () => {
+  const guide = readFileSync(join(import.meta.dir, '../docs/import-export.md'), 'utf8');
+
+  test('lists every warning and every reason a file can\'t be read', () => {
+    expect(firstColumn(guide).filter((code) => (IMPORT_WARNING_CODES as readonly string[]).includes(code))).toEqual([...IMPORT_WARNING_CODES]);
+    expect(firstColumn(guide).filter((code) => (IMPORT_ERROR_CODES as readonly string[]).includes(code))).toEqual([...IMPORT_ERROR_CODES]);
+  });
+});
 
 describe('the files coding agents read', () => {
   test('are up to date with the docs (run `bun run docs:llms`)', () => {

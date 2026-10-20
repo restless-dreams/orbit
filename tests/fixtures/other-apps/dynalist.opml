@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<opml version="2.0">
+  <head>
+    <title>Reading list</title>
+  </head>
+  <body>
+    <outline text="**Books** to read" _note="Ask *Ana* for more" checkbox="true">
+      <outline text="Dune" complete="true" checkbox="true" />
+      <outline text="Piranesi" checkbox="true" />
+    </outline>
+    <outline text="Articles" />
+  </body>
+</opml>

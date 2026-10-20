@@ -1,0 +1,828 @@
+{
+  "everything.md": {
+    "diagnostics": [
+      "warning unknown-frontmatter-key",
+      "warning unknown-frontmatter-key",
+      "warning unknown-attribute"
+    ],
+    "document": {
+      "options": {
+        "baseUrl": "https://example.com/maps/",
+        "className": "release-fixture",
+        "height": 480,
+        "interactive": true,
+        "maxDepth": 4,
+        "orbitAnimation": false,
+        "orbitSpeed": 120,
+        "palette": [
+          "#F8D978",
+          "#F5A3A8",
+          "#9ED5FD",
+          "#99E0BA"
+        ],
+        "schemaVersion": 1,
+        "showRings": true,
+        "theme": "night",
+        "title": "Everything a map can say",
+        "viewMode": "focus"
+      },
+      "extra": {
+        "cssclasses": [
+          "wide",
+          "cards"
+        ],
+        "generator": "release-fixtures"
+      },
+      "root": {
+        "id": "everything-a-map-can-say",
+        "text": "Everything a map can say",
+        "attributes": {
+          "icon": "🚀",
+          "note": "What ships this year, written by hand.",
+          "noteFormat": "markdown"
+        },
+        "children": [
+          {
+            "id": "research",
+            "text": "Research",
+            "attributes": {
+              "note": "Six weeks of interviews before we commit to scope.",
+              "noteFormat": "markdown",
+              "priority": 1,
+              "status": "done"
+            },
+            "children": [
+              {
+                "id": "user-interviews",
+                "text": "User interviews",
+                "attributes": {
+                  "status": "done",
+                  "tags": [
+                    "ux"
+                  ]
+                },
+                "children": []
+              },
+              {
+                "id": "survey",
+                "text": "Survey",
+                "attributes": {
+                  "color": "#E5484D",
+                  "status": "active"
+                },
+                "children": []
+              },
+              {
+                "id": "competitor-teardown",
+                "text": "Competitor teardown",
+                "attributes": {
+                  "status": "todo",
+                  "tags": [
+                    "market",
+                    "q3"
+                  ]
+                },
+                "children": []
+              },
+              {
+                "id": "questions-to-answer",
+                "text": "Questions to answer",
+                "attributes": {
+                  "note": "- Who buys it?\n- Why now?",
+                  "noteFormat": "markdown"
+                },
+                "children": []
+              },
+              {
+                "id": "typo-kept",
+                "text": "Typo kept",
+                "attributes": {
+                  "stauts": "done"
+                },
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "build-phase",
+            "text": "Build",
+            "attributes": {
+              "collapsed": false,
+              "due": "2026-11-01",
+              "owner": "Ana",
+              "tags": [
+                "engineering",
+                "sprint-3"
+              ],
+              "type": "milestone",
+              "typeVersion": 2
+            },
+            "children": [
+              {
+                "id": "frontend",
+                "text": "Frontend",
+                "attributes": {
+                  "icon": "★",
+                  "paletteColor": 3
+                },
+                "children": [
+                  {
+                    "id": "app-shell",
+                    "text": "App shell",
+                    "attributes": {},
+                    "children": []
+                  },
+                  {
+                    "id": "offline-sync",
+                    "text": "Offline sync",
+                    "attributes": {
+                      "note": "Waits on the [backend](#backend) sync API.",
+                      "noteFormat": "markdown",
+                      "status": "blocked"
+                    },
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "id": "backend",
+                "text": "Backend",
+                "attributes": {
+                  "note": "Plain text, shown as written: *not emphasis*.",
+                  "noteFormat": "plain"
+                },
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "launch",
+            "text": "Launch",
+            "attributes": {
+              "image": {
+                "alt": "The launch poster",
+                "caption": "Printed for the stores",
+                "src": "images/poster.png"
+              },
+              "link": "https://example.com/launch-plan"
+            },
+            "children": [
+              {
+                "id": "trailer",
+                "text": "Trailer",
+                "attributes": {
+                  "video": {
+                    "caption": "Ninety seconds",
+                    "provider": "vimeo",
+                    "src": "https://vimeo.com/76979871",
+                    "thumbnail": "images/thumbnail.jpg"
+                  }
+                },
+                "children": []
+              },
+              {
+                "id": "demo-page",
+                "text": "Demo page",
+                "attributes": {
+                  "embed": {
+                    "src": "https://example.com/demo"
+                  }
+                },
+                "children": []
+              },
+              {
+                "id": "read-the-research",
+                "text": "Read the research",
+                "attributes": {
+                  "link": "#research"
+                },
+                "children": []
+              },
+              {
+                "id": "old-poster",
+                "text": "Old poster",
+                "attributes": {
+                  "note": "![Kept as text](images/old.png)",
+                  "noteFormat": "markdown"
+                },
+                "children": []
+              },
+              {
+                "id": "folded-idea",
+                "text": "Folded idea",
+                "attributes": {
+                  "collapsed": true
+                },
+                "children": [
+                  {
+                    "id": "hidden-child",
+                    "text": "Hidden child",
+                    "attributes": {},
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "id": "video-file",
+                "text": "Video file",
+                "attributes": {
+                  "video": {
+                    "caption": "Ten seconds",
+                    "provider": "native",
+                    "src": "clips/teaser.mp4"
+                  }
+                },
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "everything.yaml": {
+    "diagnostics": [
+      "warning unknown-yaml-key",
+      "warning unknown-yaml-key",
+      "warning unknown-attribute"
+    ],
+    "document": {
+      "options": {
+        "baseUrl": "https://example.com/maps/",
+        "className": "release-fixture",
+        "height": 480,
+        "interactive": true,
+        "maxDepth": 4,
+        "orbitAnimation": false,
+        "orbitSpeed": 120,
+        "palette": [
+          "#F8D978",
+          "#F5A3A8",
+          "#9ED5FD",
+          "#99E0BA"
+        ],
+        "schemaVersion": 1,
+        "showRings": true,
+        "theme": "night",
+        "title": "Everything a map can say",
+        "viewMode": "focus"
+      },
+      "extra": {
+        "cssclasses": [
+          "wide",
+          "cards"
+        ],
+        "generator": "release-fixtures"
+      },
+      "root": {
+        "id": "everything-a-map-can-say",
+        "text": "Everything a map can say",
+        "attributes": {
+          "icon": "🚀",
+          "note": "What ships this year, written by hand.",
+          "noteFormat": "markdown"
+        },
+        "children": [
+          {
+            "id": "research",
+            "text": "Research",
+            "attributes": {
+              "note": "Six weeks of interviews before we commit to scope.",
+              "noteFormat": "markdown",
+              "priority": 1,
+              "status": "done"
+            },
+            "children": [
+              {
+                "id": "user-interviews",
+                "text": "User interviews",
+                "attributes": {
+                  "status": "done",
+                  "tags": [
+                    "ux"
+                  ]
+                },
+                "children": []
+              },
+              {
+                "id": "survey",
+                "text": "Survey",
+                "attributes": {
+                  "color": "#E5484D",
+                  "status": "active"
+                },
+                "children": []
+              },
+              {
+                "id": "competitor-teardown",
+                "text": "Competitor teardown",
+                "attributes": {
+                  "status": "todo",
+                  "tags": [
+                    "market",
+                    "q3"
+                  ]
+                },
+                "children": []
+              },
+              {
+                "id": "questions-to-answer",
+                "text": "Questions to answer",
+                "attributes": {
+                  "note": "- Who buys it?\n- Why now?",
+                  "noteFormat": "markdown"
+                },
+                "children": []
+              },
+              {
+                "id": "typo-kept",
+                "text": "Typo kept",
+                "attributes": {
+                  "stauts": "done"
+                },
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "build-phase",
+            "text": "Build",
+            "attributes": {
+              "collapsed": false,
+              "due": "2026-11-01",
+              "owner": "Ana",
+              "tags": [
+                "engineering",
+                "sprint-3"
+              ],
+              "type": "milestone",
+              "typeVersion": 2
+            },
+            "children": [
+              {
+                "id": "frontend",
+                "text": "Frontend",
+                "attributes": {
+                  "icon": "★",
+                  "paletteColor": 3
+                },
+                "children": [
+                  {
+                    "id": "app-shell",
+                    "text": "App shell",
+                    "attributes": {},
+                    "children": []
+                  },
+                  {
+                    "id": "offline-sync",
+                    "text": "Offline sync",
+                    "attributes": {
+                      "note": "Waits on the [backend](#backend) sync API.",
+                      "noteFormat": "markdown",
+                      "status": "blocked"
+                    },
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "id": "backend",
+                "text": "Backend",
+                "attributes": {
+                  "note": "Plain text, shown as written: *not emphasis*.",
+                  "noteFormat": "plain"
+                },
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "launch",
+            "text": "Launch",
+            "attributes": {
+              "image": {
+                "alt": "The launch poster",
+                "caption": "Printed for the stores",
+                "src": "images/poster.png"
+              },
+              "link": "https://example.com/launch-plan"
+            },
+            "children": [
+              {
+                "id": "trailer",
+                "text": "Trailer",
+                "attributes": {
+                  "video": {
+                    "caption": "Ninety seconds",
+                    "provider": "vimeo",
+                    "src": "https://vimeo.com/76979871",
+                    "thumbnail": "images/thumbnail.jpg"
+                  }
+                },
+                "children": []
+              },
+              {
+                "id": "demo-page",
+                "text": "Demo page",
+                "attributes": {
+                  "embed": {
+                    "src": "https://example.com/demo"
+                  }
+                },
+                "children": []
+              },
+              {
+                "id": "read-the-research",
+                "text": "Read the research",
+                "attributes": {
+                  "link": "#research"
+                },
+                "children": []
+              },
+              {
+                "id": "old-poster",
+                "text": "Old poster",
+                "attributes": {
+                  "note": "![Kept as text](images/old.png)",
+                  "noteFormat": "markdown"
+                },
+                "children": []
+              },
+              {
+                "id": "folded-idea",
+                "text": "Folded idea",
+                "attributes": {
+                  "collapsed": true
+                },
+                "children": [
+                  {
+                    "id": "hidden-child",
+                    "text": "Hidden child",
+                    "attributes": {},
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "id": "video-file",
+                "text": "Video file",
+                "attributes": {
+                  "video": {
+                    "caption": "Ten seconds",
+                    "provider": "native",
+                    "src": "clips/teaser.mp4"
+                  }
+                },
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "everything-from-yaml.md": {
+    "diagnostics": [
+      "warning unknown-frontmatter-key"
+    ],
+    "document": {
+      "options": {
+        "baseUrl": "https://example.com/maps/",
+        "className": "release-fixture",
+        "height": 360,
+        "interactive": true,
+        "maxDepth": 3,
+        "orbitAnimation": true,
+        "orbitSpeed": 60,
+        "palette": [
+          "#F8D978",
+          "#F5A3A8",
+          "#9ED5FD"
+        ],
+        "schemaVersion": 1,
+        "showRings": false,
+        "theme": "paper",
+        "title": "Everything in YAML",
+        "viewMode": "all"
+      },
+      "extra": {
+        "generator": "release-fixtures"
+      },
+      "root": {
+        "id": "everything-in-yaml",
+        "text": "Everything in YAML",
+        "attributes": {
+          "icon": "🧭",
+          "note": "A note in a block scalar,\nover two lines.",
+          "noteFormat": "markdown"
+        },
+        "children": [
+          {
+            "id": "research",
+            "text": "Research",
+            "attributes": {
+              "priority": 2,
+              "status": "done",
+              "tags": [
+                "ux",
+                "q3"
+              ]
+            },
+            "children": [
+              {
+                "id": "interviews",
+                "text": "Interviews",
+                "attributes": {},
+                "children": []
+              },
+              {
+                "id": "survey",
+                "text": "Survey",
+                "attributes": {},
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "build-phase",
+            "text": "Build",
+            "attributes": {
+              "collapsed": true,
+              "color": "#E5484D",
+              "owner": "Ana",
+              "type": "milestone",
+              "typeVersion": 2
+            },
+            "children": [
+              {
+                "id": "frontend",
+                "text": "Frontend",
+                "attributes": {
+                  "link": "#research",
+                  "paletteColor": 2
+                },
+                "children": []
+              },
+              {
+                "id": "backend",
+                "text": "Backend",
+                "attributes": {
+                  "note": "Plain text.",
+                  "noteFormat": "plain"
+                },
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "launch",
+            "text": "Launch",
+            "attributes": {
+              "embed": {
+                "caption": "The demo",
+                "src": "https://example.com/demo"
+              },
+              "image": {
+                "alt": "The launch poster",
+                "caption": "Printed for the stores",
+                "src": "images/poster.png"
+              },
+              "link": "https://example.com/launch-plan",
+              "video": {
+                "caption": "Ninety seconds",
+                "provider": "vimeo",
+                "src": "https://vimeo.com/76979871",
+                "thumbnail": "images/thumbnail.jpg"
+              }
+            },
+            "children": []
+          }
+        ]
+      }
+    }
+  },
+  "everything-from-yaml.yaml": {
+    "diagnostics": [
+      "warning unknown-yaml-key"
+    ],
+    "document": {
+      "options": {
+        "baseUrl": "https://example.com/maps/",
+        "className": "release-fixture",
+        "height": 360,
+        "interactive": true,
+        "maxDepth": 3,
+        "orbitAnimation": true,
+        "orbitSpeed": 60,
+        "palette": [
+          "#F8D978",
+          "#F5A3A8",
+          "#9ED5FD"
+        ],
+        "schemaVersion": 1,
+        "showRings": false,
+        "theme": "paper",
+        "title": "Everything in YAML",
+        "viewMode": "all"
+      },
+      "extra": {
+        "generator": "release-fixtures"
+      },
+      "root": {
+        "id": "everything-in-yaml",
+        "text": "Everything in YAML",
+        "attributes": {
+          "icon": "🧭",
+          "note": "A note in a block scalar,\nover two lines.",
+          "noteFormat": "markdown"
+        },
+        "children": [
+          {
+            "id": "research",
+            "text": "Research",
+            "attributes": {
+              "priority": 2,
+              "status": "done",
+              "tags": [
+                "ux",
+                "q3"
+              ]
+            },
+            "children": [
+              {
+                "id": "interviews",
+                "text": "Interviews",
+                "attributes": {},
+                "children": []
+              },
+              {
+                "id": "survey",
+                "text": "Survey",
+                "attributes": {},
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "build-phase",
+            "text": "Build",
+            "attributes": {
+              "collapsed": true,
+              "color": "#E5484D",
+              "owner": "Ana",
+              "type": "milestone",
+              "typeVersion": 2
+            },
+            "children": [
+              {
+                "id": "frontend",
+                "text": "Frontend",
+                "attributes": {
+                  "link": "#research",
+                  "paletteColor": 2
+                },
+                "children": []
+              },
+              {
+                "id": "backend",
+                "text": "Backend",
+                "attributes": {
+                  "note": "Plain text.",
+                  "noteFormat": "plain"
+                },
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "launch",
+            "text": "Launch",
+            "attributes": {
+              "embed": {
+                "caption": "The demo",
+                "src": "https://example.com/demo"
+              },
+              "image": {
+                "alt": "The launch poster",
+                "caption": "Printed for the stores",
+                "src": "images/poster.png"
+              },
+              "link": "https://example.com/launch-plan",
+              "video": {
+                "caption": "Ninety seconds",
+                "src": "https://vimeo.com/76979871",
+                "thumbnail": "images/thumbnail.jpg"
+              }
+            },
+            "children": []
+          }
+        ]
+      }
+    }
+  },
+  "trip.md": {
+    "diagnostics": [
+      "warning unknown-frontmatter-key"
+    ],
+    "document": {
+      "options": {
+        "title": "Weekend in Lisbon"
+      },
+      "extra": {
+        "tags": [
+          "travel"
+        ]
+      },
+      "root": {
+        "id": "weekend-in-lisbon",
+        "text": "Weekend in Lisbon",
+        "attributes": {},
+        "children": [
+          {
+            "id": "markets",
+            "text": "Markets",
+            "attributes": {},
+            "children": [
+              {
+                "id": "fado-in-alfama",
+                "text": "Fado in Alfama",
+                "attributes": {},
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "food",
+            "text": "Food",
+            "attributes": {
+              "icon": "🍽️"
+            },
+            "children": [
+              {
+                "id": "pasteis-de-nata",
+                "text": "Pastéis de nata",
+                "attributes": {},
+                "children": []
+              },
+              {
+                "id": "tascas",
+                "text": "Tascas",
+                "attributes": {
+                  "note": "Book a table for eight.",
+                  "noteFormat": "markdown"
+                },
+                "children": []
+              },
+              {
+                "id": "night-markets",
+                "text": "Night markets",
+                "attributes": {
+                  "icon": "🏮"
+                },
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "parks",
+            "text": "Parks",
+            "attributes": {},
+            "children": []
+          },
+          {
+            "id": "galleries",
+            "text": "Galleries",
+            "attributes": {},
+            "children": [
+              {
+                "id": "gulbenkian",
+                "text": "Gulbenkian",
+                "attributes": {},
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "beaches",
+            "text": "Beaches",
+            "attributes": {
+              "status": "done"
+            },
+            "children": []
+          },
+          {
+            "id": "music",
+            "text": "Music",
+            "attributes": {
+              "color": "#E5484D",
+              "tags": [
+                "evening"
+              ]
+            },
+            "children": []
+          }
+        ]
+      }
+    }
+  }
+}

@@ -14,6 +14,9 @@ import { parseOrbit } from '../dispatch.js';
 import { leadingEmoji, parseOrbitMarkdown } from '../parser-markdown.js';
 import { formatDiagnostic } from '../diagnostics.js';
 import { addToTree, moveInTree, newNodeFrom, removeFromTree, updateInTree } from '../editing.js';
+import { branchPalette, type BranchColorRules } from '../branch-colors.js';
+import { MapExtensions } from '../extensions.js';
+import { resolvePalette } from '../themes.js';
 import { findIndexedLinkedNode, findLinkedNode, indexNodes, isNodeLink, nodeLinksOf } from '../node-links.js';
 import { findNodeById, getNodePath, nodeSlug } from '../utils.js';
 import { suggest } from '../suggest.js';
@@ -463,12 +466,16 @@ const targetOf = (map: OrbitSVGRenderer | OrbitDocument | string): Target => {
     throw new TypeError(`createMapTools() takes a map on screen (createOrbitMap's result, or <orbit-map>'s renderer), a parsed document, or a map's markdown or YAML, but got ${map === null ? 'null' : typeof map}.`);
   }
 
+  // Edits keep top-level nodes' colors, as they do on a map on screen.
+  const extensions = new MapExtensions();
+  const colors = (): BranchColorRules => ({ count: branchPalette(resolvePalette(document.options?.palette)).length, ownColor: (node) => extensions.color(node) });
+
   return {
     document: () => document,
-    add: (parentId, input, index) => addToTree(document.root, parentId, input, index)?.node ?? null,
-    update: (id, changes) => updateInTree(document.root, id, changes)?.node ?? null,
-    move: (id, parentId, index) => moveInTree(document.root, id, parentId, index)?.node ?? null,
-    remove: (id) => removeFromTree(document.root, id)?.node ?? null,
+    add: (parentId, input, index) => addToTree(document.root, parentId, input, index, colors())?.node ?? null,
+    update: (id, changes) => updateInTree(document.root, id, changes, colors())?.node ?? null,
+    move: (id, parentId, index) => moveInTree(document.root, id, parentId, index, colors())?.node ?? null,
+    remove: (id) => removeFromTree(document.root, id, colors())?.node ?? null,
     live: null,
     newer: (document.diagnostics ?? []).some((diagnostic) => diagnostic.code === 'unsupported-schema-version'),
   };

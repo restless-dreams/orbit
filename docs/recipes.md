@@ -223,3 +223,12 @@ npx @restless-dreams/orbit render roadmap.md --view all --out overview.svg
 ```
 
 The SVG has its colors resolved and its labels as text, so it opens the same in browsers, design tools and image converters. Give each SVG inlined in one page its own `idPrefix`.
+
+For a PDF, export the map as a web page and print it, or have a headless browser do it. The page prints laid out for paper, with the map's picture, then every idea and its note:
+
+```bash
+npx @restless-dreams/orbit export --html roadmap.md --out roadmap.html
+chromium --headless --no-pdf-header-footer --print-to-pdf=roadmap.pdf roadmap.html
+```
+
+On your own pages, `renderPrintLayout` lays a map out the same way (see [Printing and PDF](guide.md#printing-and-pdf)).

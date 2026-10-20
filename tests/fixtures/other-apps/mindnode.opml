@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+	<head>
+		<title>Garden</title>
+	</head>
+	<body>
+		<outline text="Garden" _note="Spring planting plan">
+			<outline text="🌱 Seeds">
+				<outline text="Tomatoes"/>
+				<outline text="Basil"/>
+			</outline>
+			<outline text="Tools"/>
+		</outline>
+	</body>
+</opml>

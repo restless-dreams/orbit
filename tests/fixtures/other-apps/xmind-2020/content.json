@@ -1,0 +1,74 @@
+[
+  {
+    "id": "6f1c2a0e9b4d7c3e8a5f1b2c3d",
+    "class": "sheet",
+    "title": "Map 1",
+    "rootTopic": {
+      "id": "root-topic",
+      "class": "topic",
+      "title": "Garden plan",
+      "structureClass": "org.xmind.ui.map.clockwise",
+      "image": { "src": "xap:resources/3a7bd3e2360a3d29eea436fcfb7e44c735d117c42d1c1835420b6b9942dd4f1b.png", "width": 64, "height": 64 },
+      "children": {
+        "attached": [
+          {
+            "id": "beds",
+            "class": "topic",
+            "title": "Raised beds",
+            "labels": ["outdoor", "weekend"],
+            "markers": [{ "markerId": "priority-1" }, { "markerId": "task-half" }],
+            "notes": {
+              "plain": { "content": "Cedar boards\nThree beds\n" },
+              "realHTML": { "content": "<div>Cedar <b>boards</b><br></div><div>Three beds</div>" }
+            },
+            "summaries": [{ "id": "summary-range", "range": "(0,1)", "topicId": "weekend-job" }],
+            "boundaries": [{ "id": "boundary", "range": "(0,1)", "title": "Phase one" }],
+            "children": {
+              "attached": [
+                { "id": "soil", "class": "topic", "title": "Soil mix", "href": "https://example.com/soil" },
+                {
+                  "id": "seeds",
+                  "class": "topic",
+                  "title": "Seeds",
+                  "branch": "folded",
+                  "children": { "attached": [{ "id": "tomatoes", "class": "topic", "title": "Tomatoes" }] }
+                }
+              ],
+              "summary": [{ "id": "weekend-job", "class": "topic", "title": "Weekend job" }]
+            }
+          },
+          {
+            "id": "tools",
+            "class": "topic",
+            "title": "Tools\nand gloves",
+            "markers": [{ "markerId": "smiley-laugh" }, { "markerId": "flag-red" }],
+            "style": { "id": "tools-style", "properties": { "svg:fill": "#2EBDFF", "fo:color": "#FFFFFF" } },
+            "href": "xmind:#beds",
+            "children": { "callout": [{ "id": "borrow", "class": "topic", "title": "Borrow from Ana" }] }
+          },
+          { "id": "budget", "class": "topic", "title": "Budget", "href": "xap:resources/0e2d4a1c5b6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b.xlsx" },
+          { "id": "last-year", "class": "topic", "title": "Last year", "href": "file:///Users/ana/garden-2025.xmind" },
+          { "id": "untitled", "class": "topic", "children": { "attached": [{ "id": "under-untitled", "class": "topic", "title": "Under an empty topic" }] } }
+        ],
+        "detached": [{ "id": "compost", "class": "topic", "title": "Compost?", "position": { "x": 300, "y": 200 } }]
+      }
+    },
+    "relationships": [
+      { "id": "feeds", "end1Id": "soil", "end2Id": "tomatoes", "title": "feeds" },
+      { "id": "pays", "end1Id": "budget", "end2Id": "tools" },
+      { "id": "nowhere", "end1Id": "seeds", "end2Id": "deleted-topic" }
+    ],
+    "theme": { "centralTopic": { "properties": { "svg:fill": "#000229" } } }
+  },
+  {
+    "id": "2b4d6f8a0c1e3a5c7e9b1d3f5a",
+    "class": "sheet",
+    "title": "Map 2",
+    "rootTopic": {
+      "id": "shopping",
+      "class": "topic",
+      "title": "Shopping",
+      "children": { "attached": [{ "id": "hose", "class": "topic", "title": "Hose", "notes": { "plain": { "content": "Twenty meters" } } }] }
+    }
+  }
+]

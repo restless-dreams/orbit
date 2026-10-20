@@ -21,6 +21,15 @@ export interface OrbitNode {
   /** Any CSS color. Without one, the node takes its branch's color from the theme or `palette`. */
   color?: string;
 
+  /**
+   * Which of the palette's colors the node takes when it has no `color` of
+   * its own: `1` is the first after the root's, cycling. Without one, a
+   * top-level node takes the next in turn and a deeper node a shade of its
+   * branch's. Edits on the map write it to keep a top-level node's color
+   * when the nodes around it change.
+   */
+  paletteColor?: number;
+
   /** An emoji (or any short symbol) shown before the text. */
   icon?: string;
 
@@ -256,7 +265,7 @@ export interface OrbitEdit {
 /** What `addNode` and `updateNode` take: a node's text and attributes. */
 export type OrbitNodeInput = Partial<Pick<
   OrbitNode,
-  'text' | 'icon' | 'color' | 'status' | 'priority' | 'tags' | 'collapsed' | 'link' | 'note' | 'noteFormat' | 'image' | 'video' | 'embed' | 'type' | 'typeVersion' | 'attrs'
+  'text' | 'icon' | 'color' | 'paletteColor' | 'status' | 'priority' | 'tags' | 'collapsed' | 'link' | 'note' | 'noteFormat' | 'image' | 'video' | 'embed' | 'type' | 'typeVersion' | 'attrs'
 >>;
 
 /** What `addNode` takes: a node's text and attributes, and the nodes to add under it, as many levels down as you like. */

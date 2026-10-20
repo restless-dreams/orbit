@@ -135,6 +135,7 @@ A map that's just a list, or has several top headings, and has no title gets a r
 | `readNote` | Read note | Leer nota |
 | `openLink` | Open link | Abrir enlace |
 | `goTo` | Go to {name} | Ir a {name} |
+| `seeIdea` | See {name} | Ver {name} |
 | `details` | Details | Detalles |
 | `close` | Close | Cerrar |
 | `previous` | Previous | Anterior |

@@ -182,3 +182,18 @@ Each top-level branch takes the next palette color, and everything under it uses
 ## Exports
 
 `renderToSVGString(markdown, { theme })` and `orbit render --theme` resolve every property to a plain color, so exported files look the same anywhere. In the browser, `renderer.toSVGString()` also picks up the custom properties your page sets. Background patterns are CSS, so exports keep the `--orbit-surface` color without them.
+
+## Printing
+
+Paper is light, so a map prints in its own theme when that's light, and in its light counterpart when it's dark. Nothing prints a background. `printTheme(theme)` gives the theme a map prints in, and `PRINT_THEMES` lists the pairs:
+
+| Theme | Prints as |
+| --- | --- |
+| `night`, `cosmos`, `auto` | `paper` |
+| `glass-night` | `glass` |
+| `blueprint` | `ink` |
+| `flat-night` | `flat` |
+| `material-night` | `material` |
+| `liquid-night` | `liquid` |
+
+A theme of your own that starts from a dark one prints as that one's counterpart, keeping only its colors (`color-root` to `color-7`). The print layout takes its text, link and chip colors from the theme it prints in; set `--orbit-print-text`, `--orbit-print-muted-text`, `--orbit-print-link-text`, `--orbit-print-chip-background`, `--orbit-print-chip-text`, `--orbit-print-border`, `--orbit-print-font` or `--orbit-print-display-font` to use your own.

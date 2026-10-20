@@ -173,6 +173,9 @@ export interface OrbitStrings {
   /** A link to another idea of the map: `{name}` is that idea, or `theIdea` when it has no text. */
   goTo: string;
 
+  /** The same link printed, where it can't be followed: `{name}` is that idea. */
+  seeIdea: string;
+
   /** The detail sheet's name when the idea has no text. */
   details: string;
 
@@ -283,6 +286,7 @@ const ENGLISH: OrbitStrings = {
   readNote: 'Read note',
   openLink: 'Open link',
   goTo: 'Go to {name}',
+  seeIdea: 'See {name}',
   details: 'Details',
   close: 'Close',
   previous: 'Previous',
@@ -366,6 +370,7 @@ const SPANISH: OrbitStrings = {
   readNote: 'Leer nota',
   openLink: 'Abrir enlace',
   goTo: 'Ir a {name}',
+  seeIdea: 'Ver {name}',
   details: 'Detalles',
   close: 'Cerrar',
   previous: 'Anterior',

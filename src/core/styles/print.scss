@@ -1,0 +1,188 @@
+// The print layout (print-layout.ts): a map's title, its picture, then every
+// idea with its details. The layout sets the colors and fonts of the theme it
+// prints in as `--_orbit-print-*`; a page sets the public `--orbit-print-*`
+// ones to use its own.
+
+.orbit-print {
+  color: var(--orbit-print-text, var(--_orbit-print-text));
+  font-family: var(--orbit-print-font, var(--_orbit-print-font));
+  font-size: 11pt;
+  line-height: 1.45;
+  // The dots, chips and status colors say something: print them as they are.
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+
+  &__title {
+    margin: 0 0 6pt;
+    font-family: var(--orbit-print-display-font, var(--_orbit-print-display-font));
+    font-size: 22pt;
+    line-height: 1.2;
+    break-after: avoid;
+  }
+
+  &__picture {
+    margin: 12pt 0 18pt;
+    break-inside: avoid;
+
+    // The drawing is a square scaled to the page's width, and short enough to leave room for the title.
+    svg {
+      display: block;
+      width: 100%;
+      height: auto;
+      max-height: 150mm;
+    }
+  }
+
+  &__children {
+    margin-inline-start: 4pt;
+    padding-inline-start: 12pt;
+    border-inline-start: 1px solid var(--orbit-print-border, var(--_orbit-print-border));
+  }
+
+  // An idea's own part stays on one page; one with ideas under it stays with the first of them.
+  &__entry {
+    padding: 5pt 0 3pt;
+    break-inside: avoid;
+
+    &--parent {
+      break-after: avoid;
+    }
+  }
+
+  // The entry keeps a name with what follows it: a break rule here too makes Chromium move whole branches to the next page.
+  &__name {
+    margin: 0;
+    font-family: var(--orbit-print-display-font, var(--_orbit-print-display-font));
+    font-size: 11pt;
+    line-height: 1.3;
+
+    &--depth-1 {
+      margin-top: 8pt;
+      font-size: 15pt;
+    }
+
+    &--depth-2 {
+      font-size: 12.5pt;
+    }
+  }
+
+  &__dot {
+    display: inline-block;
+    width: 0.6em;
+    height: 0.6em;
+    margin-inline-end: 0.4em;
+    border-radius: 50%;
+    background: var(--orbit-print-dot);
+    vertical-align: 0.05em;
+  }
+
+  &__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3pt 4pt;
+    margin: 3pt 0 0;
+  }
+
+  &__chip {
+    padding: 0 6pt;
+    border-radius: 8pt;
+    background: var(--orbit-print-chip-background, var(--_orbit-print-chip-background));
+    color: var(--orbit-print-chip-text, var(--_orbit-print-chip-text));
+    font-size: 8.5pt;
+    line-height: 1.7;
+
+    &--status::before {
+      content: '';
+      display: inline-block;
+      width: 6pt;
+      height: 6pt;
+      margin-inline-end: 4pt;
+      border-radius: 50%;
+      background: var(--orbit-print-status);
+      vertical-align: 0.05em;
+    }
+  }
+
+  &__link {
+    margin: 3pt 0 0;
+    color: var(--orbit-print-muted-text, var(--_orbit-print-muted-text));
+    font-size: 9pt;
+  }
+
+  &__address {
+    color: var(--orbit-print-link-text, var(--_orbit-print-link-text));
+    overflow-wrap: anywhere;
+    text-decoration: none;
+  }
+
+  &__details {
+    margin: 4pt 0 0;
+    font-size: 10pt;
+  }
+
+  &__note {
+    margin: 4pt 0 0;
+    font-size: 10pt;
+
+    p,
+    ul,
+    ol,
+    pre,
+    blockquote {
+      margin: 0 0 4pt;
+    }
+
+    ul,
+    ol {
+      padding-inline-start: 16pt;
+    }
+
+    blockquote {
+      padding-inline-start: 8pt;
+      border-inline-start: 2pt solid var(--orbit-print-border, var(--_orbit-print-border));
+      color: var(--orbit-print-muted-text, var(--_orbit-print-muted-text));
+    }
+
+    pre,
+    code {
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 9pt;
+      white-space: pre-wrap;
+    }
+
+    a {
+      color: var(--orbit-print-link-text, var(--_orbit-print-link-text));
+    }
+
+    img {
+      display: block;
+      max-width: 100%;
+      max-height: 80mm;
+      break-inside: avoid;
+    }
+
+    &--plain {
+      white-space: pre-wrap;
+    }
+  }
+
+  &__media {
+    margin: 6pt 0 0;
+    break-inside: avoid;
+  }
+
+  &__image {
+    display: block;
+    max-width: 60%;
+    max-height: 70mm;
+    border-radius: 6pt;
+    object-fit: contain;
+  }
+
+  &__caption {
+    margin-top: 2pt;
+    color: var(--orbit-print-muted-text, var(--_orbit-print-muted-text));
+    font-size: 8.5pt;
+    overflow-wrap: anywhere;
+  }
+}

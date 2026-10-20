@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<opml version="2.0">
+	<head>
+		<title>feeds.opml</title>
+	</head>
+	<body>
+		<outline text="Café news" title="Café news" type="rss" xmlUrl="https://example.com/cafe/feed.xml" htmlUrl="https://example.com/cafe/" description="Coffee, every morning." category="/Food/Coffee,/Morning"/>
+		<outline text="Podcasts" type="rss" xmlUrl="https://example.com/podcasts.xml"/>
+		<outline text="Directory" type="include" url="https://example.com/more.opml"/>
+	</body>
+</opml>

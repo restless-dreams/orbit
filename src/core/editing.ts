@@ -2,16 +2,19 @@
  * Changes to a map's tree, behind the renderer's `addNode`, `updateNode`,
  * `removeNode` and `moveNode`, and the map tools, which make them on a map
  * that isn't drawn too. Ids follow the parsers' rules, so a map saved with
- * `toMarkdown()` reads back with the same ids.
+ * `toMarkdown()` reads back with the same ids. Given the palette's rules,
+ * each change keeps the colors of the top-level nodes it doesn't change
+ * (see `keepBranchColors`).
  */
 
 import type { OrbitNewNode, OrbitNode, OrbitNodeInput } from './types.js';
+import { branchColorsBefore, keepBranchColors, type BranchColorRules } from './branch-colors.js';
 import { findIndexedLinkedNode, indexNodes, nodeLinksOf } from './node-links.js';
 import { findNodeById, getNodePath, nodeSlug, setParent } from './utils.js';
 
 /** The attributes `addNode` and `updateNode` set, in the order nodes list them. */
 const ATTRIBUTE_KEYS = [
-  'icon', 'color', 'status', 'priority', 'tags', 'collapsed', 'type', 'typeVersion', 'link', 'note', 'noteFormat', 'image', 'video', 'embed', 'attrs',
+  'icon', 'color', 'paletteColor', 'status', 'priority', 'tags', 'collapsed', 'type', 'typeVersion', 'link', 'note', 'noteFormat', 'image', 'video', 'embed', 'attrs',
 ] as const satisfies readonly Exclude<keyof OrbitNodeInput, 'text'>[];
 
 /** Every id in the tree. */
@@ -167,7 +170,7 @@ export const detachChild = (parent: OrbitNode, node: OrbitNode): void => {
 };
 
 /** Adds `input`, with its children, under `parentId` at `index` among its children (default: last). Null when there's no such parent. */
-export const addToTree = (root: OrbitNode, parentId: string, input: OrbitNewNode, index?: number): { node: OrbitNode; parent: OrbitNode } | null => {
+export const addToTree = (root: OrbitNode, parentId: string, input: OrbitNewNode, index?: number, colors?: BranchColorRules): { node: OrbitNode; parent: OrbitNode } | null => {
   const path = getNodePath(root, parentId);
 
   if (path.length === 0) {
@@ -175,8 +178,14 @@ export const addToTree = (root: OrbitNode, parentId: string, input: OrbitNewNode
   }
 
   const parent = path[path.length - 1];
+  const before = colors && branchColorsBefore(root, colors);
   const node = createNode(input, nodeIds(root));
   insertChild(parent, node, path.length - 1, index);
+
+  if (colors && before) {
+    keepBranchColors(root, before, colors, { node, keepsColor: false });
+  }
+
   return { node, parent };
 };
 
@@ -185,7 +194,7 @@ export const addToTree = (root: OrbitNode, parentId: string, input: OrbitNewNode
  * node a new id when its id came from its text and no link points at it,
  * so the saved map needs no id attribute. Null when there's no such node.
  */
-export const updateInTree = (root: OrbitNode, id: string, changes: OrbitNodeInput): { node: OrbitNode; previousId: string } | null => {
+export const updateInTree = (root: OrbitNode, id: string, changes: OrbitNodeInput, colors?: BranchColorRules): { node: OrbitNode; previousId: string } | null => {
   const node = findNodeById(root, id);
 
   if (!node) {
@@ -195,6 +204,7 @@ export const updateInTree = (root: OrbitNode, id: string, changes: OrbitNodeInpu
   const previousId = node.id;
   const previousText = node.text;
   const idFollowsText = typeof changes.text === 'string' && hasTextId(node) && !isLinkedTo(root, node);
+  const before = colors && branchColorsBefore(root, colors);
   assignAttributes(node, changes);
 
   if (idFollowsText && node.text !== previousText) {
@@ -203,11 +213,15 @@ export const updateInTree = (root: OrbitNode, id: string, changes: OrbitNodeInpu
     node.id = uniqueId(nodeSlug(node.text), taken);
   }
 
+  if (colors && before) {
+    keepBranchColors(root, before, colors, { node, keepsColor: false });
+  }
+
   return { node, previousId };
 };
 
 /** Takes `id` and everything under it out of the tree. Null when there's no such node, or for the root. */
-export const removeFromTree = (root: OrbitNode, id: string): { node: OrbitNode; parent: OrbitNode } | null => {
+export const removeFromTree = (root: OrbitNode, id: string, colors?: BranchColorRules): { node: OrbitNode; parent: OrbitNode } | null => {
   const path = getNodePath(root, id);
 
   if (path.length < 2) {
@@ -216,7 +230,13 @@ export const removeFromTree = (root: OrbitNode, id: string): { node: OrbitNode; 
 
   const node = path[path.length - 1];
   const parent = path[path.length - 2];
+  const before = colors && branchColorsBefore(root, colors);
   detachChild(parent, node);
+
+  if (colors && before) {
+    keepBranchColors(root, before, colors);
+  }
+
   return { node, parent };
 };
 
@@ -225,7 +245,7 @@ export const removeFromTree = (root: OrbitNode, id: string): { node: OrbitNode; 
  * its children (default: last). Null when either node is missing, the node
  * is the root, or `parentId` is inside it.
  */
-export const moveInTree = (root: OrbitNode, id: string, parentId: string, index?: number): { node: OrbitNode; from: OrbitNode; to: OrbitNode } | null => {
+export const moveInTree = (root: OrbitNode, id: string, parentId: string, index?: number, colors?: BranchColorRules): { node: OrbitNode; from: OrbitNode; to: OrbitNode } | null => {
   const path = getNodePath(root, id);
   const parentPath = getNodePath(root, parentId);
   const node = path[path.length - 1];
@@ -236,7 +256,13 @@ export const moveInTree = (root: OrbitNode, id: string, parentId: string, index?
 
   const from = path[path.length - 2];
   const to = parentPath[parentPath.length - 1];
+  const before = colors && branchColorsBefore(root, colors);
   detachChild(from, node);
   insertChild(to, node, parentPath.length - 1, index);
+
+  if (colors && before) {
+    keepBranchColors(root, before, colors, { node, keepsColor: true });
+  }
+
   return { node, from, to };
 };

@@ -3,13 +3,14 @@
  * from the page's JSON, with its pictures swapped for the ones inside the
  * page, and presents it on request: one idea at a time, in reading order,
  * with its note as a caption, stepped with keys, buttons or swipes, full
- * screen where the browser allows.
+ * screen where the browser allows. Printed, it's the map laid out for paper.
  */
 
 import { createOrbitMap } from '../create.js';
 import { parseOrbit } from '../dispatch.js';
 import { OrbitWords } from '../languages.js';
 import { findLinkedNode } from '../node-links.js';
+import { renderPrintLayout } from '../print-layout.js';
 import { renderNoteMarkdown } from '../ui/note-markdown.js';
 import type { OrbitSVGRenderer } from '../svg-renderer.js';
 import type { OrbitDocument, OrbitNode } from '../types.js';
@@ -23,6 +24,8 @@ const CONTROLS_LINGER = 2500;
 const CAPTION_GAP = 12;
 /** Room the Present button takes under the map while exploring, in px. */
 const EXPLORING_INSETS = { bottom: 68 };
+/** The longest the print layout waits for the page to be idle, in ms. */
+const PRINT_LAYOUT_DELAY = 2000;
 
 const FORWARD = ['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter'];
 const BACK = ['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'];
@@ -49,6 +52,7 @@ export const startWebPage = (page: Document = document): OrbitSVGRenderer | null
     insets: EXPLORING_INSETS,
   });
 
+  layOutForPrint(page, element('page-print'), map, data);
   const body = element('page')!;
   const caption = element('page-caption')!;
   const title = element('page-title')!;
@@ -203,6 +207,38 @@ export const startWebPage = (page: Document = document): OrbitSVGRenderer | null
   });
 
   return renderer;
+};
+
+/**
+ * Lays the map out for paper in `container` before the page prints, or once
+ * the page is idle, so a browser printing without asking it first (a
+ * headless one making a PDF) finds it ready too.
+ */
+const layOutForPrint = (page: Document, container: HTMLElement | null, map: OrbitDocument, data: WebPageData): void => {
+  const view = page.defaultView;
+
+  if (!container || !view) {
+    return;
+  }
+
+  let laidOut = false;
+
+  const layOut = () => {
+    if (laidOut) {
+      return;
+    }
+
+    laidOut = true;
+    renderPrintLayout(container, map, { theme: data.theme, viewMode: data.viewMode, focus: data.focus, language: data.language, strings: data.strings });
+  };
+
+  view.addEventListener('beforeprint', layOut);
+
+  if (typeof view.requestIdleCallback === 'function') {
+    view.requestIdleCallback(layOut, { timeout: PRINT_LAYOUT_DELAY });
+  } else {
+    view.setTimeout(layOut, PRINT_LAYOUT_DELAY);
+  }
 };
 
 /** The map with its pictures swapped for the ones inside the page, wherever the map shows them. */

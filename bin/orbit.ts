@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync } from 'node:fs';
-import { basename, dirname, extname, relative, resolve, sep } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { orbitFlavor, parseOrbit } from '../src/core/dispatch';
 import { OrbitParseError, type OrbitDiagnostic } from '../src/core/diagnostics';
@@ -11,7 +11,11 @@ import { isOrbitThemePreset, themeNames } from '../src/core/themes';
 import { THEME_SYNONYMS } from '../src/core/document-options';
 import { didYouMean } from '../src/core/suggest';
 import { OrbitWords } from '../src/core/languages';
-import type { OrbitNode, OrbitThemePreset, ParsedOrbitDocument } from '../src/core/types';
+import type { OrbitDocument, OrbitNode, OrbitThemePreset, ParsedOrbitDocument } from '../src/core/types';
+import { detectImportFormat, importMap } from '../src/core/other-apps/import';
+import { OrbitImportError } from '../src/core/other-apps/ideas';
+import { exportOPML } from '../src/core/other-apps/opml';
+import type { OrbitImport } from '../src/core/other-apps/reading';
 import { parseOrbitYAML } from '../src/core/parser-yaml';
 import { EXAMPLE_MAP } from './example';
 
@@ -23,7 +27,10 @@ Usage:
   orbit render [options] <file|->              Render a map to a standalone SVG
   orbit export --html [options] <file|->       One web page with Orbit, the map and its pictures inside,
                                                to explore it or present it in any browser, offline
-  orbit convert --to <md|yaml> <file|->        Convert between the markdown and YAML flavors
+  orbit convert --to <md|yaml|opml> [--out <file>] <file|->
+                                               Convert between the markdown and YAML flavors and OPML, and
+                                               bring in maps from other apps: OPML, FreeMind and Freeplane
+                                               (.mm) and XMind (.xmind)
   orbit example [--yaml]                       Print a map with the main features, to copy
   orbit help                                   Show this message (so does --help after any command)
   orbit --version                              Print the version of Orbit
@@ -56,6 +63,11 @@ Export options:
   --theme, --view, --focus, --language
                         As for render; the page follows the reader's light or dark mode
                         with --theme auto, and speaks the language's words
+
+Convert options:
+  --to <md|yaml|opml>   The flavor or format to write
+  --out <file>          Write to a file instead of stdout. An XMind workbook's pictures go
+                        in media/ next to it, and its other sheets in <file>-2, -3 and on
 
 Use "-" as the file to read from stdin. Output goes to stdout; problems go
 to stderr as file:line: severity: message [code].
@@ -113,31 +125,7 @@ export const runCli = (argv: string[]): number => {
 
   try {
     if (command === 'convert') {
-      let to = '';
-      let file = '';
-
-      for (let i = 0; i < rest.length; i++) {
-        if (rest[i] === '--to' || rest[i] === '-t') {
-          to = rest[++i] ?? '';
-        }
-        else if (rest[i].startsWith('-') && rest[i] !== '-') {
-          process.stderr.write(`orbit convert: unknown option ${rest[i]}\n${USAGE}`);
-          return 2;
-        }
-        else {
-          file = rest[i];
-        }
-      }
-
-      if (!file || !/^(md|markdown|yaml|yml)$/.test(to)) {
-        process.stderr.write(`orbit convert: expected --to <md|yaml> <file|->\n${USAGE}`);
-        return 2;
-      }
-
-      const doc = parseFile(file, readInput(file));
-      printDiagnostics(file, doc.diagnostics ?? []);
-      process.stdout.write(/^(md|markdown)$/.test(to) ? serializeOrbitMarkdown(doc, { keepSource: false }) : serializeOrbitYAML(doc));
-      return 0;
+      return convertCommand(rest.map((argument) => (argument === '-t' ? '--to' : argument)));
     }
 
     if (command === 'example') {
@@ -233,6 +221,137 @@ const checkFocus = (command: string, values: Record<string, string>, doc: Parsed
   }
 
   return null;
+};
+
+/** A map in the flavor or format `--to` names: md, yaml or opml. */
+const writeAs = (to: string, doc: OrbitDocument): string => {
+  if (to === 'opml') {
+    return exportOPML(doc);
+  }
+
+  return /^(md|markdown)$/.test(to) ? serializeOrbitMarkdown(doc, { keepSource: false }) : serializeOrbitYAML(doc);
+};
+
+const convertCommand = (argumentsList: string[]): number => {
+  const values: Record<string, string> = {};
+  let file = '';
+
+  for (let index = 0; index < argumentsList.length; index++) {
+    const argument = argumentsList[index];
+
+    if (argument === '--to' || argument === '--out') {
+      values[argument.slice(2)] = argumentsList[++index] ?? '';
+    } else if (argument.startsWith('-') && argument !== '-') {
+      process.stderr.write(`orbit convert: unknown option ${argument}\n${USAGE}`);
+      return 2;
+    } else {
+      file = argument;
+    }
+  }
+
+  const to = values.to ?? '';
+
+  if (!file || !/^(md|markdown|yaml|yml|opml)$/.test(to)) {
+    process.stderr.write(`orbit convert: expected --to <md|yaml|opml> <file|->\n${USAGE}`);
+    return 2;
+  }
+
+  const bytes = new Uint8Array(readFileSync(file === '-' ? 0 : file));
+  const format = detectImportFormat(bytes, file === '-' ? undefined : basename(file));
+  const name = file === '-' ? '<stdin>' : file;
+
+  if (format === null) {
+    const doc = parseFile(file, new TextDecoder().decode(bytes));
+    printDiagnostics(file, doc.diagnostics ?? []);
+    writeOutput(values.out, writeAs(to, doc));
+    return 0;
+  }
+
+  let imported: OrbitImport;
+
+  try {
+    imported = importMap(bytes, { name: file === '-' ? undefined : basename(file), format });
+  } catch (error) {
+    if (error instanceof OrbitImportError) {
+      process.stderr.write(`${name}: error: ${error.message} [${error.code}]\n`);
+      return 1;
+    }
+
+    throw error;
+  }
+
+  const { maps } = imported;
+
+  maps.forEach((map, index) => {
+    const sheet = maps.length > 1 ? ` (sheet ${index + 1}, ${map.document.root.text || 'untitled'})` : '';
+
+    for (const warning of map.warnings) {
+      process.stderr.write(`${name}${sheet}: warning: ${warning.message} [${warning.code}]\n`);
+    }
+  });
+
+  if (!values.out) {
+    const pictures = maps.reduce((count, map) => count + Object.keys(map.media).length, 0);
+
+    if (maps.length > 1) {
+      process.stderr.write(`${name}: the workbook has ${maps.length} sheets: this is the first. Write them all with --out.\n`);
+    }
+
+    if (pictures > 0) {
+      process.stderr.write(`${name}: ${pictures === 1 ? 'one picture' : `${pictures} pictures`} inside the file ${pictures === 1 ? 'was' : 'were'} left out: write the map with --out to save them in media/ next to it.\n`);
+    }
+
+    process.stdout.write(writeAs(to, maps[0].document));
+    return 0;
+  }
+
+  const folder = dirname(values.out);
+  const extension = extname(values.out);
+  const stem = values.out.slice(0, values.out.length - extension.length);
+
+  maps.forEach((map, index) => {
+    // Every sheet's pictures share the one media folder: names that clash take the sheet's number.
+    const renamed = new Map<string, string>();
+
+    for (const [path, data] of Object.entries(map.media)) {
+      let target = path;
+
+      for (let suffix = 2; existsSync(join(folder, target)) && !sameBytes(join(folder, target), data); suffix++) {
+        target = path.replace(/(\.[^.]+)$/, `-${index + 1}-${suffix}$1`);
+      }
+
+      mkdirSync(dirname(join(folder, target)), { recursive: true });
+      writeFileSync(join(folder, target), data);
+      renamed.set(path, target);
+    }
+
+    const out = index === 0 ? values.out as string : `${stem}-${index + 1}${extension}`;
+    let text = writeAs(to, map.document);
+
+    for (const [from, target] of renamed) {
+      if (from !== target) {
+        text = text.split(from).join(target);
+      }
+    }
+
+    writeFileSync(out, text);
+  });
+
+  return 0;
+};
+
+/** Whether a file holds exactly these bytes. */
+const sameBytes = (path: string, data: Uint8Array): boolean => {
+  return Buffer.from(readFileSync(path)).equals(Buffer.from(data));
+};
+
+/** Writes text to a file, or to stdout without one. */
+const writeOutput = (out: string | undefined, text: string): void => {
+  if (out) {
+    writeFileSync(out, text);
+  } else {
+    process.stdout.write(text);
+  }
 };
 
 const renderCommand = (argumentsList: string[]): number => {

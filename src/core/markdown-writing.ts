@@ -442,6 +442,10 @@ export const collectAttrs = (node: OrbitNode, explicitIds: ReadonlySet<OrbitNode
     r.color = node.color;
   }
 
+  if (node.paletteColor !== undefined) {
+    r.paletteColor = node.paletteColor;
+  }
+
   if (node.status) {
     r.status = node.status;
   }

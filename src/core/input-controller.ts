@@ -92,6 +92,15 @@ export class InputController {
   private engaged = false;
   private startPoint: Point | null = null;
   private lastPoint: Point | null = null;
+
+  /**
+   * Where the map was on the page when the pointers now down first touched
+   * it. Asking again on every move would make the browser lay out the whole
+   * map each time, thousands of elements on a big one, and a pointer can
+   * move several times a frame.
+   */
+  private gestureRectangle: DOMRect | null = null;
+
   private lastPinchDistance: number | null = null;
   private lastPinchCenter: Point | null = null;
   private suppressNextClick = false;
@@ -159,6 +168,7 @@ export class InputController {
     this.pressTaken = false;
     this.lifted = false;
     this.pointers.clear();
+    this.gestureRectangle = null;
     this.gesture = 'none';
     this.engaged = false;
     this.startPoint = null;
@@ -168,7 +178,7 @@ export class InputController {
   }
 
   private localPoint(event: { clientX?: number; clientY?: number }): Point {
-    const rectangle = this.container.getBoundingClientRect();
+    const rectangle = this.gestureRectangle ?? this.container.getBoundingClientRect();
     // Synthetic events may carry no coordinates: treat them as the middle of the map.
     const x = Number.isFinite(event.clientX) ? (event.clientX as number) - rectangle.left : rectangle.width / 2;
     const y = Number.isFinite(event.clientY) ? (event.clientY as number) - rectangle.top : rectangle.height / 2;
@@ -211,6 +221,10 @@ export class InputController {
 
     if (event.pointerType === 'mouse' && event.button !== 0) {
       return;
+    }
+
+    if (this.pointers.size === 0) {
+      this.gestureRectangle = this.container.getBoundingClientRect();
     }
 
     const point = this.localPoint(event);
@@ -411,6 +425,10 @@ export class InputController {
 
     this.cancelLongPress();
     const point = this.localPoint(event);
+
+    if (this.pointers.size === 0) {
+      this.gestureRectangle = null;
+    }
 
     if (this.gesture === 'pinch') {
       if (this.pointers.size === 1) {

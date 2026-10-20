@@ -5,7 +5,7 @@
 - Install with `npm install @restless-dreams/orbit`. The package is ESM-only. React (`@restless-dreams/orbit/react`) and marked (`@restless-dreams/orbit/marked`) are optional peers.
 - A map fills its container: always give the container a height.
 - Write maps in orbit-md, Orbit's markdown (every heading and list item is a node, text under it is its note, `<!-- orbit key: value -->` comments set attributes), or in YAML (`nodes:` with `text` and `children`).
-- Check a map with `npx @restless-dreams/orbit validate --json map.md`: every problem comes with a suggested fix, and its line where it has one. `npx @restless-dreams/orbit example` prints a map with the main features, and `orbit convert --to yaml map.md` (or `--to md`) turns one flavor into the other.
+- Check a map with `npx @restless-dreams/orbit validate --json map.md`: every problem comes with a suggested fix, and its line where it has one. `npx @restless-dreams/orbit example` prints a map with the main features, and `orbit convert --to yaml map.md` (or `--to md`) turns one flavor into the other, and `orbit convert --to md Plan.xmind --out plan.md` brings in a map from XMind, FreeMind, Freeplane or OPML.
 - Draw one with `createOrbitMap(element, markdown, options)`, the `<orbit-map>` element, `<OrbitMindMap source={markdown} />` from `@restless-dreams/orbit/react`, or `renderToSVGString(markdown, options)` without a browser.
 - Share a map as one web page, which opens in any browser, offline: `npx @restless-dreams/orbit export --html map.md --out map.html`.
 - Let people build the map on the map with `editable: true` (a + in the orbit, text typed inside nodes), and save what they make with `map.toMarkdown()` on the `edit` event.
@@ -23,6 +23,7 @@
 - [Extending](https://github.com/restless-dreams/orbit/blob/main/docs/extending.md): node types, your own actions, status words and named themes, for one map or every map
 - [Editing](https://github.com/restless-dreams/orbit/blob/main/docs/editing.md): context menus on a long press, adding, renaming, moving and removing nodes on the map, and saving the result as orbit-md
 - [Map tools for AI](https://github.com/restless-dreams/orbit/blob/main/docs/map-tools.md): tools for any model to read and change a map, on screen or on a server, for each provider's API and MCP
+- [Maps from other apps](https://github.com/restless-dreams/orbit/blob/main/docs/import-export.md): bringing in OPML, FreeMind, Freeplane and XMind maps with their notes, links and pictures, what each warning means, and writing OPML
 - [Languages](https://github.com/restless-dreams/orbit/blob/main/docs/languages.md): maps in the page's language, English and Spanish built in, adding languages and changing single words
 - [Pictures and videos](https://github.com/restless-dreams/orbit/blob/main/docs/media.md): the media viewer, its keys, YouTube and Vimeo, sound and autoplay, and opening, playing and following media from code
 - [Coding agents](https://github.com/restless-dreams/orbit/blob/main/docs/agents.md): the skill, validation as JSON, and messages for setup mistakes
@@ -46,7 +47,7 @@ Mind maps written in markdown and explored like a solar system.
 
 ![A map of a product roadmap: the orbit spins, the camera flies into a branch and out to the overview of the whole map](docs/media/tour.webp)
 
-**[Website](https://orbit.hyuchia.com)** · [Playground](https://orbit.hyuchia.com/playground) · [Guide](docs/guide.md) · [Map format](docs/format.md) · [Recipes](docs/recipes.md) · [Theming](docs/theming.md) · [Extending](docs/extending.md) · [Editing](docs/editing.md) · [Map tools for AI](docs/map-tools.md) · [Pictures and videos](docs/media.md) · [Languages](docs/languages.md) · [Accessibility](docs/accessibility.md) · [Coding agents](docs/agents.md) · [API reference](docs/api/README.md)
+**[Website](https://orbit.hyuchia.com)** · [Playground](https://orbit.hyuchia.com/playground) · [Guide](docs/guide.md) · [Map format](docs/format.md) · [Recipes](docs/recipes.md) · [Theming](docs/theming.md) · [Extending](docs/extending.md) · [Editing](docs/editing.md) · [Map tools for AI](docs/map-tools.md) · [Maps from other apps](docs/import-export.md) · [Pictures and videos](docs/media.md) · [Languages](docs/languages.md) · [Accessibility](docs/accessibility.md) · [Coding agents](docs/agents.md) · [API reference](docs/api/README.md)
 
 - Real-markdown authoring: headers and bullet lists nest the tree.
 - YAML alternative for app-generated maps.
@@ -127,6 +128,8 @@ hydrateOrbitBlocks(container);                         // turns them into live m
 
 **Without a browser,** `renderToSVGString(markdown, { width: 1200, height: 800 })` draws a standalone SVG, for static sites, emails and print.
 
+**On paper,** `renderPrintLayout(element, markdown)` lays a map out for print or PDF: the map as a picture, then every idea with its note. Maps shared as web pages print that way.
+
 [The guide](docs/guide.md) covers every option, event and method, and [Recipes](docs/recipes.md) shows Orbit in Vue, Svelte, Astro, Next.js and static sites.
 
 ## Write a map
@@ -170,8 +173,9 @@ npx @restless-dreams/orbit validate my-map.md                  # every problem a
 npx @restless-dreams/orbit validate --json my-map.md           # the same as JSON, for scripts and coding agents
 npx @restless-dreams/orbit validate --tree my-map.md           # the map as Orbit reads it, with each node's id
 npx @restless-dreams/orbit render my-map.md --out my-map.svg   # draw a map to SVG (--view all for the whole map)
-npx @restless-dreams/orbit export --html my-map.md --out my-map.html  # one web page to explore or present the map, offline
+npx @restless-dreams/orbit export --html my-map.md --out my-map.html  # one web page to explore, present or print the map, offline
 npx @restless-dreams/orbit convert --to yaml my-map.md         # markdown ↔ YAML (either direction)
+npx @restless-dreams/orbit convert --to md Plan.xmind --out plan.md  # a map from XMind, FreeMind, Freeplane or OPML (--to opml writes OPML)
 npx @restless-dreams/orbit example > my-map.md                 # a map with the main features (--yaml for YAML)
 ```
 
@@ -604,6 +608,29 @@ const html = exportWebPage(markdown, { script, theme: 'night', media: { 'photos/
 
 Options: `title`, `theme`, `viewMode`, `focus`, `language`, `strings` and `media`, the pictures to put inside the page by the address the map gives them.
 
+## Printing and PDF
+
+A map's web page prints laid out for paper, so the browser's Print, or Save as PDF, gives a document to email, hand in or print: the title, the map as a picture the width of the page, then every idea in reading order with its status, tags, priority, link (its address printed, and still a link in a PDF), note, picture and video. An idea never breaks across pages, a heading stays with what follows it, and the map prints on a light theme ([Printing](theming.md#printing)).
+
+`renderPrintLayout` lays a map out that way in any page. It fills an element, which you show only in print:
+
+```ts
+import { renderPrintLayout } from '@restless-dreams/orbit';
+
+renderPrintLayout(document.querySelector('#print'), markdown, { viewMode: 'all', language: 'es' });
+```
+
+```css
+#print { display: none; }
+
+@media print {
+  #app { display: none; }
+  #print { display: block; }
+}
+```
+
+Options: `title`, `picture` (`false` leaves the map's picture out), `viewMode` and `focus` (what the picture shows), `theme`, `palette`, `language`, `strings`, `baseUrl`, `nodeTypes`, `statuses`, `nodeTypeFor` (a node type's `label`, `icon` and `details` print with its nodes) and `idPrefix`. A headless browser makes the PDF without anyone printing: `chromium --headless --no-pdf-header-footer --print-to-pdf=map.pdf map.html`, or Playwright's `page.pdf()`.
+
 ## Map tools for AI
 
 `createMapTools` gives a language model tools to read a map and change it: read it as an outline with each node's id, search it, add branches written as markdown, rename, mark, move, sort and remove nodes. `tools.for('anthropic')`, `'openai'`, `'openai-chat'` or `'gemini'` lists them in the shape that provider's API takes, `tools.definitions` as MCP lists tools, and `tools.run(name, input)` carries out each call. On a map on screen, each change animates and fires `edit`; on a document, it changes the document in place. A call a model gets wrong changes nothing, and its result says what to send instead. [Map tools for AI](map-tools.md) has the loop for each provider.
@@ -657,11 +684,12 @@ npx @restless-dreams/orbit validate --json my-map.md           # the same as JSO
 npx @restless-dreams/orbit validate --tree my-map.md           # the map as Orbit reads it, a node a line with its #id
 npx @restless-dreams/orbit render my-map.md --out my-map.svg   # draw a map to SVG (--theme, --view, --focus, --width, --height, --language)
 npx @restless-dreams/orbit convert --to yaml my-map.md         # markdown ↔ YAML (either direction)
+npx @restless-dreams/orbit convert --to md Plan.xmind --out plan.md  # a map from XMind, FreeMind, Freeplane or OPML; --to opml writes OPML
 npx @restless-dreams/orbit example > my-map.md                 # a map with the main features (--yaml for YAML)
 npx @restless-dreams/orbit --version                           # the installed version
 ```
 
-Use `-` as the file to read from stdin, and `--help` after any command for its options. `validate` exits with 1 while the map has a problem (`--loose` accepts the ones the map works around, but never a map it can't read); every command exits with 2 for a mistake in the command itself. `render` links pictures on your computer from where the SVG goes, so it can move with them. The command itself is `orbit`: where the package is installed, scripts can call `orbit validate my-map.md` directly.
+Use `-` as the file to read from stdin, and `--help` after any command for its options. `validate` exits with 1 while the map has a problem (`--loose` accepts the ones the map works around, but never a map it can't read); every command exits with 2 for a mistake in the command itself. `render` links pictures on your computer from where the SVG goes, so it can move with them. `convert` reads other apps' maps as [Maps from other apps](import-export.md) says, and writes `--out`'s pictures next to the map. The command itself is `orbit`: where the package is installed, scripts can call `orbit validate my-map.md` directly.
 
 ## Languages
 
@@ -890,6 +918,7 @@ tags: [frontend, sprint-3]
 | Key | Value | Example | Effect |
 | --- | --- | --- | --- |
 | `color` | any CSS color | `"#F5A3A8"`, `tomato` | The node's color, instead of its branch's. Its children take shades of it. |
+| `paletteColor` | number | `3` | Which of the palette's colors the node takes when it has no `color`: `1` is the first after the root's, cycling. Its children take shades of it. Editing on the map writes it to keep an idea's color (see [Colors](#colors)). |
 | `icon` | emoji or short symbol | `🚀`, `"★"` | Shown before the text. Same as an emoji at the start of the title. |
 | `status` | text | `active`, `done`, `blocked` | Shown in the detail sheet; some words get a colored dot (see [Statuses](#statuses)). |
 | `priority` | number | `1` | Shown in the detail sheet. |
@@ -920,6 +949,18 @@ Any other key is kept as a **custom attribute** in `node.attrs`, for your own co
 | todo (gray) | `todo`, `to do`, `planned`, `backlog`, `next`, `open` |
 
 Other words get a neutral dot. Checkboxes set `todo` (`[ ]`), `done` (`[x]`) and `active` (`[/]`).
+
+### Colors
+
+The root takes the palette's first color: the theme's, or the frontmatter's `palette`. The top-level nodes take the others in turn, cycling, and deeper nodes take shades of their branch's color, so siblings stay apart. A node's own `color` wins, then its type's.
+
+`paletteColor` gives a node one of the palette's colors by number, so it still changes with the theme. The top-level nodes without one take turns with the colors no top-level node has by number: give two nodes the same number for them to share a color.
+
+Edits keep the colors of the nodes around them, on screen and through the map tools: adding, moving or removing a top-level node writes `paletteColor` where a color would change otherwise, as few times as it can.
+
+- A moved node keeps its color, and a new one takes a color no other top-level node has, while there is one.
+- A node moved under another one drops its `paletteColor` and takes its new branch's shade.
+- Where the top level has more nodes than the palette has colors, colors repeat, and an edit that would write more numbers than there are colors writes none.
 
 ## Document options
 
@@ -996,6 +1037,21 @@ A document says which version of the format it's written for with `schemaVersion
 - **Older documents are upgraded as they're read.** When the format changes, Orbit brings documents written for the version before up to date as it reads them (a `format-upgraded` note says so), and the next save writes them as the new version, changing only what the upgrade changed.
 - **Newer documents are read as well as they can be,** and reported with `unsupported-schema-version`, an error: apps should open them without letting them be edited. Nothing in them is lost by saving, but what this version doesn't know of them isn't understood either.
 - **Node types have versions of their own,** for the fields their nodes keep in attributes: `type: task@2` says a node was written for version 2 of `task`, and none means 1. A type that changes its fields says so with `version` and brings older nodes up to date with `upgrade` (see [Extending Orbit](extending.md#versions)); a node written for a newer version of its type is left as it is.
+
+### Changing the format
+
+Maps outlive the version of Orbit that wrote them. Older and newer versions read them, and so do apps that bundle a copy of their own. So each change to the format is one of three kinds:
+
+- **Something older versions can do without:** a new attribute (like `paletteColor`) or a new document option. An older version keeps the attribute as a custom one, and the option as an unknown frontmatter key, which it reports. It writes both back unchanged and draws the map as it did before. No new version of the format is needed.
+- **Something an older version would misread:**
+  - a new kind of value for an attribute it already reads: Orbit 0.1.0 takes `color: 3` for a color and draws it wrong, without a word;
+  - new syntax in titles or notes: it shows `==First==` as text;
+  - an attribute renamed, removed, or given a new meaning.
+
+  These raise `schemaVersion`, with a step in `FORMAT_UPGRADES` (`src/core/format-upgrades.ts`) that brings documents written for the version before up to date. Older versions then report `unsupported-schema-version`, and apps open those maps read-only.
+- **A change to a node type's own fields:** the type gets a new `version` and an `upgrade` (see [Extending Orbit](extending.md#versions)), not a new version of the format.
+
+`tests/fixtures/releases/` holds maps as each released version wrote them. Every version must read each one without errors, write it back exactly, and understand it the same way, after its upgrades.
 
 ## Node ids
 
@@ -1266,6 +1322,15 @@ npx @restless-dreams/orbit render roadmap.md --view all --out overview.svg
 
 The SVG has its colors resolved and its labels as text, so it opens the same in browsers, design tools and image converters. Give each SVG inlined in one page its own `idPrefix`.
 
+For a PDF, export the map as a web page and print it, or have a headless browser do it. The page prints laid out for paper, with the map's picture, then every idea and its note:
+
+```bash
+npx @restless-dreams/orbit export --html roadmap.md --out roadmap.html
+chromium --headless --no-pdf-header-footer --print-to-pdf=roadmap.pdf roadmap.html
+```
+
+On your own pages, `renderPrintLayout` lays a map out the same way (see [Printing and PDF](guide.md#printing-and-pdf)).
+
 ---
 
 <!-- docs/theming.md -->
@@ -1452,6 +1517,21 @@ Each top-level branch takes the next palette color, and everything under it uses
 ## Exports
 
 `renderToSVGString(markdown, { theme })` and `orbit render --theme` resolve every property to a plain color, so exported files look the same anywhere. In the browser, `renderer.toSVGString()` also picks up the custom properties your page sets. Background patterns are CSS, so exports keep the `--orbit-surface` color without them.
+
+## Printing
+
+Paper is light, so a map prints in its own theme when that's light, and in its light counterpart when it's dark. Nothing prints a background. `printTheme(theme)` gives the theme a map prints in, and `PRINT_THEMES` lists the pairs:
+
+| Theme | Prints as |
+| --- | --- |
+| `night`, `cosmos`, `auto` | `paper` |
+| `glass-night` | `glass` |
+| `blueprint` | `ink` |
+| `flat-night` | `flat` |
+| `material-night` | `material` |
+| `liquid-night` | `liquid` |
+
+A theme of your own that starts from a dark one prints as that one's counterpart, keeping only its colors (`color-root` to `color-7`). The print layout takes its text, link and chip colors from the theme it prints in; set `--orbit-print-text`, `--orbit-print-muted-text`, `--orbit-print-link-text`, `--orbit-print-chip-background`, `--orbit-print-chip-text`, `--orbit-print-border`, `--orbit-print-font` or `--orbit-print-display-font` to use your own.
 
 ---
 
@@ -1821,10 +1901,11 @@ To let a language model make these changes, see [Map tools for AI](map-tools.md)
 
 `editNode` and `editNewNode` return false, and the others `null`, when there's nothing to do: an id that isn't in the map, removing or moving the root, or moving a node inside itself. They work on any interactive map. `editable` adds the ways people edit by themselves: the +, editing on a long press, a right click, the context menu key or F2, and dragging.
 
-Besides `text`, `addNode` and `updateNode` take the node's attributes: `icon`, `color`, `status`, `priority`, `tags`, `collapsed`, `type`, `link`, `note`, `noteFormat`, `image`, `video`, `embed`, and `attrs` for your own.
+Besides `text`, `addNode` and `updateNode` take the node's attributes: `icon`, `color`, `paletteColor`, `status`, `priority`, `tags`, `collapsed`, `type`, `link`, `note`, `noteFormat`, `image`, `video`, `embed`, and `attrs` for your own.
 
 - **Ids come from the text,** as when a map is read from markdown: "Night markets" is `night-markets`, and a second "Ideas" is `ideas-2`. New text gives a node a new id, so the saved file needs no `id` attribute. A node keeps its id when a `#id` link points at it, or when the id was set by hand. Read a node's current id from what the method returns.
 - **Titles are one line:** line breaks become spaces, typed or pasted.
+- **Colors stay with their ideas.** Adding, moving or removing a top-level node leaves every other node's color as it was: the nodes whose turn in the palette would change get a `paletteColor` that keeps theirs, and a new node takes a color no other top-level node has (see [Colors](format.md#colors)).
 - **The reader keeps their place.** When the node in focus, or a node above it, is removed, the nearest node left takes the focus and `focus-change` fires. A node in focus that gets a new id stays in focus.
 - **Edits change the tree in place:** `getDocument().root`, which is the tree you passed to `render()` if you passed one.
 
@@ -2256,6 +2337,124 @@ With reduced motion (`prefers-reduced-motion: reduce`), zooms and steps happen a
 
 ---
 
+<!-- docs/import-export.md -->
+
+# Maps from other apps
+
+Orbit reads the maps people already have in other apps: OPML, which outliners and most mind map apps write, FreeMind and Freeplane's `.mm` files, and XMind's `.xmind` workbooks. They become ordinary Orbit maps, with their notes, links, folded branches and pictures. Orbit writes OPML too, so a map moves out as easily as it came in.
+
+## Bring a map in
+
+`importMap` reads a file's bytes (OPML and `.mm` files work as text too) and tells the format from what the file holds, then from its name:
+
+```ts
+import { importMap, serializeOrbitMarkdown } from '@restless-dreams/orbit';
+
+const bytes = new Uint8Array(await file.arrayBuffer());
+const { format, maps } = importMap(bytes, { name: file.name });
+
+for (const map of maps) {
+  const markdown = serializeOrbitMarkdown(map.document);
+
+  for (const [path, data] of Object.entries(map.media)) {
+    // Save each picture at this path next to the map: `media/sunrise.png`.
+  }
+
+  for (const warning of map.warnings) {
+    console.warn(`${warning.message} [${warning.code}]`);
+  }
+}
+```
+
+- `maps` holds one map, or one for each sheet of an XMind workbook.
+- Each map's `document` is what `parseOrbit` would give for the markdown `serializeOrbitMarkdown` writes for it, ids included: draw it, edit it or save it as you would any map.
+- `media` holds the pictures inside the file, by the address the map gives them. Only XMind workbooks carry pictures; the others point at files on the computer they were made on, which can't come along.
+- `warnings` say what the other app had that Orbit keeps another way, or couldn't keep (see [Warnings](#warnings)).
+- Options: `name`, the file's name, which also names a map with several top ideas and no title; `format`, to skip telling the format (`opml`, `freemind` or `xmind`); and `untitled`, the name for a map with several top ideas and nothing to name it after (default "Untitled map").
+
+`detectImportFormat(bytes, name)` tells the format without reading the map: `opml`, `freemind`, `xmind`, or `null` for anything else, Orbit's own markdown, YAML and zips included. `importOPML`, `importFreeMind` and `importXMind` read one format each and take the same options.
+
+A file Orbit can't read at all throws an `OrbitImportError`, whose `code` says why:
+
+| Code | Why |
+| --- | --- |
+| `unknown-format` | It's none of the formats Orbit reads. |
+| `unreadable` | It's damaged, or not what its name says: the message says where. |
+| `empty` | It holds no ideas. |
+| `password-protected` | An XMind workbook with a password. Open it in XMind and save it without one first. |
+| `too-large` | More than 100,000 ideas, or more than 500 levels deep. |
+
+## From the command line
+
+```bash
+npx @restless-dreams/orbit convert --to md Garden.xmind --out garden.md   # every sheet, its pictures in media/
+npx @restless-dreams/orbit convert --to md outline.opml > outline.md
+npx @restless-dreams/orbit convert --to opml my-map.md --out my-map.opml
+```
+
+Warnings go to stderr. With `--out`, a workbook's other sheets go next to the first (`garden-2.md`, `garden-3.md`) and its pictures in `media/` beside them; without it, Orbit writes the first sheet and says what it left out.
+
+## What comes over
+
+Everything a reader would miss comes over, as Orbit says it. Titles keep every word on one line, and an emoji at the start of a title becomes its icon, as in Orbit's own markdown. Notes in HTML become markdown: paragraphs, headings, lists, quotes, code, bold, italics, strikethrough, links and pictures. When markdown would show a note's words any other way (a `*` or `_` in it, or a line that starts like a list), the note stays plain text instead, exactly as written, without its formatting.
+
+| | OPML | FreeMind and Freeplane | XMind |
+| --- | --- | --- | --- |
+| Note | `_note` (also `note`, and a feed's `description`) | the note and Freeplane's details, in HTML or plain text, and attributes as a list | the note, in HTML or plain text; XMind 8's comments, with their authors |
+| Link | `type="link"`'s or an include's `url`, a feed's `htmlUrl` or `xmlUrl` | `LINK` | the topic's link |
+| Links between ideas | `#id` | links to other nodes, and arrow links | links to other topics, and relationships |
+| Status | `_status` (`checked`, `unchecked`, `indeterminate`), `_complete`, `complete` | Freeplane's progress icons and checkboxes | task markers |
+| Priority | | priority icons (`full-1` to `full-9`) | priority markers |
+| Icon | an emoji at the start of the text | built-in icons, as emoji, and Freeplane's emoji | markers and stickers, as emoji |
+| Tags | `category` | | labels |
+| Color | | the background color | the fill color a topic was given |
+| Folded | | `FOLDED` | folded branches |
+| Picture | | a picture on the web | pictures inside the workbook, and on the web |
+
+An idea with a link of its own keeps it, and a second link, or a link between ideas with a label, becomes a line of its note: `→ [builds on](#chapter-2)`.
+
+## Warnings
+
+What has no place in a tree of ideas keeps its content where it can, and each kind gets one warning that counts the places and names a few:
+
+| Code | What changed |
+| --- | --- |
+| `floating-ideas-moved` | XMind's floating topics are ideas under the center. |
+| `summaries-moved` | XMind's summaries are ideas beside the ideas they sum up. |
+| `callouts-moved` | XMind's callouts are ideas under the topic they point at. |
+| `boundaries-in-notes` | A titled boundary's title is in the note of the idea whose ideas it surrounds. |
+| `links-in-notes` | A link beyond an idea's first, or a labeled link between ideas, is a line of its note. |
+| `missing-link-targets` | A link to an idea that isn't in the map (another sheet's, or one deleted) was left out. |
+| `icons-not-kept` | An icon with no emoji like it, or one past an idea's first, was left out. |
+| `pictures-not-kept` | A picture that isn't in the file was left out. |
+| `attachments-not-kept` | A file attached to an idea was left out; the idea keeps its name. |
+| `local-links-not-kept` | A link to a file on the computer the map was made on was left out. |
+| `encrypted-branches-not-read` | A branch FreeMind or Freeplane encrypted with a password couldn't be read; its ideas were left out. |
+| `formatting-not-kept` | A note is plain text, without its formatting, because markdown would have shown its words differently. |
+
+Styles (fonts, shapes, line colors) and positions are left out without a warning: Orbit draws every map its own way.
+
+## Write OPML
+
+`exportOPML` writes a map, as markdown or YAML text or a document, as OPML 2.0:
+
+```ts
+import { exportOPML } from '@restless-dreams/orbit';
+
+const opml = exportOPML(markdown, { title: 'Launch plan' });
+```
+
+- The root is the one top outline, and each node an outline with its icon and text in `text`.
+- A note goes in `_note`, as its markdown or plain text.
+- A link is `type="link"` with its `url`, a link between ideas included (`#research`).
+- A status is `_status`: `checked`, `unchecked` and `indeterminate` for `done`, `todo` and `active`, which outliners show as checkboxes; any other word as it is. Done statuses add `_complete="true"`, which Workflowy reads.
+- Tags are `category`, separated by commas.
+- `title` names the outline in its head. Default: the map's `title`, or its root's text.
+
+Two attributes only Orbit reads say what the text alone can't: `_noteFormat` when a note would read the other way (a markdown note with a line break, which OPML readers show as two lines, or a plain one that looks like markdown), and `_textFormat="plain"` when a title looks like HTML. With them, a map Orbit writes reads back the same: its text, icons, notes, statuses, links, tags and tree. Pictures, videos, colors, priorities and folds have no place in OPML; the map's own file, or a zip of it and its pictures, keeps them.
+
+---
+
 <!-- docs/languages.md -->
 
 # Languages
@@ -2395,6 +2594,7 @@ A map that's just a list, or has several top headings, and has no title gets a r
 | `readNote` | Read note | Leer nota |
 | `openLink` | Open link | Abrir enlace |
 | `goTo` | Go to {name} | Ir a {name} |
+| `seeIdea` | See {name} | Ver {name} |
 | `details` | Details | Detalles |
 | `close` | Close | Cerrar |
 | `previous` | Previous | Anterior |
