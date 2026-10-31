@@ -48,6 +48,63 @@ describe('insets', () => {
       clock.restore();
     }
   });
+
+  test('controls that change again while the view glides leave it fitted to the last of them', () => {
+    const clock = manualClock();
+
+    try {
+      const { renderer } = mount(ROADMAP, { transitionDuration: 400 });
+      clock.advance(1000);
+      renderer.setOptions({ insets: { bottom: 120 } });
+      clock.advance(50);
+      renderer.setOptions({ insets: { bottom: 200 } });
+      clock.advance(1000);
+      // The sun sits in the middle of the 800 px above the controls.
+      expect(sunOnScreen(renderer).y).toBeCloseTo(400, 0);
+    } finally {
+      clock.restore();
+    }
+  });
+
+  test('insets that ask to glide move a fitted view with the camera, for that call alone', () => {
+    const clock = manualClock();
+
+    try {
+      const { renderer } = mount(ROADMAP, { transitionDuration: 400 });
+      clock.advance(1000);
+      renderer.setOptions({ insets: { bottom: 120 }, insetsTransition: 'glide' });
+      // It starts where it was, and is on its way a moment later…
+      clock.advance(16);
+      expect(sunOnScreen(renderer).y).toBeGreaterThan(495);
+      clock.advance(100);
+      expect(sunOnScreen(renderer).y).toBeLessThan(495);
+      expect(sunOnScreen(renderer).y).toBeGreaterThan(445);
+      // …and lands where the controls leave room.
+      clock.advance(1000);
+      expect(sunOnScreen(renderer).y).toBeCloseTo(440, 0);
+      // The renderer doesn't keep the ask: the next change goes as changes always have.
+      expect((renderer as unknown as { options: { insetsTransition?: string } }).options.insetsTransition).toBeUndefined();
+    } finally {
+      clock.restore();
+    }
+  });
+
+  test('a view zoomed away from its fit stays where it is when the controls change', () => {
+    const clock = manualClock();
+
+    try {
+      const { renderer } = mount(ROADMAP, { transitionDuration: 400 });
+      clock.advance(1000);
+      renderer.zoomBy(1.5);
+      clock.advance(1000);
+      const zoomed = sunOnScreen(renderer);
+      renderer.setOptions({ insets: { bottom: 120 } });
+      clock.advance(1000);
+      expect(sunOnScreen(renderer).y).toBeCloseTo(zoomed.y, 0);
+    } finally {
+      clock.restore();
+    }
+  });
 });
 
 describe("the focused node's buttons", () => {

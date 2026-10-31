@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 import * as orbit from '../src/index';
 import { documentToRendererOptions, OrbitSVGRenderer, parseOrbit, serializeOrbitMarkdown, serializeOrbitYAML } from '../src/index';
 import { useMapSize } from './helpers/renderer';
@@ -31,12 +31,81 @@ describe('what each entry exports', () => {
   });
 });
 
+describe('a map as its root node', () => {
+  it('is taken wherever a map is: the print layout, the web page, OPML and the map tools', () => {
+    const root = parseOrbit('# Trip\n## Food\n- Tacos').root;
+    const page = document.createElement('div');
+    orbit.renderPrintLayout(page, root);
+    expect(page.textContent).toContain('Tacos');
+    expect(orbit.exportWebPage(root, { script: '' })).toContain('Tacos');
+    expect(orbit.exportOPML(root)).toContain('<outline text="Tacos"');
+    const tools = orbit.createMapTools(root);
+    expect(tools.run('read_map', {}).text).toContain('Tacos');
+    tools.run('add_nodes', { parent: 'food', outline: '- Churros' });
+    expect(root.children[0].children.map((child) => child.text)).toEqual(['Tacos', 'Churros']);
+  });
+});
+
+describe('names that changed', () => {
+  it('keep working until 1.0, and each says once what to use instead', () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect(orbit.isOrbitThemePreset('night')).toBe(true);
+    expect(orbit.isOrbitThemePreset('brand')).toBe(false);
+    expect(orbit.renderOrbitMarkdownBlocks(document.createElement('div'))).toEqual([]);
+    expect(warn.mock.calls.map(([message]) => message)).toEqual([
+      '[orbit] isOrbitThemePreset() is deprecated: use isThemePreset(). It keeps working until Orbit 1.0.',
+      '[orbit] renderOrbitMarkdownBlocks() is deprecated: use hydrateOrbitBlocks(). It keeps working until Orbit 1.0.',
+    ]);
+    warn.mockRestore();
+  });
+
+  it('the options named as a document writes them answer to their old names too, and each says once what to use instead', () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { renderer, cleanup } = createRenderer({ viewMode: 'all', orbitAnimation: true, orbitSpeed: 60, mediaViewer: false });
+    renderer.render('# Trip\n## Food\n## Sights');
+    expect(renderer.getViewMode()).toBe('all');
+    renderer.setOptions({ viewMode: 'focus' });
+    expect(renderer.getViewMode()).toBe('focus');
+    // The new name wins when both are given.
+    renderer.setOptions({ view: 'all', viewMode: 'focus' });
+    expect(renderer.getViewMode()).toBe('all');
+    cleanup();
+
+    // The functions that share the option: the same drawing either way.
+    expect(orbit.renderToSVGString('# Trip\n## Food', { viewMode: 'all' })).toBe(orbit.renderToSVGString('# Trip\n## Food', { view: 'all' }));
+    expect(orbit.exportWebPage('# Trip', { script: '', viewMode: 'all' })).toContain('"view":"all"');
+
+    // A parsed document's options, by their old names, without showing among them.
+    const parsed = parseOrbit('---\nview: all\nanimation: true\nspeed: 40\n---\n# Trip');
+    expect(parsed.options.viewMode).toBe('all');
+    expect(parsed.options.orbitAnimation).toBe(true);
+    expect(parsed.options.orbitSpeed).toBe(40);
+    expect(Object.keys(parsed.options).sort()).toEqual(['animation', 'speed', 'view']);
+
+    // Options made by hand with them are written as the document writes them.
+    const made = { root: parseOrbit('# Trip').root, options: { viewMode: 'all' as const, orbitSpeed: 30 }, warnings: [] };
+    expect(serializeOrbitMarkdown(made, { keepSource: false })).toStartWith('---\nview: all\nspeed: 30\n---\n');
+    expect(documentToRendererOptions(made.options)).toEqual({ view: 'all', speed: 30 });
+
+    expect(warn.mock.calls.map(([message]) => message)).toEqual([
+      '[orbit] The option viewMode is deprecated: use view. It keeps working until Orbit 1.0.',
+      '[orbit] The option orbitAnimation is deprecated: use animation. It keeps working until Orbit 1.0.',
+      '[orbit] The option orbitSpeed is deprecated: use speed. It keeps working until Orbit 1.0.',
+      '[orbit] The option mediaViewer is deprecated: use showMediaViewer. It keeps working until Orbit 1.0.',
+      '[orbit] The document option viewMode is deprecated: use view. It keeps working until Orbit 1.0.',
+      '[orbit] The document option orbitAnimation is deprecated: use animation. It keeps working until Orbit 1.0.',
+      '[orbit] The document option orbitSpeed is deprecated: use speed. It keeps working until Orbit 1.0.',
+    ]);
+    warn.mockRestore();
+  });
+});
+
 describe('the package root', () => {
   it('exports everything the README documents', () => {
     for (const name of [
       'parseOrbit', 'parseOrbitMarkdown', 'parseOrbitYAML', 'serializeOrbitMarkdown', 'serializeOrbitYAML',
       'OrbitSVGRenderer', 'documentToRendererOptions', 'defineOrbitMapElement', 'renderOrbitElement',
-      'renderOrbitMarkdownBlocks', 'OrbitParseError', 'formatDiagnostic',
+      'hydrateOrbitBlocks', 'OrbitParseError', 'formatDiagnostic',
     ]) {
       expect(typeof (orbit as Record<string, unknown>)[name]).toBe('function');
     }
@@ -67,7 +136,7 @@ describe('rendering a whole document', () => {
   });
 
   it('lets options passed to the renderer win over the document', () => {
-    const { renderer, cleanup } = createRenderer({ viewMode: 'focus' });
+    const { renderer, cleanup } = createRenderer({ view: 'focus' });
     renderer.render(parseOrbit('---\nview: all\n---\n# Root\n## A'));
     expect(renderer.getViewMode()).toBe('focus');
     cleanup();
@@ -96,10 +165,10 @@ describe('rendering a whole document', () => {
 describe('documentToRendererOptions', () => {
   it('maps frontmatter to renderer options', () => {
     expect(documentToRendererOptions({
-      viewMode: 'all', title: 'Plan', palette: ['#111', '#222'], theme: 'glass', maxDepth: 2, baseUrl: '/assets/',
+      view: 'all', title: 'Plan', palette: ['#111', '#222'], theme: 'glass', maxDepth: 2, baseUrl: '/assets/',
       height: 480, className: 'big',
     })).toEqual({
-      viewMode: 'all', ariaLabel: 'Plan', palette: ['#111', '#222'], theme: 'glass', maxDepth: 2, baseUrl: '/assets/',
+      view: 'all', ariaLabel: 'Plan', palette: ['#111', '#222'], theme: 'glass', maxDepth: 2, baseUrl: '/assets/',
     });
   });
 

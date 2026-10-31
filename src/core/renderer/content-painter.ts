@@ -6,7 +6,7 @@
 
 import type { Display } from '../engine/display.js';
 import type { Viewport } from '../engine/camera.js';
-import type { MapExtensions } from '../extensions.js';
+import type { MapExtensions, OrbitNodeType } from '../extensions.js';
 import type { OrbitNode } from '../types.js';
 import { worldToScreen } from '../engine/camera.js';
 import { applyTypeTokens, markNode } from '../engine/views.js';
@@ -17,11 +17,25 @@ import { round } from './numbers.js';
 interface NodeContent {
   element: HTMLDivElement;
   node: OrbitNode;
+
+  /** The type that drew it: a node drawn as another type gets that one's content. */
+  type: OrbitNodeType;
+
   cleanup?: () => void;
   transform: string;
   opacity: string;
   visible: boolean;
+
+  /** Whether it carries `data-orbit-small` (see `SMALL_CONTENT_RADIUS`). */
+  small: boolean;
 }
+
+/**
+ * Under this on-screen radius (px), a node's box carries `data-orbit-small`:
+ * words drawn in it would be too small to read, and a node type can leave
+ * them out, as a ring drops its number on a moon.
+ */
+const SMALL_CONTENT_RADIUS = 18;
 
 /** What node contents need from the map around them. */
 export interface ContentHost {
@@ -67,7 +81,7 @@ export class ContentPainter {
 
       let content = this.contents.get(entry.id);
 
-      if (content && (content.node !== entry.node || this.host.changedIds().has(entry.id))) {
+      if (content && (content.node !== entry.node || content.type !== type || this.host.changedIds().has(entry.id))) {
         this.remove(entry.id);
         content = undefined;
       }
@@ -81,7 +95,7 @@ export class ContentPainter {
         this.layer.appendChild(element);
         const render = type.render;
         const cleanup = guarded(`The "${this.host.extensions().typeName(entry.node)}" node type's render()`, undefined, () => render(entry.node, element));
-        content = { element, node: entry.node, cleanup: typeof cleanup === 'function' ? cleanup : undefined, transform: '', opacity: '', visible: true };
+        content = { element, node: entry.node, type, cleanup: typeof cleanup === 'function' ? cleanup : undefined, transform: '', opacity: '', visible: true, small: false };
         this.contents.set(entry.id, content);
       }
 
@@ -96,6 +110,13 @@ export class ContentPainter {
 
       if (!visible) {
         continue;
+      }
+
+      const small = radius < SMALL_CONTENT_RADIUS;
+
+      if (small !== content.small) {
+        content.element.toggleAttribute('data-orbit-small', small);
+        content.small = small;
       }
 
       const point = worldToScreen(camera, this.host.viewport(), entry);

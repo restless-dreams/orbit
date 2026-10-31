@@ -41,9 +41,10 @@ import { addToTree, moveInTree, removeFromTree, updateInTree } from './editing.j
 import { branchPalette, type BranchColorRules } from './branch-colors.js';
 import { serializeOrbitMarkdown } from './serializer-markdown.js';
 
-import { documentToRendererOptions } from './document-options.js';
+import { currentDocumentOptions, documentToRendererOptions } from './document-options.js';
 
 import { parseOrbit } from './dispatch.js';
+import { formatDiagnostic, type OrbitDiagnostic } from './diagnostics.js';
 import { guardUrl, resolveUrl } from './url-guard.js';
 
 import { THEME_TOKENS, expandTheme, isThemeName, resolvePalette, resolveThemeTokens, themeName, themeNames, themeOverrides, type OrbitThemeToken } from './themes.js';
@@ -70,6 +71,7 @@ import { alignScene, assignNodeColors, buildFocusScene, buildOverviewScene, fitS
 import { fadeDisplay, placedFrame, sceneDisplay, transitionDisplay, type Display, type DisplayNode, type DisplaySlot, type Transition } from './engine/display.js';
 import {
   AddSlotView,
+  HiddenPlacesView,
   COUNT_HEIGHT,
   COUNT_POSITION,
   createDefinitions,
@@ -104,10 +106,10 @@ import { RingsAndLinks } from './renderer/rings-and-links.js';
 import { LabelPainter } from './renderer/label-painter.js';
 import { NodePainter } from './renderer/node-painter.js';
 import { ContentPainter } from './renderer/content-painter.js';
-import { mergeRendererOptions, resolveInsets, spinSettings, type ResolvedRendererOptions } from './renderer/options.js';
+import { currentOptions, mergeRendererOptions, resolveInsets, spinSettings, type ResolvedRendererOptions } from './renderer/options.js';
 import { SLOT_STOP, createEmptyState, fillEmptyState, isAddSlot, isApplePlatform, isFocusVisible, nodeIdFrom, reportListenerError, scrollsAround } from './renderer/dom.js';
 import { clockwiseFromTop, closeInSize, innerOrbitEdge, orderedPlanets, overlayPlacement, renameNodes, visiblePart, withArrival, type Arrival } from './renderer/scene-helpers.js';
-import { definedEntries, expectObject, isEmptyTree, isOrbitDocument, newIdeaText, sameTree, sameValues, transplantSource } from './renderer/trees.js';
+import { definedEntries, expectObject, isEmptyTree, isOrbitDocument, newIdeaText, parentIds, sameTree, sameValues, transplantSource } from './renderer/trees.js';
 
 /** Zoom (relative to the fitted view) past which zooming toward a planet or moon enters it. */
 const ENTER_ZOOM = 1.75;
@@ -135,6 +137,8 @@ const MORPH_DURATION = 380;
 const DRAG_MORPH_DURATION = 260;
 /** A node being dragged can be dropped into another this far (px) past its edge, so small moons can be hit. */
 const DROP_REACH = 12;
+/** What's dragged onto the map from elsewhere can go into any node. */
+const NOTHING_UNREACHABLE: ReadonlySet<string> = new Set();
 /**
  * A planet of the focused orbit takes a node dropped into it only nearer its
  * middle than this share of its radius (and at least `PLANET_CORE_PX`):
@@ -242,7 +246,7 @@ interface NodeDrag {
 }
 
 /** Orbit's own buttons; any other action is one of yours. */
-const CONTENT_ACTIONS = new Set<string>(['details', 'image', 'video', 'embed', 'note', 'link']);
+const CONTENT_ACTIONS = new Set<string>(['details', 'image', 'video', 'audio', 'embed', 'note', 'link']);
 
 interface CameraFlight {
   path: CameraPath;
@@ -251,6 +255,13 @@ interface CameraFlight {
   startedAt: number;
   duration: number;
 }
+
+/** Whether node `id` is in `after` where it is in `before`: under the same nodes, from the root down. */
+const inPlace = (before: OrbitNode, after: OrbitNode, id: string): boolean => {
+  const was = getNodePath(before, id);
+  const is = getNodePath(after, id);
+  return was.length > 0 && was.length === is.length && was.every((node, index) => node.id === is[index].id);
+};
 
 export class OrbitSVGRenderer {
   private static registry = new WeakMap<HTMLElement, OrbitSVGRenderer>();
@@ -353,6 +364,9 @@ export class OrbitSVGRenderer {
   /** The document's keys Orbit doesn't read, written back on save. */
   private sourceExtra: Record<string, unknown> | undefined;
 
+  /** The problems found reading the drawn document, for `getDocument()`: one for a newer format turns editing on the map off. */
+  private sourceDiagnostics: OrbitDiagnostic[] = [];
+
   private themeProperties: string[] = [];
 
   private tree: OrbitNode | null = null;
@@ -368,6 +382,9 @@ export class OrbitSVGRenderer {
 
   /** The page's controls moved while flying (see `insets`): fit the view again once it lands. */
   private refitOnArrival = false;
+
+  /** The insets the current `setOptions` call brings glide a fitted view to its new place (`insetsTransition`). */
+  private insetsGlide = false;
 
   private scene: Scene | null = null;
   private camera: Camera = { x: 0, y: 0, scale: 1 };
@@ -425,12 +442,21 @@ export class OrbitSVGRenderer {
   /** The place held in the orbit for a planet being dragged: like the +, but nothing to press. */
   private readonly heldPlaceView = new AddSlotView(true);
 
+  /** The places a hidden sun's children keep in its orbit. */
+  private readonly hiddenPlacesView = new HiddenPlacesView();
+
+  /** Nodes whose children are hidden from view (see `hideChildren`): view state only, never the map's. */
+  private readonly hiding = new Set<string>();
+
   private readonly editor: InlineEditor;
   private editing: EditSession | null = null;
   private arrival: Arrival | null = null;
 
   /** A node held up to be dragged somewhere else. */
   private nodeDrag: NodeDrag | null = null;
+
+  /** The node something dragged onto the map from elsewhere would go into, lit up as a drag's target (`setDropTarget`). */
+  private dropTargetId: string | null = null;
 
   /** The frame a dragged node was let go in: the flight that follows starts from it. */
   private dropFrom: Display | null = null;
@@ -452,6 +478,7 @@ export class OrbitSVGRenderer {
   private destroyed = false;
   private warnedFlat = false;
   private warnedTheme: string | null = null;
+  private warnedNewer = false;
 
   constructor(container: HTMLElement, options: RendererOptions = {}) {
     if (!container || typeof (container as Partial<HTMLElement>).appendChild !== 'function') {
@@ -463,18 +490,19 @@ export class OrbitSVGRenderer {
 
     OrbitSVGRenderer.unmount(container);
     this.container = container;
-    this.userOptions = { ...options };
+    this.userOptions = currentOptions({ ...options });
     this.options = this.resolveOptions();
     this.extensions = this.createExtensions();
     this.requestedLanguage = this.options.language ?? languageOf(container);
     this.requestedStrings = this.options.strings;
     this.words = new OrbitWords(this.requestedLanguage, this.requestedStrings);
-    this.viewMode = this.options.viewMode;
+    this.viewMode = this.options.view;
     const prefix = `orbit-${(++OrbitSVGRenderer.instanceCounter).toString(36)}`;
     this.ids = { clip: `${prefix}-clip`, shade: `${prefix}-shade`, speckShade: `${prefix}-speck-shade`, shadow: `${prefix}-shadow`, sunShadow: `${prefix}-sun-shadow` };
 
     this.root = document.createElement('div');
     this.root.className = 'orbit';
+    this.markLanguage();
     this.svg = svgElement('svg', { class: 'orbit__canvas' });
     this.svg.setAttribute('aria-roledescription', this.words.text('mindMapRole'));
     this.definitions = createDefinitions(this.ids);
@@ -500,12 +528,14 @@ export class OrbitSVGRenderer {
       spinResting: () => this.spinPhysics.mode === 'idle',
       driftRunning: () => this.ambientRunning,
       editedId: () => this.editedId(),
+      hidesChildren: (id) => this.hiding.has(id),
       drag: () => {
         const drag = this.nodeDrag;
         return {
           liftedId: drag?.id ?? null,
           carried: drag?.moving ? new Set(drag.bodies.map((body) => body.id)) : null,
-          targetId: drag?.moving && drag.place?.into ? drag.place.parentId : null,
+          // A node of the map being dragged shows its own target; otherwise, what's dragged onto the map from elsewhere does.
+          targetId: drag?.moving ? (drag.place?.into ? drag.place.parentId : null) : this.dropTargetId,
         };
       },
       changedIds: () => this.changedIds,
@@ -518,6 +548,8 @@ export class OrbitSVGRenderer {
         this.tabStopsChanged = true;
       },
     });
+    // Under every node, so a child shown again grows over its place as the place fades.
+    this.layers.nodes.prepend(this.hiddenPlacesView.element);
     this.layers.nodes.appendChild(this.addSlotView.element);
     this.layers.nodes.appendChild(this.heldPlaceView.element);
     this.svg.appendChild(this.world);
@@ -542,10 +574,12 @@ export class OrbitSVGRenderer {
       cameraMoving: () => this.cameraFlight !== null || this.wheelZoom !== null || this.glide.isMoving || this.dragging,
       changedIds: () => this.changedIds,
       editedId: () => this.editedId(),
+      editorBox: () => this.editor.box(),
       animationsEnabled: () => this.animationsEnabled(),
       requestPaint: () => this.clock.requestPaint(),
       nodeView: (id) => this.nodePainter.view(id),
       themeTokens: () => this.exportTokens(),
+      language: () => this.words.asked,
     });
     this.overlayLayer = document.createElement('div');
     this.overlayLayer.className = 'orbit__overlay';
@@ -562,6 +596,8 @@ export class OrbitSVGRenderer {
       onSave: (text, how) => this.saveEdit(text, how),
       onCancel: () => this.finishEditing(true),
       onTab: (text, back) => this.tabFromEditor(text, back),
+      // Names' pills keep clear of the field as it grows.
+      onResize: () => this.clock.requestPaint(),
     });
     this.overlayLayer.appendChild(this.editor.element);
     this.emptyState = createEmptyState(this.words);
@@ -574,6 +610,11 @@ export class OrbitSVGRenderer {
       onZoom: (direction) => this.zoomBy(direction === 1 ? STEP_ZOOM : 1 / STEP_ZOOM),
       onFit: () => this.fit(),
       onToggleOutline: () => this.toggleOutline(),
+      // On the idea the map is on now, or the one it came from; and once a flight lands, if that idea wasn't drawn yet.
+      returnFocus: () => {
+        this.returnFocusToMap = true;
+        this.focusNodeElement(this.activeId ?? this.focusId);
+      },
     }, this.words);
     this.outline = new AccessibleOutline((nodeId) => this.selectFromOutline(nodeId), this.words);
     this.root.append(
@@ -587,17 +628,20 @@ export class OrbitSVGRenderer {
       this.outline.element,
       this.outline.live,
     );
-    this.sheet = new DetailSheet(this.root);
+    this.sheet = new DetailSheet(this.root, () => this.focusNodeElement(this.activeId ?? this.focusId));
     this.viewer = new MediaViewer(this.root, {
-      items: () => (this.tree ? galleryItems(this.tree, this.options.maxDepth) : []),
+      items: () => (this.tree ? galleryItems(this.tree, this.options.maxDepth, this.hiding) : []),
       node: (id) => (this.tree ? findNodeById(this.tree, id) : null),
       baseUrl: () => this.options.baseUrl,
       interactive: () => this.options.interactive !== false,
+      reducedMotion: () => this.prefersReducedMotion(),
       icon: (node) => this.extensions.icon(node),
+      color: (node) => this.getNodeColor(node.id),
       onShow: (item, index, total) => this.mediaShown('media-open', item, index, total),
       onClose: (item, index, total) => this.mediaShown('media-close', item, index, total),
-      onState: (node, state) => this.mediaPlayed(node, state),
+      onState: (node, kind, state) => this.mediaPlayed(node, kind, state),
       words: () => this.words,
+      returnFocus: () => this.focusNodeElement(this.activeId ?? this.focusId),
     });
     container.appendChild(this.root);
     ensureStyles(this.root);
@@ -722,22 +766,31 @@ export class OrbitSVGRenderer {
       if (isOrbitDocument(input)) {
         // Keys Orbit doesn't read don't change the drawing, but they're the map's, to save as given.
         this.sourceExtra = input.extra;
+        this.sourceDiagnostics = [...(input.diagnostics ?? [])];
+      } else {
+        // A bare tree has none of a document's keys or problems.
+        this.sourceExtra = undefined;
+        this.sourceDiagnostics = [];
       }
 
       this.adoptTree(tree);
       return;
     }
 
+    // Another map, or another version of this one, may not have the node lit up for a drop.
+    this.dropTargetId = null;
+
     if (isOrbitDocument(input)) {
-      this.sourceOptions = { ...input.options };
+      this.sourceOptions = currentDocumentOptions({ ...input.options });
       this.sourceExtra = input.extra;
+      this.sourceDiagnostics = [...(input.diagnostics ?? [])];
       this.documentOptions = documentToRendererOptions(input.options);
       this.options = this.resolveOptions();
 
       // The document picks the initial view; later renders keep whatever
       // view the reader switched to.
       if (this.tree === null) {
-        this.viewMode = this.options.viewMode;
+        this.viewMode = this.options.view;
       }
 
       this.applyOptionEffects(null);
@@ -745,6 +798,7 @@ export class OrbitSVGRenderer {
       // A bare tree has no frontmatter: nothing of a document drawn before applies to it.
       this.sourceOptions = {};
       this.sourceExtra = undefined;
+      this.sourceDiagnostics = [];
       this.documentOptions = {};
       this.options = this.resolveOptions();
       this.applyOptionEffects(null);
@@ -753,19 +807,28 @@ export class OrbitSVGRenderer {
     this.showTree(tree);
   }
 
+  /** Changes the options given, which win over the document's frontmatter as the constructor's do, and keeps the others: to follow the page's theme or language, say. */
   setOptions(options: RendererOptions): void {
     this.nodeColors = null;
     this.taskTokens = null;
-    this.userOptions = { ...this.userOptions, ...options };
+    // How new insets take effect is this call's alone: the next change is instant unless it asks too.
+    const { insetsTransition, ...current } = currentOptions(options);
+    this.userOptions = { ...this.userOptions, ...current };
     const previous = this.options;
     this.options = this.resolveOptions();
-    this.applyOptionEffects(previous);
+    this.insetsGlide = insetsTransition === 'glide';
 
-    if (options.viewMode !== undefined && options.viewMode !== this.viewMode) {
+    try {
+      this.applyOptionEffects(previous);
+    } finally {
+      this.insetsGlide = false;
+    }
+
+    if (current.view !== undefined && current.view !== this.viewMode) {
       if (this.tree) {
-        this.navigate(options.viewMode, this.focusId, false);
+        this.navigate(current.view, this.focusId, false);
       } else {
-        this.viewMode = options.viewMode;
+        this.viewMode = current.view;
       }
     }
   }
@@ -790,13 +853,18 @@ export class OrbitSVGRenderer {
     };
   }
 
+  /** The map's `<svg>` element, inside the container. */
   getSVGElement(): SVGSVGElement {
     return this.svg;
   }
 
   /**
    * The current view as a standalone SVG document: colors resolved, labels
-   * as SVG text, nothing that depends on the page's stylesheet.
+   * as SVG text, nothing that depends on the page's stylesheet, and ids made
+   * from the drawing, so exports of different maps can share a page. It's
+   * the view as it is: ideas hidden with `hideChildren` stay hidden, and a
+   * node in focus keeps their places, as on screen. `renderToSVGString` has
+   * no view to follow, so it draws every idea.
    */
   toSVGString(): string {
     const viewport = this.viewport.width > 0 && this.viewport.height > 0 ? this.viewport : { width: 800, height: 600 };
@@ -935,15 +1003,49 @@ export class OrbitSVGRenderer {
   }
 
   /**
-   * Shows a node's picture or video in the media viewer, over the whole
-   * window, opening it if it's closed: to show a picture big, or play a
-   * video, from your own controls. A node with both shows its picture
-   * unless `kind` is `video`, and a video starts playing unless `autoplay`
-   * is `false`, from the start or `startAt` seconds in. It opens whatever
-   * `mediaViewer`, `showDetailSheet` and `interactive` say; on a map that
+   * Hides the ideas under each node `ids` names, to show later with
+   * `revealChildren`: the next card of a quiz, or the next step of a talk.
+   * In the node's own focus view its orbit keeps a faint place for each of
+   * them, in their colors, laid out where they'll land; elsewhere the node
+   * shows as if folded, with a "+N" and no moons. The outline and the media
+   * viewer's gallery leave them out, and the node tells assistive
+   * technology how many are hidden. A node in focus has its children shrink
+   * into it.
+   *
+   * Only the view changes: the map, its `toMarkdown()` and its events stay
+   * as they were, and nothing is edited, so what reads the map itself
+   * (prints, `renderToSVGString` and map tools) reads every idea. A node an
+   * edit renames keeps its ideas hidden. Returns whether any node's ideas
+   * were newly hidden; ids not in the map, and nodes with no ideas under
+   * them, are left out.
+   */
+  hideChildren(ids: string | readonly string[]): boolean {
+    return this.changeHiding(typeof ids === 'string' ? [ids] : ids, true);
+  }
+
+  /**
+   * Shows the ideas `hideChildren` hid under `ids`, or under every node
+   * when none are given: in focus, they grow out of their node to their
+   * places with Orbit's own motion, and the outline lists them again. A
+   * node in focus announces them to assistive technology. Returns whether
+   * any were shown.
+   */
+  revealChildren(ids?: string | readonly string[]): boolean {
+    const chosen = ids === undefined ? Array.from(this.hiding) : typeof ids === 'string' ? [ids] : ids;
+    return this.changeHiding(chosen, false);
+  }
+
+  /**
+   * Shows a node's picture, video or sound in the media viewer, over the
+   * whole window, opening it if it's closed: to show a picture big, or play
+   * a video or a sound, from your own controls. A node with more than one
+   * shows its picture, then its video, then its sound, unless `kind` says
+   * which, and a video or sound starts playing unless `autoplay` is
+   * `false`, from the start or `startAt` seconds in. It opens whatever
+   * `showMediaViewer`, `showDetailSheet` and `interactive` say; on a map that
    * isn't interactive, the viewer takes no input of its own and has no
    * buttons. Fires `media-open`. Returns false when the map has no such
-   * node, or the node no such picture or video.
+   * node, or the node no such picture, video or sound.
    */
   openMedia(nodeId: string, options: OrbitMediaOptions = {}): boolean {
     const node = this.tree ? findNodeById(this.tree, nodeId) : null;
@@ -952,7 +1054,8 @@ export class OrbitSVGRenderer {
       return false;
     }
 
-    const kind: MediaKind = options.kind === 'image' || options.kind === 'video' ? options.kind : showsMedia(node, 'image') ? 'image' : 'video';
+    const kinds: MediaKind[] = ['image', 'video', 'audio'];
+    const kind: MediaKind = options.kind && kinds.includes(options.kind) ? options.kind : kinds.find((each) => showsMedia(node, each)) ?? 'image';
     return this.viewer.open({ node, kind }, { autoplay: options.autoplay !== false, startAt: options.startAt });
   }
 
@@ -962,29 +1065,36 @@ export class OrbitSVGRenderer {
   }
 
   /**
-   * Plays the video in the media viewer. Returns false when it shows no
-   * video, or one on a site Orbit has no player for. Files, YouTube and
-   * Vimeo play.
+   * Plays the video or sound in the media viewer, or a live photo's motion
+   * through once, with its sound. Returns false when it shows none of them,
+   * or a video on a site Orbit has no player for. Files, YouTube and Vimeo
+   * play.
    */
   playMedia(): boolean {
     return this.viewer.play();
   }
 
-  /** Pauses the video in the media viewer. Returns false when it shows no video it can pause. */
+  /** Pauses the video or sound in the media viewer, or settles a live photo's motion back on its picture. Returns false when it shows none it can pause. */
   pauseMedia(): boolean {
     return this.viewer.pause();
   }
 
-  /** Moves the video in the media viewer to `seconds` from its start. Returns false when it shows no video it can move. */
+  /**
+   * Moves the video or sound in the media viewer to `seconds` from its
+   * start. Returns false when it shows none it can move: a live photo's
+   * motion always plays from its start.
+   */
   seekMedia(seconds: number): boolean {
     return this.viewer.seek(seconds);
   }
 
   /**
-   * Turns on the sound of the video in the media viewer: one a browser
-   * started muted, say. Browsers allow sound only once the reader has
-   * interacted with the page, so call it from a press, such as a "Tap for
-   * sound" button's. Returns false when it shows no video it can drive.
+   * Turns on the sound of the video or sound in the media viewer: a video
+   * a browser started muted, say. A live photo's motion has its sound from
+   * then on, its opening included. Browsers allow sound
+   * only once the reader has interacted with the page, so call it from a
+   * press, such as a "Tap for sound" button's. Returns false when it shows
+   * none it can drive.
    */
   unmuteMedia(): boolean {
     return this.viewer.unmute();
@@ -1033,15 +1143,21 @@ export class OrbitSVGRenderer {
   }
 
   /**
-   * The map as a document: its tree, and the options its source set in
-   * frontmatter. Edits change this tree in place.
+   * The map as a document: its tree, the options its source set in
+   * frontmatter, and the problems found reading it (`diagnostics`, empty
+   * for a bare tree). Edits change this tree in place.
    */
   getDocument(): OrbitDocument | null {
     if (!this.tree) {
       return null;
     }
 
-    const document: OrbitDocument = { root: this.tree, options: { ...this.sourceOptions }, warnings: [] };
+    const document: OrbitDocument = {
+      root: this.tree,
+      options: { ...this.sourceOptions },
+      warnings: this.sourceDiagnostics.map(formatDiagnostic),
+      diagnostics: [...this.sourceDiagnostics],
+    };
 
     if (this.sourceExtra) {
       document.extra = { ...this.sourceExtra };
@@ -1066,7 +1182,8 @@ export class OrbitSVGRenderer {
    * last), with any `children` it lists under it; it flies out of its parent
    * into place. Ids come from the text, as when the map is read from
    * markdown. Fires `edit` once. Returns the new node, or null when there's
-   * no such parent.
+   * no such parent. In a map written for a newer format, it throws, changing
+   * nothing, where the parent's ideas are in a form this version can't read.
    */
   addNode(parentId: string, input: OrbitNewNode, index?: number): OrbitNode | null {
     expectObject('addNode', input, `addNode('${parentId}', { text: 'New idea' })`);
@@ -1078,7 +1195,9 @@ export class OrbitSVGRenderer {
    * 'done' }`, or `{ color: undefined }` to remove one. New text gives the
    * node a new id when its id came from its text and no link points at it,
    * so the saved map needs no id attribute. Fires `edit`. Returns the
-   * node, or null when there's no such node.
+   * node, or null when there's no such node. In a map written for a newer
+   * format, it throws, changing nothing, rather than replace a value this
+   * version can't read.
    */
   updateNode(id: string, changes: OrbitNodeInput): OrbitNode | null {
     expectObject('updateNode', changes, `updateNode('${id}', { text: 'New title' })`);
@@ -1121,7 +1240,9 @@ export class OrbitSVGRenderer {
    * Moves a node, with everything under it, under `parentId` at `index`
    * among its children (default: last). Fires `edit`. Returns the node,
    * or null when either node is missing, the node is the root, or
-   * `parentId` is inside the node.
+   * `parentId` is inside the node. In a map written for a newer format, it
+   * throws, changing nothing, where the parent's ideas are in a form this
+   * version can't read.
    */
   moveNode(id: string, parentId: string, index?: number): OrbitNode | null {
     const moved = this.tree ? moveInTree(this.tree, id, parentId, index, this.branchColorRules()) : null;
@@ -1135,6 +1256,49 @@ export class OrbitSVGRenderer {
     const name = node.text || this.words.text('anIdea');
     this.afterEdit('move', node, to.text ? this.words.text('moved', { name, parent: to.text }) : this.words.text('movedToTop', { name }));
     return node;
+  }
+
+  /**
+   * The node drawn at a point on the page, in client coordinates (an
+   * event's `clientX` and `clientY`): the sun, a planet, a moon, or a node of
+   * the overview. A node catches a point a little past its edge, so small
+   * moons can be hit, and the most central catch wins. Null where no node
+   * is drawn, or outside the map. With `setDropTarget`, for what's dragged
+   * onto the map from elsewhere, such as text or files.
+   */
+  getNodeAt(x: number, y: number): OrbitNode | null {
+    const display = this.display;
+
+    if (!display || !Number.isFinite(x) || !Number.isFinite(y)) {
+      return null;
+    }
+
+    const bounds = this.root.getBoundingClientRect();
+    const point = { x: x - bounds.left, y: y - bounds.top };
+
+    if (point.x < 0 || point.y < 0 || point.x > this.viewport.width || point.y > this.viewport.height) {
+      return null;
+    }
+
+    const world = screenToWorld(display.camera, this.viewport, point);
+    const reach = DROP_REACH / display.camera.scale;
+    return nodeUnder(display, world, NOTHING_UNREACHABLE, (entry) => entry.radius + reach, null)?.node ?? null;
+  }
+
+  /**
+   * Lights node `id` up as where something dragged onto the map from
+   * elsewhere would go, as a node dragged on the map lights its target: it
+   * grows and takes a ring. Null puts it out, as drawing another map does.
+   * While a node of the map is being dragged, its own target shows instead.
+   */
+  setDropTarget(id: string | null): void {
+    if (id === this.dropTargetId) {
+      return;
+    }
+
+    this.dropTargetId = id;
+    // It shows at once, under the pointer, as a drag's target does.
+    this.paint();
   }
 
   /**
@@ -1177,14 +1341,16 @@ export class OrbitSVGRenderer {
    * (default: after the last), flying there first. Enter adds the idea
    * where it was typed and opens the next one after it; Escape, or Enter
    * with nothing typed, stops. Fires `editor-open`, `edit` for each idea,
-   * then `editor-close`. Returns false when there's no such node.
+   * then `editor-close`. Returns false when there's no such node, or when
+   * its ideas are hidden (`hideChildren`): a new one would be typed out of
+   * sight, among ideas the page keeps for later, so reveal them first.
    */
   editNewNode(parentId?: string, index?: number): boolean {
     const tree = this.tree;
     const path = tree ? getNodePath(tree, parentId ?? this.focusId) : [];
     const parent = path[path.length - 1];
 
-    if (!parent || this.options.interactive === false || (this.options.maxDepth !== undefined && parent.level >= this.options.maxDepth)) {
+    if (!parent || this.options.interactive === false || !this.takesNewIdeas(parent)) {
       return false;
     }
 
@@ -1257,9 +1423,64 @@ export class OrbitSVGRenderer {
 
   // The tree and edits
 
+  /**
+   * Hides (`hide`) or shows the children of the nodes `ids` names, and draws
+   * the change as a morph: children leaving shrink into their node, and ones
+   * coming back grow out of it.
+   */
+  private changeHiding(ids: readonly string[], hide: boolean): boolean {
+    const tree = this.tree;
+
+    if (!tree) {
+      return false;
+    }
+
+    // Only a node with ideas under it has any to hide.
+    const known = hide ? parentIds(tree) : null;
+    const changed = ids.filter((id) => (hide ? !this.hiding.has(id) && known?.has(id) === true : this.hiding.has(id)));
+
+    if (changed.length === 0) {
+      return false;
+    }
+
+    for (const id of changed) {
+      if (hide) {
+        this.hiding.add(id);
+      } else {
+        this.hiding.delete(id);
+      }
+
+      this.nameNode(id);
+    }
+
+    this.updateOutline();
+    this.rebuild('morph');
+    const focused = this.viewMode === 'focus' ? this.getFocusedNode() : null;
+
+    if (focused && changed.includes(focused.id)) {
+      if (hide) {
+        this.announceView();
+      } else if (focused.children.length > 0) {
+        const names = focused.children.map((child) => child.text || this.words.text('untitled'));
+        this.outline.announce(this.words.text('revealed', { name: focused.text || this.words.text('untitled'), list: this.words.list(names) }));
+      }
+    }
+
+    return true;
+  }
+
   /** Draws `tree`, keeping the reader's place in it. */
   private showTree(tree: OrbitNode): void {
     const firstRender = this.tree === null;
+    const session = this.editing;
+
+    if (session && this.tree && !inPlace(this.tree, tree, session.nodeId ?? session.parentId)) {
+      // What was being typed into is gone, or isn't where it was: most likely this is another map, which must never
+      // receive what was typed in this one. The field closes, keeping nothing. Another version of the same map, with
+      // the node in its place, keeps the field open, and what's typed goes into it.
+      this.finishEditing(false, false);
+    }
+
     // A new map, or new text for it, ends a drag that isn't this map's own drop.
     const drag = this.nodeDrag;
 
@@ -1274,15 +1495,19 @@ export class OrbitSVGRenderer {
     this.tree = tree;
     this.nodeColors = null;
 
-    if (firstRender && this.options.focus) {
-      this.focusPath = [this.options.focus];
+    if (this.hiding.size > 0) {
+      // A node the tree no longer has, or one left with no ideas under it, hides nothing: one with the same id and ideas keeps them hidden.
+      const known = parentIds(tree);
+
+      for (const id of Array.from(this.hiding)) {
+        if (!known.has(id)) {
+          this.hiding.delete(id);
+        }
+      }
     }
 
-    const session = this.editing;
-
-    if (session && !findNodeById(tree, session.nodeId ?? session.parentId)) {
-      // What was being typed into is gone.
-      this.finishEditing(false, false);
+    if (firstRender && this.options.focus) {
+      this.focusPath = [this.options.focus];
     }
 
     let path: OrbitNode[] = [];
@@ -1302,8 +1527,9 @@ export class OrbitSVGRenderer {
 
   /** Whether `tree`, with the document's `options`, is the map as drawn now, in another object. */
   private isSameMap(tree: OrbitNode, options: OrbitDocumentOptions | null): boolean {
+    // A bare tree has no frontmatter: it's the map drawn now only when that has none either.
     return this.tree !== null && this.scene !== null && tree !== this.tree
-      && (options === null || sameValues(definedEntries(options), definedEntries(this.sourceOptions)))
+      && sameValues(definedEntries(options === null ? {} : currentDocumentOptions(options)), definedEntries(this.sourceOptions))
       && sameTree(tree, this.tree);
   }
 
@@ -1354,7 +1580,7 @@ export class OrbitSVGRenderer {
     }
 
     const edit: OrbitEdit = { kind, node, tree };
-    this.options.onEdit?.(edit);
+    this.callback(this.options.onEdit, edit);
     this.emit('edit', edit);
   }
 
@@ -1460,8 +1686,8 @@ export class OrbitSVGRenderer {
     }
 
     const under = typed ?? parent.children[session.index - 1] ?? null;
-    // With nothing typed and nothing before it, the field stays where it is.
-    return under === null || this.editNewNode(under.id);
+    // With nothing typed and nothing before it, or only an idea whose ideas are hidden, the field stays where it is.
+    return under === null || !this.takesNewIdeas(under) || this.editNewNode(under.id);
   }
 
   /** Keeps what was typed: new text for a node, or a new idea (and, after Enter, the field moves on to the next). */
@@ -1553,11 +1779,20 @@ export class OrbitSVGRenderer {
 
     const wanted = this.slotPlace();
     const focused = findNodeById(tree, this.focusId);
-    const wantedIndex = wanted && focused ? wanted.index ?? focused.children.length : null;
+    // An orbit that can't have a + has none to redraw: rebuilding it would only stop a spin.
+    const wantedIndex = wanted && focused && this.takesNewIdeas(focused) ? wanted.index ?? focused.children.length : null;
 
     if ((scene.addSlot?.index ?? null) !== wantedIndex) {
       this.rebuild('morph');
     }
+  }
+
+  /**
+   * Whether new ideas can be typed under `node`, so its orbit has a + (as
+   * `buildFocusScene` lays it out): not at `maxDepth`, and its ideas not hidden.
+   */
+  private takesNewIdeas(node: OrbitNode): boolean {
+    return (this.options.maxDepth === undefined || node.level < this.options.maxDepth) && !this.hiding.has(node.id);
   }
 
   /** Where the + goes in the focused node's orbit: where a new idea is being typed, else after its children on editable maps. */
@@ -1575,15 +1810,15 @@ export class OrbitSVGRenderer {
     const event: OrbitEditorEvent = { node, parent };
 
     if (name === 'editor-open') {
-      this.options.onEditorOpen?.(event);
+      this.callback(this.options.onEditorOpen, event);
     } else {
-      this.options.onEditorClose?.(event);
+      this.callback(this.options.onEditorClose, event);
     }
 
     this.emit(name, event);
   }
 
-  /** Keeps the view's place on a node whose id an edit changed. */
+  /** Keeps the view's place on a node whose id an edit changed, and its ideas hidden if they were. */
   private renameView(from: string, to: string): void {
     this.focusPath = this.focusPath.map((id) => (id === from ? to : id));
 
@@ -1593,18 +1828,45 @@ export class OrbitSVGRenderer {
       }
     }
 
+    if (this.hiding.delete(from)) {
+      this.hiding.add(to);
+    }
+
     this.renamedIds.set(from, to);
   }
 
   // Options
 
-  /** Defaults, then the document's options, then the caller's. `undefined` means "not set". */
+  /**
+   * Defaults, then the document's options, then the caller's. `undefined`
+   * means "not set". A map written for a newer format isn't edited on the
+   * map, whatever `editable` says: this version could change what it
+   * doesn't understand (the editing methods still work, for the page).
+   */
   private resolveOptions(): ResolvedRendererOptions {
-    return mergeRendererOptions(mergeRendererOptions(DEFAULT_OPTIONS, this.documentOptions), this.userOptions);
+    const options = mergeRendererOptions(mergeRendererOptions(DEFAULT_OPTIONS, this.documentOptions), this.userOptions);
+    const newer = this.sourceDiagnostics.find((diagnostic) => diagnostic.code === 'unsupported-schema-version');
+
+    if (!newer || !options.editable) {
+      return options;
+    }
+
+    if (!this.warnedNewer) {
+      this.warnedNewer = true;
+      console.warn(`[orbit] ${newer.message} So it's shown here, but not edited on the map.`);
+    }
+
+    return { ...options, editable: false };
   }
 
   private createExtensions(): MapExtensions {
     return new MapExtensions({ nodeTypes: this.options.nodeTypes, actions: this.options.actions, statuses: this.options.statuses, nodeTypeFor: this.options.nodeTypeFor });
+  }
+
+  /** Writes again what a node on the map is called for assistive technology: its words, or its ideas hidden or shown. */
+  private nameNode(id: string): void {
+    const view = this.nodePainter.view(id);
+    view?.element.setAttribute('aria-label', describeNode(view.node, this.hiding.has(id), this.extensions, this.words));
   }
 
   /**
@@ -1615,12 +1877,14 @@ export class OrbitSVGRenderer {
     const requested = this.options.language ?? languageOf(this.container);
 
     if (requested === this.requestedLanguage && sameValues(this.options.strings, this.requestedStrings)) {
+      this.markLanguage();
       return;
     }
 
     this.requestedLanguage = requested;
     this.requestedStrings = this.options.strings;
     this.words = new OrbitWords(requested, this.options.strings);
+    this.markLanguage();
     this.svg.setAttribute('aria-roledescription', this.words.text('mindMapRole'));
     this.controls.relabel(this.words);
     this.outline.relabel(this.words);
@@ -1629,12 +1893,25 @@ export class OrbitSVGRenderer {
     fillEmptyState(this.emptyState, this.words);
 
     for (const [, view] of this.nodePainter.entries()) {
-      view.element.setAttribute('aria-label', describeNode(view.node, 0, view.node.children.length, this.extensions, this.words));
+      this.nameNode(view.node.id);
     }
 
     if (this.tree) {
       this.updateOutline();
       this.updateControls();
+    }
+  }
+
+  /**
+   * Says on the map which language its words are in when the options ask for
+   * one, so screen readers read them, and everything inside the map, in it. A
+   * map that speaks its page's language leaves saying so to the page.
+   */
+  private markLanguage(): void {
+    if (this.options.language) {
+      this.root.lang = this.words.locale;
+    } else {
+      this.root.removeAttribute('lang');
     }
   }
 
@@ -1692,7 +1969,8 @@ export class OrbitSVGRenderer {
       this.refitOnArrival = true;
     } else if (refit) {
       const fitted = this.isFitted();
-      this.refreshScene();
+      // A glide starts from where the view is; otherwise the view is kept within its new room at once.
+      this.refreshScene(fitted && this.insetsGlide);
 
       if (fitted) {
         this.fit();
@@ -1709,7 +1987,11 @@ export class OrbitSVGRenderer {
     this.clock.requestPaint();
   }
 
-  /** Whether the camera shows the view as it's fitted, not zoomed or panned away from it. */
+  /**
+   * Whether the camera shows the view as it's fitted, not zoomed or panned
+   * away from it, or glides there: controls that move twice in a row, as
+   * a bar measured once it's shown, keep the view fitted to the last.
+   */
   private isFitted(): boolean {
     const frame = this.scene?.frame;
 
@@ -1717,7 +1999,7 @@ export class OrbitSVGRenderer {
       return false;
     }
 
-    const { camera } = this;
+    const camera = this.cameraFlight?.target ?? this.camera;
     return Math.abs(camera.scale / frame.scale - 1) < 0.01
       && Math.abs(camera.x - frame.x) * camera.scale < 2
       && Math.abs(camera.y - frame.y) * camera.scale < 2;
@@ -1846,6 +2128,7 @@ export class OrbitSVGRenderer {
       addSlot: withSlot ? (held ?? this.slotPlace()) : undefined,
       reorder: planet && drag.slot !== null ? { id: drag.id, index: drag.slot } : undefined,
       keptRings: rings ? { focusId: rings.focusId, radii: rings.radii } : undefined,
+      hidden: this.hiding.size > 0 ? this.hiding : undefined,
     };
   }
 
@@ -1921,7 +2204,7 @@ export class OrbitSVGRenderer {
 
     if (!labelBelow) {
       const countWidth = showsCount('sun', radius, sun.hiddenChildren) ? measureCount(sun.hiddenChildren, this.labelFonts.count()) : 0;
-      const name = insideLabelLayout('sun', radius, sun.node.text, Boolean(this.extensions.icon(sun.node)), this.labelFonts.inside('sun', sun.node), true, countWidth);
+      const name = insideLabelLayout('sun', radius, sun.node.text, Boolean(this.extensions.icon(sun.node)), this.labelFonts.inside('sun', sun.node), true, countWidth, this.words.asked);
       const onRim = radius - size - ACTION_RIM_INSET;
 
       if (onRim >= (name ? insideLabelReach(name) : 0) + ACTION_CLEARANCE && reach(onRim) <= clear) {
@@ -2002,7 +2285,7 @@ export class OrbitSVGRenderer {
     this.announceView();
 
     if (notify && modeChanged) {
-      this.options.onViewModeChange?.(mode);
+      this.callback(this.options.onViewModeChange, mode);
       this.emit('view-mode-change', { mode });
     }
 
@@ -2348,8 +2631,8 @@ export class OrbitSVGRenderer {
     this.startTransition(from, target, IDENTITY, now, MORPH_DURATION, keepCamera ? { ...this.camera } : undefined);
   }
 
-  /** Rebuilds the current view in place (new colors, same layout). */
-  private refreshScene(): void {
+  /** Rebuilds the current view in place (new colors, same layout); with `keepCamera`, the camera stays as it is for a glide. */
+  private refreshScene(keepCamera = false): void {
     this.completeTransition();
     const target = this.buildScene();
 
@@ -2359,7 +2642,11 @@ export class OrbitSVGRenderer {
     }
 
     this.scene = target;
-    this.camera = this.clampCamera(this.camera);
+
+    if (!keepCamera) {
+      this.camera = this.clampCamera(this.camera);
+    }
+
     this.labelPainter.forgetLightText();
     this.paint();
   }
@@ -2424,12 +2711,14 @@ export class OrbitSVGRenderer {
     this.nodePainter.paintNodes(display, turn);
     this.paintAddSlot(display, turn);
     this.paintHeldPlace(settled, turn);
+    this.hiddenPlacesView.update(display.hiddenPlaces, turn);
     this.contentPainter.paint(display);
+    // The field first: names' pills keep clear of where it is this frame.
+    this.placeEditor(display);
     this.labelPainter.paint(display);
 
     this.changedIds.clear();
     this.paintOverlay(display);
-    this.placeEditor(display);
 
     if (this.tabStopsChanged) {
       this.updateTabStops();
@@ -2492,9 +2781,11 @@ export class OrbitSVGRenderer {
 
   /**
    * The field's place and size: the label's, inside the node; a node too
-   * small to hold it gets a field floating over it at a readable size. Over a
-   * node with a "+N" (`hiddenChildren` it doesn't draw), the field rises as
-   * it grows, as names do, to keep clear of the count.
+   * small to hold it, or a + too small to type in (a phone's map shrinks over
+   * its keyboard), gets a field floating over it at a readable size, so the
+   * text never runs past its edge. Over a node with a "+N" (`hiddenChildren`
+   * it doesn't draw), the field rises as it grows, as names do, to keep clear
+   * of the count.
    */
   private editorPlacement(point: Point, screenRadius: number, role: NodeRole, light: boolean, slot: boolean, hiddenChildren = 0): EditorPlacement {
     const floating = screenRadius < 32;
@@ -2508,7 +2799,7 @@ export class OrbitSVGRenderer {
       role,
       light: light && !floating,
       slot,
-      floating: floating && !slot,
+      floating,
       lowest: !floating && showsCount(role, screenRadius, hiddenChildren) ? COUNT_POSITION * screenRadius - COUNT_HEIGHT / 2 : undefined,
     };
   }
@@ -2529,6 +2820,7 @@ export class OrbitSVGRenderer {
 
   private clearViews(): void {
     this.labelPainter.clear();
+    this.hiddenPlacesView.update(undefined);
 
     this.nodePainter.clear();
     this.ringsAndLinks.clear();
@@ -2585,7 +2877,7 @@ export class OrbitSVGRenderer {
   /** The outline, and the pictures and videos the viewer steps through, follow the map. */
   private updateOutline(): void {
     if (this.tree) {
-      this.outline.update(this.tree, this.focusId, this.options.maxDepth, this.options.interactive !== false, (node) => this.extensions.icon(node));
+      this.outline.update(this.tree, this.focusId, this.options.maxDepth, this.options.interactive !== false, (node) => this.extensions.icon(node), this.hiding);
     }
 
     this.viewer.refresh();
@@ -2618,7 +2910,8 @@ export class OrbitSVGRenderer {
     if (node) {
       const count = node.children.length;
       const name = node.text || this.words.text('untitled');
-      this.outline.announce(count > 0 ? `${name}, ${this.words.count('ideaCount', count)}` : name);
+      const ideas = this.hiding.has(node.id) ? this.words.count('hiddenIdeaCount', count) : this.words.count('ideaCount', count);
+      this.outline.announce(count > 0 ? `${name}, ${ideas}` : name);
     }
   }
 
@@ -2646,7 +2939,7 @@ export class OrbitSVGRenderer {
 
     const details = [
       typeLabel ?? '',
-      node.status ? this.words.text('statusLabel', { status: node.status }) : '',
+      node.status ? this.words.text('statusLabel', { status: this.words.statusName(node.status) }) : '',
       note.length > 140 ? `${note.slice(0, 139)}…` : note,
     ].filter(Boolean);
     const point = this.tooltipAnchor(entry);
@@ -2753,7 +3046,7 @@ export class OrbitSVGRenderer {
 
     const detail: OrbitNodeContextEvent = { node: entry.node, x: Math.round(point.x), y: Math.round(point.y) };
     const listening = this.options.onNodeContext !== undefined || (this.listeners.get('node-context')?.size ?? 0) > 0;
-    this.options.onNodeContext?.(detail);
+    this.callback(this.options.onNodeContext, detail);
     let taken = !this.emit('node-context', detail, true) || listening;
 
     // Without a menu of the page's own, an editable map types the node's text where it is: after a long
@@ -3057,7 +3350,7 @@ export class OrbitSVGRenderer {
 
   private emitDrag(phase: OrbitNodeDragEvent['phase'], node: OrbitNode, parent: OrbitNode | null, index: number | null): void {
     const event: OrbitNodeDragEvent = { phase, node, parent, index };
-    this.options.onNodeDrag?.(event);
+    this.callback(this.options.onNodeDrag, event);
     this.emit('node-drag', event);
   }
 
@@ -3109,7 +3402,7 @@ export class OrbitSVGRenderer {
       return;
     }
 
-    this.options.onNodeClick?.(entry.node);
+    this.callback(this.options.onNodeClick, entry.node);
     this.emit('node-click', { node: entry.node });
 
     if (this.viewMode === 'focus' && entry.role === 'sun') {
@@ -3458,8 +3751,8 @@ export class OrbitSVGRenderer {
       const top = this.planetNearestTop();
 
       if (top) {
-        this.options.onSpinSettle?.(top.node);
-        this.emit('spin-settle', { planet: top.node });
+        this.callback(this.options.onSpinSettle, top.node);
+        this.emit('spin-settle', { node: top.node, planet: top.node });
       }
     }
 
@@ -3510,7 +3803,7 @@ export class OrbitSVGRenderer {
     }
   }
 
-  /** The slow drift of `orbitAnimation`; it pauses while the reader is pointing at, holding or tabbing through the map. */
+  /** The slow drift of `animation`; it pauses while the reader is pointing at, holding or tabbing through the map. */
   private syncAmbientMotion(): void {
     if (!this.ambientRunning && this.shouldDrift()) {
       this.ambientRunning = true;
@@ -3519,7 +3812,7 @@ export class OrbitSVGRenderer {
   }
 
   private shouldDrift(): boolean {
-    return Boolean(this.options.orbitAnimation)
+    return Boolean(this.options.animation)
       && !this.destroyed
       && this.scene !== null
       && this.viewMode === 'focus'
@@ -3554,7 +3847,7 @@ export class OrbitSVGRenderer {
     }
 
     // Seconds per turn; anything but a positive number falls back to the default.
-    const speed = this.options.orbitSpeed > 0 && Number.isFinite(this.options.orbitSpeed) ? this.options.orbitSpeed : DEFAULT_OPTIONS.orbitSpeed;
+    const speed = this.options.speed > 0 && Number.isFinite(this.options.speed) ? this.options.speed : DEFAULT_OPTIONS.speed;
     this.pendingDrift += (360 / Math.max(1, speed)) * (elapsed / 1000);
 
     // Turning the orbit repaints every body in it: wait until the turn shows.
@@ -3911,8 +4204,26 @@ export class OrbitSVGRenderer {
 
   private emitFocusChange(path: OrbitNode[]): void {
     const node = path[path.length - 1];
-    this.options.onFocusChange?.(node);
+    this.callback(this.options.onFocusChange, node, path);
     this.emit('focus-change', { node, path });
+  }
+
+  /**
+   * Calls one of the `on…` options, guarded as `on()` listeners are: one
+   * that throws is reported, and the map, its events and the rest of what it
+   * was doing go on. Returns what the callback returned.
+   */
+  private callback<Arguments extends unknown[], Result>(callback: ((...args: Arguments) => Result) | undefined, ...args: Arguments): Result | undefined {
+    if (!callback) {
+      return undefined;
+    }
+
+    try {
+      return callback(...args);
+    } catch (error) {
+      reportListenerError(error);
+      return undefined;
+    }
   }
 
   /**
@@ -3975,7 +4286,7 @@ export class OrbitSVGRenderer {
       return;
     }
 
-    if ((action === 'image' || action === 'video') && this.options.mediaViewer !== false && this.viewer.open({ node, kind: action })) {
+    if ((action === 'image' || action === 'video' || action === 'audio') && this.options.showMediaViewer !== false && this.viewer.open({ node, kind: action })) {
       return;
     }
 
@@ -3986,7 +4297,7 @@ export class OrbitSVGRenderer {
 
   /** Whether a button may do what it does: `onAction` didn't return `false` and no listener called the `action` event's `preventDefault()`. */
   private allowAction(node: OrbitNode, action: string, sourceEvent: MouseEvent | KeyboardEvent): boolean {
-    if (this.options.onAction?.({ node, action, sourceEvent }) === false) {
+    if (this.callback(this.options.onAction, { node, action, sourceEvent }) === false) {
       return false;
     }
 
@@ -4006,9 +4317,10 @@ export class OrbitSVGRenderer {
   }
 
   /**
-   * A picture or video pressed in the detail sheet: a press of "View image"
-   * or "Play video". The viewer opens over the sheet; a page that takes the
-   * press gets the sheet closed, so what it opens is in front.
+   * A picture, video or sound pressed in the detail sheet: a press of "View
+   * image", "Play video" or a sound's "Expand". The viewer opens over the
+   * sheet; a page that takes the press gets the sheet closed, so what it
+   * opens is in front.
    */
   private viewFromSheet(node: OrbitNode, kind: MediaKind, sourceEvent: MouseEvent, startAt?: number): void {
     if (!this.allowAction(node, kind, sourceEvent)) {
@@ -4030,7 +4342,7 @@ export class OrbitSVGRenderer {
       noteRenderer: this.options.noteRenderer,
       resolveLink: (href) => this.findLinked(href),
       onFollowLink: (linked) => this.followNodeLink(linked),
-      onViewMedia: this.options.mediaViewer === false ? undefined : (shown, kind, event, startAt) => this.viewFromSheet(shown, kind, event, startAt),
+      onViewMedia: this.options.showMediaViewer === false ? undefined : (shown, kind, event, startAt) => this.viewFromSheet(shown, kind, event, startAt),
       extensions: {
         icon: (shown) => this.extensions.icon(shown),
         typeLabel: (shown) => this.extensions.nodeType(shown)?.label,
@@ -4052,17 +4364,17 @@ export class OrbitSVGRenderer {
     const event: OrbitMediaEvent = { node: item.node, kind: item.kind, index, total };
 
     if (name === 'media-open') {
-      this.options.onMediaOpen?.(event);
+      this.callback(this.options.onMediaOpen, event);
     } else {
-      this.options.onMediaClose?.(event);
+      this.callback(this.options.onMediaClose, event);
     }
 
     this.emit(name, event);
   }
 
-  private mediaPlayed(node: OrbitNode, playback: PlaybackState): void {
-    const state: OrbitMediaState = { node, ...playback };
-    this.options.onMediaState?.(state);
+  private mediaPlayed(node: OrbitNode, kind: OrbitMediaState['kind'], playback: PlaybackState): void {
+    const state: OrbitMediaState = { node, kind, ...playback };
+    this.callback(this.options.onMediaState, state);
     this.emit('media-state', state);
   }
 

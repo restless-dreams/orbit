@@ -44,4 +44,13 @@ export default defineConfig([
     files: ['src/react/**/*.{ts,tsx}'],
     extends: [reactHooks.configs.flat['recommended-latest']],
   },
+  {
+    // Every browser test fails on a page error it didn't expect: its test comes from e2e/fixtures.ts.
+    files: ['e2e/**/*.spec.ts'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        paths: [{ name: '@playwright/test', importNames: ['test'], message: 'Import test from ./fixtures, which fails a test on a page error it didn\'t expect.' }],
+      }],
+    },
+  },
 ])

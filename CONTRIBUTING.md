@@ -10,6 +10,12 @@ bun install
 bun run verify
 ```
 
+`verify` also draws maps in Chromium 99, the oldest browser Orbit supports
+(`bun run check:older-chromium`). Its first run downloads Chromium's own
+build of it, about 150 MB, into `~/.cache/orbit`, and later runs use that
+copy. The build is for Linux on x64, where CI runs it, so other systems skip
+the check unless `ORBIT_OLDER_CHROMIUM` names a Chromium 99 to run.
+
 The browser tests' screenshots and sample pictures are stored with
 [Git LFS](https://git-lfs.com): install it before cloning (`git lfs install`
 once), or run `git lfs pull` in a clone made without it.
@@ -17,13 +23,14 @@ once), or run `git lfs pull` in a clone made without it.
 Useful commands:
 
 ```bash
-bun test               # whole suite (bun test tests/renderer.test.ts for one file)
+bun run test           # whole suite (bun test tests/renderer.test.ts for one file)
 bun run lint
 bun run typecheck
 bun run build          # ESM + .d.ts into dist/
 bun run test:browser   # spin, zoom, navigation and screenshots in Chromium (needs Docker or Podman)
+bun run check:older-chromium   # the built package in Chromium 99, the oldest browser Orbit supports
 bun run bench          # frame rates on a large map in Chromium; -- --profile=phone for a phone
-bun run docs:api       # regenerate docs/api from the source
+bun run docs:api       # regenerate docs/api from the source, after changing an export or its doc comments
 bun run docs:llms      # rebuild llms-full.txt and the skill's references after editing the docs
 ```
 
@@ -40,6 +47,11 @@ bun run docs:llms      # rebuild llms-full.txt and the skill's references after 
   [`docs/format.md`](./docs/format.md#changing-the-format). After a change to
   how maps are written, run `bun scripts/release-fixtures.ts` to rewrite
   `tests/fixtures/releases/next/`, and include its diff.
+
+## Checks
+
+Pull requests on GitHub run `.github/workflows/ci.yml`: `bun run verify`, the
+browser tests, and the packed package on Node 20, 22 and 24.
 
 ## Coding standards
 

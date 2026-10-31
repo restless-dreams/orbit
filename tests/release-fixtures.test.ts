@@ -30,9 +30,21 @@ const record = (document: OrbitDocument): RecordedDocument => {
   return recordDocument(document as unknown as ReturnType<OrbitModule['parseOrbit']>);
 };
 
+/**
+ * The options' names before 0.4.0, which earlier versions recorded, by the
+ * names they have now (docs/compatibility.md): the same options, as the
+ * document writes them.
+ */
+const RENAMED_OPTIONS: Record<string, string> = { viewMode: 'view', orbitAnimation: 'animation', orbitSpeed: 'speed' };
+
+/** A version's recorded options under the names this version gives them. */
+const optionsNamedNow = (options: Record<string, unknown>): Record<string, unknown> => {
+  return Object.fromEntries(Object.entries(options).map(([key, value]) => [RENAMED_OPTIONS[key] ?? key, value]));
+};
+
 /** What the version that wrote a file understood it to say, brought up to date by this version's format upgrades. */
 const upgraded = (recorded: RecordedDocument): RecordedDocument => {
-  const document = { root: nodeFromRecord(recorded.root, fields) as unknown as OrbitNode, options: { ...recorded.options }, extra: { ...recorded.extra }, warnings: [] } as unknown as OrbitDocument;
+  const document = { root: nodeFromRecord(recorded.root, fields) as unknown as OrbitNode, options: optionsNamedNow(recorded.options), extra: { ...recorded.extra }, warnings: [] } as unknown as OrbitDocument;
   upgradeFormat(document, new DiagnosticCollector(false), undefined);
   return record(document);
 };

@@ -245,9 +245,11 @@ describe('orbit render', () => {
     expect(code).toBe(0);
     expect(stdout.startsWith('<svg')).toBe(true);
     expect(stdout).toContain('width="1200" height="800"');
-    const small = run(['render', '--width', '600', '--height', '400', '--theme', 'night', '--view', 'all', '-'], MAP).stdout;
-    expect(small).toContain('width="600" height="400"');
-    expect(small.toLowerCase()).toContain('#0b1120');
+    const small = run(['render', '--width', '600', '--height', '400', '--theme', 'night', '--view', 'all', '-'], MAP);
+    expect(small.stdout).toContain('width="600" height="400"');
+    expect(small.stdout.toLowerCase()).toContain('#0b1120');
+    // The command uses Orbit's names of now, so it warns about none of its own.
+    expect(small.stderr).toBe('');
   });
 
   test('--focus centers a node, and --out writes a file', () => {
@@ -341,9 +343,30 @@ describe('orbit export', () => {
     rmSync(directory, { recursive: true, force: true });
   });
 
+  test('--html carries a live photo\'s motion inside the page, with its picture', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'orbit-export-'));
+    mkdirSync(join(directory, 'photos'));
+    // A file's first bytes stand in for the picture and its motion: the repository's own are in Git LFS.
+    const summit = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01]);
+    const motion = Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32]);
+    writeFileSync(join(directory, 'photos/summit.jpg'), summit);
+    writeFileSync(join(directory, 'photos/summit.mp4'), motion);
+    const map = '# Trip\n## Summit\n<!-- orbit\nimage:\n  src: photos/summit.jpg\n  motion:\n    src: photos/summit.mp4\n    still: 1.5\n-->\n## Lake\n<!-- orbit\nimage:\n  src: https://example.com/lake.jpg\n  motion: https://example.com/lake.mp4\n-->\n';
+    writeFileSync(join(directory, 'trip.md'), map);
+    const { code, stderr } = run(['export', '--html', join(directory, 'trip.md'), '--out', join(directory, 'trip.html')]);
+    expect([code, stderr]).toEqual([0, '']);
+    const data = pageData(readFileSync(join(directory, 'trip.html'), 'utf8'));
+    expect(data.media).toEqual({
+      'photos/summit.jpg': `data:image/jpeg;base64,${summit.toString('base64')}`,
+      'photos/summit.mp4': `data:video/mp4;base64,${motion.toString('base64')}`,
+    });
+    rmSync(directory, { recursive: true, force: true });
+  });
+
   test('reads from stdin and writes the page to stdout', () => {
-    const { code, stdout } = run(['export', '--html', '--title', 'Our plan', '--language', 'es', '-'], '# Plan\n## Research\n');
+    const { code, stdout, stderr } = run(['export', '--html', '--title', 'Our plan', '--language', 'es', '--view', 'all', '-'], '# Plan\n## Research\n');
     expect(code).toBe(0);
+    expect(stderr).toBe('');
     expect(stdout).toStartWith('<!doctype html>\n<html lang="es">');
     expect(stdout).toContain('<title>Our plan</title>');
     expect(pageData(stdout).source).toBe('# Plan\n## Research\n');
@@ -355,6 +378,73 @@ describe('orbit export', () => {
     expect([theme.code, theme.stderr]).toEqual([2, expect.stringContaining('Did you mean "night"?')]);
     expect(run(['export', '--html', '--view', 'side', '-'], '# Plan').code).toBe(2);
     expect(run(['export', '--html', '--focus', 'nowhere', '-'], '# Plan\n## Research').code).toBe(2);
+  });
+});
+
+describe('a map with an error Orbit can\'t read past', () => {
+  const root = join(import.meta.dir, '..');
+  // The child B is indented less than its sibling A: the YAML can't be read, so the map would come out empty.
+  const BROKEN = 'nodes:\n  - text: Root\n    children:\n      - text: A\n     - text: B\n';
+  const NEWER = 'schemaVersion: 99\nview: radial\nnodes:\n  - text: Plan\n    children:\n      - text: Build\n';
+
+  beforeAll(async () => {
+    if (!existsSync(join(root, 'dist/web-page.js'))) {
+      mkdirSync(join(root, 'dist'), { recursive: true });
+      writeFileSync(join(root, 'dist/web-page.js'), await buildWebPageScript());
+    }
+  });
+
+  test('convert writes nothing over it, says why, and exits 1', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'orbit-errors-'));
+    const map = join(directory, 'map.yaml');
+    writeFileSync(map, BROKEN);
+    const { code, stdout, stderr } = run(['convert', '--to', 'yaml', '--out', map, map]);
+    expect(code).toBe(1);
+    expect(stdout).toBe('');
+    expect(stderr).toContain('error: Invalid YAML');
+    expect(stderr).toContain('nothing was written');
+    expect(readFileSync(map, 'utf8')).toBe(BROKEN);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  test('convert to stdout prints nothing, so a pipe never gets an empty map', () => {
+    const { code, stdout, stderr } = run(['convert', '--to', 'md', '-'], BROKEN);
+    expect(code).toBe(1);
+    expect(stdout).toBe('');
+    expect(stderr).toContain('nothing was written');
+  });
+
+  test('a map from a newer format version is not converted either, which would lose what this version can\'t read', () => {
+    const { code, stdout, stderr } = run(['convert', '--to', 'yaml', '-'], NEWER);
+    expect(code).toBe(1);
+    expect(stdout).toBe('');
+    expect(stderr).toContain('[unsupported-schema-version]');
+  });
+
+  test('render and export write no file and print nothing', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'orbit-errors-'));
+    const map = join(directory, 'map.yaml');
+    writeFileSync(map, BROKEN);
+
+    for (const [command, out] of [[['render'], 'map.svg'], [['export', '--html'], 'map.html']] as const) {
+      const written = run([...command, '--out', join(directory, out), map]);
+      expect(written.code).toBe(1);
+      expect(written.stderr).toContain('nothing was written');
+      expect(existsSync(join(directory, out))).toBe(false);
+      const printed = run([...command, '-'], BROKEN);
+      expect(printed.code).toBe(1);
+      expect(printed.stdout).toBe('');
+    }
+
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  test('warnings are printed and the command goes on, as before', () => {
+    const { code, stdout, stderr } = run(['convert', '--to', 'md', '-'], '---\nthemee: night\n---\n# Plan\n');
+    expect(code).toBe(0);
+    expect(stdout).toBe('---\nthemee: night\n---\n\n# Plan\n');
+    expect(stderr).toContain('warning:');
+    expect(stderr).not.toContain('nothing was written');
   });
 });
 

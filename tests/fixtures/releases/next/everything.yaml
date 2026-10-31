@@ -90,3 +90,20 @@ nodes:
               src: clips/teaser.mp4
               provider: native
               caption: Ten seconds
+          - text: Voice memo
+            audio: memos/kickoff.m4a
+          - text: Interview
+            audio:
+              src: "https://example.com/interview.mp3"
+              caption: The first interview
+          - text: Launch day
+            image:
+              motion:
+                src: images/launch.mp4
+                still: 1.5
+              src: images/launch.jpg
+              alt: The team on the stage
+          - text: Crowd
+            image:
+              motion: images/crowd.mp4
+              src: images/crowd.jpg

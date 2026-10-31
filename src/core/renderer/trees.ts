@@ -1,6 +1,7 @@
 /** Maps as the renderer takes them: documents or trees, compared, checked and carried over between renders. */
 
 import { documentSource, setDocumentSource, type NodeRecord } from '../document-source.js';
+import { setYamlSource, yamlSource, type YamlNodeRecord } from '../yaml-source.js';
 import { OrbitWords } from '../languages.js';
 import { hasMediaSource } from '../media.js';
 import type { OrbitDocument, OrbitNode } from '../types.js';
@@ -45,8 +46,8 @@ export const sameTree = (first: OrbitNode, second: OrbitNode): boolean => {
 /**
  * Moves where a fresh parse of the same map came from onto the tree as drawn:
  * each node's own place, and the source itself (keyed by node, see
- * `documentSource`), so saving writes the new text against the nodes the map
- * already shows.
+ * `documentSource` and `yamlSource`), so saving writes the new text against
+ * the nodes the map already shows.
  */
 export const transplantSource = (kept: OrbitNode, fresh: OrbitNode): void => {
   const pairs = new Map<OrbitNode, OrbitNode>();
@@ -58,6 +59,22 @@ export const transplantSource = (kept: OrbitNode, fresh: OrbitNode): void => {
   };
 
   pair(kept, fresh);
+  const yaml = yamlSource({ root: fresh });
+
+  if (yaml) {
+    const yamlRecords = new WeakMap<OrbitNode, YamlNodeRecord>();
+
+    for (const [freshNode, keptNode] of pairs) {
+      const record = yaml.records.get(freshNode);
+
+      if (record) {
+        yamlRecords.set(keptNode, { ...record, children: record.children.map((child) => pairs.get(child) ?? child) });
+      }
+    }
+
+    setYamlSource({ root: kept }, { ...yaml, root: kept, records: yamlRecords });
+  }
+
   const source = documentSource({ root: fresh });
 
   if (!source) {
@@ -93,5 +110,20 @@ export const isOrbitDocument = (input: OrbitNode | OrbitDocument): input is Orbi
 
 export const isEmptyTree = (tree: OrbitNode): boolean => {
   return tree.text.trim() === '' && !tree.icon && tree.children.length === 0
-    && !hasMediaSource(tree.image) && !hasMediaSource(tree.video) && !hasMediaSource(tree.embed);
+    && !hasMediaSource(tree.image) && !hasMediaSource(tree.video) && !hasMediaSource(tree.audio) && !hasMediaSource(tree.embed);
+};
+
+/** The ids of the nodes in `tree` with ideas under them: the ones whose ideas can be hidden. */
+export const parentIds = (tree: OrbitNode): Set<string> => {
+  const ids = new Set<string>();
+
+  const visit = (node: OrbitNode) => {
+    if (node.children.length > 0) {
+      ids.add(node.id);
+      node.children.forEach(visit);
+    }
+  };
+
+  visit(tree);
+  return ids;
 };

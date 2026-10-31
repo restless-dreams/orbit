@@ -10,12 +10,20 @@
  *   bun run bench -- --map=huge              # orbits of 150 planets with moons, and of 1,000 (hugeOrbits)
  *   bun run bench -- --runs=5 --out=results  # results as JSON; add --cpu-profile for DevTools CPU profiles, --trace for Chrome traces
  *   bun run bench -- --strict                # exits with an error when a spin misses 60 fps
+ *   bun run bench -- --budgets               # exits with an error when Orbit's own script goes over a budget (BUDGETS)
  *
  * For each animation it reports frames per second and frame times while
  * Orbit animates (the median, the 95th percentile and the longest), how
- * long Orbit's own code takes per frame, and whether it meets the goal of
- * 60 fps: at least 58 fps, with 95% of frames on time. Spins must meet it
- * on any map. Compare runs on the same machine.
+ * long Orbit's own code takes per frame (the median, the 95th percentile
+ * and the longest), and whether it meets the goal of 60 fps: at least
+ * 58 fps, with 95% of frames on time. Spins must meet it on any map. For
+ * the first draw, it reports how long the page took to show the map, and
+ * how much of that was script, and style and layout. Compare runs on the
+ * same machine.
+ *
+ * Frame rates here depend on the machine: in a container without a GPU, the
+ * browser paints in software, and that's most of a slow frame. Orbit's own
+ * script doesn't, and that's what the budgets hold it to.
  */
 import http from 'node:http';
 import fs from 'node:fs';
@@ -52,6 +60,40 @@ const mapFile = option('map', '');
 const map = mapFile === 'huge' ? hugeOrbits() : mapFile ? fs.readFileSync(mapFile, 'utf8') : largeMap();
 /** The goal for every animation: 60 fps, give or take a frame or two a second, with 95% of frames on time. */
 const meetsGoal = (median) => median.fps >= 58 && median.p95Frame <= 17.5;
+
+/**
+ * The most Orbit's own script may take on the made-up library map, in ms,
+ * by profile: in each flight, zoom and pan, the 95th percentile of its
+ * frames and its longest frame (the median of each across runs), and until
+ * the first draw. They're about three times what it took when they were
+ * set, on a desktop of 2026 and on the same with the CPU slowed 4×. So a
+ * slower machine passes them, and a change that makes Orbit's script
+ * several times slower doesn't. The longest frames are the first ones that
+ * show many names: measuring them is most of the work.
+ */
+const BUDGETS = {
+  desktop: { flight: { p95: 12, longest: 60 }, zoom: { p95: 15, longest: 20 }, pan: { p95: 3, longest: 6 }, firstDraw: 300 },
+  phone: { flight: { p95: 30, longest: 160 }, zoom: { p95: 150, longest: 160 }, pan: { p95: 15, longest: 20 }, firstDraw: 1500 },
+};
+
+/** The budget each animation answers to. */
+const BUDGET_KINDS = {
+  'fly into a planet': 'flight',
+  'fly into a moon': 'flight',
+  'fly into the most crowded orbit': 'flight',
+  'fly back to the root': 'flight',
+  'fly out to the overview': 'flight',
+  'fit the overview': 'flight',
+  'fly in from the overview': 'flight',
+  'zoom into the crowded orbit': 'zoom',
+  'zoom the overview': 'zoom',
+  'pan the overview': 'pan',
+};
+const checksBudgets = parameters.includes('--budgets');
+
+if (checksBudgets && mapFile) {
+  throw new Error('--budgets are set for the made-up library map: leave out --map.');
+}
 
 const page = `<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -165,13 +207,14 @@ const summarize = ({ frames, orbitWork }) => {
     longestFrame: rounded(sorted.at(-1) ?? 0),
     orbitMedian: rounded(percentile(work, 0.5)),
     orbitP95: rounded(percentile(work, 0.95)),
+    orbitLongest: rounded(work.at(-1) ?? 0),
   };
 };
 
 const call = (script, argument) => (browserPage) => browserPage.evaluate(script, argument);
 const SCENARIOS = [
   { name: 'spin at the root', run: call(() => document.querySelector('orbit-map').renderer.spin(540)) },
-  { name: 'drift', run: call(() => document.querySelector('orbit-map').renderer.setOptions({ orbitAnimation: true })), hold: 2000, after: call(() => document.querySelector('orbit-map').renderer.setOptions({ orbitAnimation: false })) },
+  { name: 'drift', run: call(() => document.querySelector('orbit-map').renderer.setOptions({ animation: true })), hold: 2000, after: call(() => document.querySelector('orbit-map').renderer.setOptions({ animation: false })) },
   { name: 'fly into a planet', target: 'planet' },
   { name: 'spin a planet', run: call(() => document.querySelector('orbit-map').renderer.spin(540)) },
   { name: 'fly into a moon', target: 'moon' },
@@ -235,10 +278,16 @@ for (let run = 1; run <= runs; run += 1) {
     await session.send('Emulation.setCPUThrottlingRate', { rate: profile.cpuSlowdown });
   }
 
+  await session.send('Performance.enable');
   const started = Date.now();
   await browserPage.goto(origin);
   await browserPage.waitForFunction(() => document.querySelector('orbit-map')?.renderer?.getSVGElement()?.querySelector('[data-orbit-node-id]'), null, { timeout: 60000 });
-  results.push({ run, scenario: 'first draw', firstDrawMs: Date.now() - started });
+  const firstDrawMs = Date.now() - started;
+  // The page's own work until then, as the browser counts it: Orbit's script (loading it and drawing the map), and the
+  // style and layout of what it drew.
+  const { metrics } = await session.send('Performance.getMetrics');
+  const metric = (name) => Math.round((metrics.find((entry) => entry.name === name)?.value ?? 0) * 1000);
+  results.push({ run, scenario: 'first draw', firstDrawMs, firstDrawScriptMs: metric('ScriptDuration'), firstDrawLayoutMs: metric('LayoutDuration') + metric('RecalcStyleDuration') });
   await browserPage.evaluate(() => window.benchRecorder.timeOrbit());
   await animationEnds(browserPage);
 
@@ -355,4 +404,36 @@ if (outputFolder) {
 
 if (parameters.includes('--strict') && missed.some((scenario) => scenario.startsWith('spin'))) {
   process.exitCode = 1;
+}
+
+if (checksBudgets) {
+  const budgets = BUDGETS[profileName];
+  const checks = [];
+
+  for (const median of medians) {
+    const kind = BUDGET_KINDS[median.scenario];
+
+    if (median.scenario === 'first draw') {
+      checks.push({ check: 'first draw: script', budget: budgets.firstDraw, measured: median.firstDrawScriptMs });
+    } else if (kind) {
+      checks.push({ check: `${median.scenario}: p95`, budget: budgets[kind].p95, measured: median.orbitP95 });
+      checks.push({ check: `${median.scenario}: longest`, budget: budgets[kind].longest, measured: median.orbitLongest });
+    }
+  }
+
+  console.log(`Orbit's own script against its budgets, ${profileName} (ms):`);
+  console.table(checks.map((check) => ({ ...check, within: check.measured <= check.budget ? 'yes' : 'OVER' })));
+  const over = checks.filter((check) => check.measured > check.budget);
+
+  // On GitHub, the same table goes in the run's summary, where the measured values are easy to read.
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    const rows = checks.map((check) => `| ${check.check} | ${check.budget} | ${check.measured} | ${check.measured <= check.budget ? 'yes' : '**over**'} |`);
+    const table = [`### Orbit's own script against its budgets, ${profileName} (ms)`, '', '| Check | Budget | Measured | Within |', '| --- | --- | --- | --- |', ...rows, ''];
+    fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${table.join('\n')}\n`);
+  }
+
+  if (over.length > 0) {
+    console.log(`Over budget: ${over.map((check) => check.check).join(', ')}.`);
+    process.exitCode = 1;
+  }
 }

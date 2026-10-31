@@ -3,13 +3,25 @@
  * defaults, and the values Orbit works out from them (insets, spin settings).
  */
 
+import { withNewNames } from '../deprecated.js';
 import type { Insets } from '../engine/camera.js';
 import { DEFAULT_SPIN_SETTINGS, type SpinSettings } from '../engine/spin.js';
 import { mergeThemes } from '../themes.js';
-import type { OrbitInsets, OrbitSpinOptions, RendererOptions } from '../types.js';
+import type { OrbitInsets, OrbitRendererOptions, OrbitSpinOptions } from '../types.js';
 
-export type ResolvedRendererOptions = RendererOptions &
-  Required<Pick<RendererOptions, 'viewMode' | 'showRings' | 'interactive' | 'orbitAnimation' | 'orbitSpeed' | 'showControls'>>;
+export type ResolvedRendererOptions = OrbitRendererOptions &
+  Required<Pick<OrbitRendererOptions, 'view' | 'showRings' | 'interactive' | 'animation' | 'speed' | 'showControls'>>;
+
+/** The options' names before 0.4.0, by the name each has now (docs/compatibility.md): they keep working until 1.0. */
+const RENAMED_OPTIONS = { viewMode: 'view', orbitAnimation: 'animation', orbitSpeed: 'speed', mediaViewer: 'showMediaViewer' } as const;
+
+/**
+ * The renderer's `options`, or another function's that share their names
+ * (`renderToSVGString`'s, a print's, a web page's), under the names Orbit
+ * reads: one set by its old name counts as the new one, and warns once.
+ * Everything that takes those options from a caller reads them through this.
+ */
+export const currentOptions = <T extends object>(options: T): T => withNewNames(options, RENAMED_OPTIONS, 'The option');
 
 export const spinSettings = (options: OrbitSpinOptions | undefined): SpinSettings => {
   return {
@@ -20,7 +32,7 @@ export const spinSettings = (options: OrbitSpinOptions | undefined): SpinSetting
   };
 };
 
-export const mergeRendererOptions = (base: RendererOptions, overrides: RendererOptions): ResolvedRendererOptions => {
+export const mergeRendererOptions = (base: OrbitRendererOptions, overrides: OrbitRendererOptions): ResolvedRendererOptions => {
   const merged: Record<string, unknown> = { ...base };
 
   for (const [key, value] of Object.entries(overrides)) {

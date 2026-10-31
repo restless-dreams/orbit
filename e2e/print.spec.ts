@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 
 /** A map with what the print layout shows: notes, statuses, tags, links, a picture, a video, and an outline longer than a page. */
 const MAP = `---
@@ -45,9 +45,8 @@ const exportedPage = (): string => {
   return html.replace('(mountain.jpg)', `(${picture})`);
 };
 
-test('a shared map prints laid out for paper, not as the map on screen', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('pageerror', (error) => errors.push(error.message));
+test('a shared map prints laid out for paper, not as the map on screen', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'The screenshot is Chromium’s.');
   await page.setContent(exportedPage());
   await page.waitForSelector('#page-print .orbit-print', { state: 'attached' });
   await page.emulateMedia({ media: 'print' });
@@ -56,7 +55,6 @@ test('a shared map prints laid out for paper, not as the map on screen', async (
   await expect(page.locator('.orbit-print__picture svg')).toBeVisible();
   await page.locator('.orbit-print__image').first().evaluate((image: HTMLImageElement) => image.decode());
   await expect(page).toHaveScreenshot('print-layout.png', { fullPage: true });
-  expect(errors).toEqual([]);
 });
 
 test('Chromium’s PDF of a shared map has its pages, picture, outline and links', async ({ page }, testInfo) => {

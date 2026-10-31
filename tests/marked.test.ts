@@ -50,7 +50,7 @@ describe('orbitMarked', () => {
     const html = await instance.parse('```orbit height=480 theme=glass view=all palette="#111,#222"\n# A\n## B\n```');
     expect(html).toContain('data-height="480"');
     expect(html).toContain('data-theme="glass"');
-    expect(html).toContain('data-view-mode="all"');
+    expect(html).toContain('data-view="all"');
     expect(html).toContain('data-palette="#111,#222"');
   });
 

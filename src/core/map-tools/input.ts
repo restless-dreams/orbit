@@ -28,24 +28,30 @@ export interface Field {
 export type Fields = Record<string, Field>;
 
 /** A property of a tool's input, as JSON Schema. */
-export type MapToolProperty = {
+export type OrbitMapToolProperty = {
   type: 'string' | 'integer' | 'number' | 'boolean' | 'array' | 'object';
   description: string;
   minimum?: number;
   items?: { type: 'string'; enum?: string[] };
-  properties?: Record<string, MapToolProperty>;
+  properties?: Record<string, OrbitMapToolProperty>;
   required?: string[];
 };
+
+/** @deprecated Use `OrbitMapToolProperty`: this name goes in Orbit 1.0. */
+export type MapToolProperty = OrbitMapToolProperty;
 
 /** A tool's input, as JSON Schema: an object with the tool's fields. */
-export type MapToolSchema = {
+export type OrbitMapToolSchema = {
   type: 'object';
-  properties: Record<string, MapToolProperty>;
+  properties: Record<string, OrbitMapToolProperty>;
   required?: string[];
 };
 
+/** @deprecated Use `OrbitMapToolSchema`: this name goes in Orbit 1.0. */
+export type MapToolSchema = OrbitMapToolSchema;
+
 /** The JSON Schema for an object with `fields`. */
-export const schemaOf = (fields: Fields): MapToolSchema => {
+export const schemaOf = (fields: Fields): OrbitMapToolSchema => {
   const required = Object.keys(fields).filter((name) => fields[name].required);
   return {
     type: 'object',
@@ -54,7 +60,7 @@ export const schemaOf = (fields: Fields): MapToolSchema => {
   };
 };
 
-const propertyOf = (field: Field): MapToolProperty => {
+const propertyOf = (field: Field): OrbitMapToolProperty => {
   if (field.type === 'list') {
     return { type: 'array', description: field.description, items: field.values ? { type: 'string', enum: [...field.values] } : { type: 'string' } };
   }

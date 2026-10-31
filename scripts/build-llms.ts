@@ -10,7 +10,7 @@ const root = join(import.meta.dir, '..');
 /** The guides llms-full.txt joins, in reading order. */
 const GUIDES = [
   'README.md', 'docs/guide.md', 'docs/format.md', 'docs/recipes.md', 'docs/theming.md', 'docs/extending.md', 'docs/editing.md', 'docs/map-tools.md', 'docs/media.md',
-  'docs/import-export.md', 'docs/languages.md', 'docs/accessibility.md', 'docs/agents.md',
+  'docs/import-export.md', 'docs/languages.md', 'docs/accessibility.md', 'docs/agents.md', 'docs/compatibility.md',
 ];
 
 /** Guides the skill keeps next to its SKILL.md. */

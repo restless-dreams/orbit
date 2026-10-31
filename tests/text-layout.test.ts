@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, spyOn } from 'bun:test';
 import { breakUnits, characterWidths, graphemes, joinUnits, textEms, wrapText } from '../src/core/text-layout';
 import { pillTextWidth } from '../src/core/engine/labels';
 
@@ -67,6 +67,20 @@ describe('text in any script', () => {
     expect(characterWidths('contact_\u200aid')).toEqual({ narrow: 11, wide: 0 });
     expect(graphemes('ok 👍🏽')).toEqual(['o', 'k', ' ', '👍🏽']);
     expect(breakUnits('mail_pieces 研究').map((unit) => unit.text)).toEqual(['mail_', 'pieces', '研', '究']);
+  });
+
+  test('text beyond Latin-1 goes to the segmenter once, however often it is measured', () => {
+    const segment = spyOn(Intl.Segmenter.prototype, 'segment');
+    const name = '⏰ vendor_region, once';
+
+    for (let time = 0; time < 3; time += 1) {
+      expect(graphemes(name)).toEqual(['⏰', ' ', 'v', 'e', 'n', 'd', 'o', 'r', '_', 'r', 'e', 'g', 'i', 'o', 'n', ',', ' ', 'o', 'n', 'c', 'e']);
+      expect(breakUnits(name).map((unit) => unit.text)).toEqual(['⏰', 'vendor_', 'region,', 'once']);
+    }
+
+    // The name, and its emoji where it breaks.
+    expect(segment).toHaveBeenCalledTimes(2);
+    segment.mockRestore();
   });
 
   test('widths: narrow characters are a little over half an em, CJK and emoji a whole one', () => {

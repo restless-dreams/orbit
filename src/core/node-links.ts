@@ -64,10 +64,15 @@ const resolveNodeLink = (href: string, lookup: (id: string) => OrbitNode | null)
 
 const NOTE_NODE_LINK = /\]\((#[^)\s]+)\)/g;
 
-/** The `#id` links a node has: its link, then the ones in its note. */
+/** Code, which a note shows as written, or an HTML comment, which it hides as markdown does: neither holds links. */
+export const CODE_OR_COMMENT = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`)|<!--[\s\S]*?-->/g;
+
+/** The `#id` links a node has: its link, then the ones in its note, as the note shows them. */
 export const nodeLinksOf = (node: OrbitNode): string[] => {
-  // A plain note never renders its `[x](#y)` as a link, so it isn't one.
-  const links = node.noteFormat === 'plain' ? [] : [...(node.note ?? '').matchAll(NOTE_NODE_LINK)].map((match) => match[1]);
+  // A plain note never renders its `[x](#y)` as a link, so it isn't one. Comments go as the note
+  // hides them, and code becomes a gap, so the text around it doesn't join into a link.
+  const shown = node.noteFormat === 'plain' ? '' : (node.note ?? '').replace(CODE_OR_COMMENT, (_match, code: string | undefined) => (code === undefined ? '' : ' '));
+  const links = [...shown.matchAll(NOTE_NODE_LINK)].map((match) => match[1]);
 
   if (isNodeLink(node.link)) {
     links.unshift(node.link);

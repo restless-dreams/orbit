@@ -4,6 +4,7 @@
  * cancels, and leaving the field saves.
  */
 
+import type { Box } from '../engine/labels.js';
 import type { NodeRole } from '../engine/scene.js';
 
 export interface InlineEditorCallbacks {
@@ -15,6 +16,9 @@ export interface InlineEditorCallbacks {
 
   /** Tab (`back` for Shift+Tab), with `text` typed. Returns whether it was used; if not, Tab moves keyboard focus as usual. */
   onTab(text: string, back: boolean): boolean;
+
+  /** The field grew or shrank with its text: what keeps clear of it (`box`) moves. */
+  onResize?(): void;
 }
 
 /** Where the field goes this frame: centered on a node, in screen pixels. */
@@ -58,6 +62,9 @@ export interface EditorText {
 
 /** The field's font size: 16 px or more, so phones don't zoom into it. It is scaled down to the label's size. */
 const FIELD_FONT_SIZE = 16;
+
+/** Room (px) kept around the field for its shadow, where no name's pill goes. */
+const FIELD_CLEARANCE = 4;
 
 export class InlineEditor {
   readonly element: HTMLTextAreaElement;
@@ -187,7 +194,32 @@ export class InlineEditor {
     this.element.setAttribute('enterkeyhint', text.enterKey);
   }
 
-  /** Centers the field over its node, risen as far as it must to keep clear of the node's "+N". */
+  /** Where the field sits on the screen while it shows, with room for its shadow; null while it's out of sight. */
+  box(): Box | null {
+    const placement = this.placement;
+
+    if (!this.open || !placement) {
+      return null;
+    }
+
+    const { y, height } = this.extent(placement);
+    return {
+      left: placement.x - placement.width / 2 - FIELD_CLEARANCE,
+      right: placement.x + placement.width / 2 + FIELD_CLEARANCE,
+      top: y - height / 2 - FIELD_CLEARANCE,
+      bottom: y + height / 2 + FIELD_CLEARANCE,
+    };
+  }
+
+  /** The field's height on the screen (px), and its center, risen as far as it must to keep clear of the node's "+N". */
+  private extent(placement: EditorPlacement): { y: number; height: number } {
+    const scale = placement.fontSize / FIELD_FONT_SIZE;
+    const height = Math.min(this.height * scale, placement.maxHeight);
+    const rise = placement.lowest === undefined ? 0 : Math.max(0, height / 2 - placement.lowest);
+    return { y: placement.y - rise, height };
+  }
+
+  /** Centers the field over its node (see `extent`). */
   private move(): void {
     const placement = this.placement;
 
@@ -196,9 +228,7 @@ export class InlineEditor {
     }
 
     const scale = placement.fontSize / FIELD_FONT_SIZE;
-    const height = Math.min(this.height * scale, placement.maxHeight);
-    const rise = placement.lowest === undefined ? 0 : Math.max(0, height / 2 - placement.lowest);
-    const position = `translate3d(${round(placement.x)}px, ${round(placement.y - rise)}px, 0) translate(-50%, -50%) scale(${round(scale, 4)})`;
+    const position = `translate3d(${round(placement.x)}px, ${round(this.extent(placement).y)}px, 0) translate(-50%, -50%) scale(${round(scale, 4)})`;
 
     if (position !== this.position) {
       if (this.position === '') {
@@ -214,8 +244,13 @@ export class InlineEditor {
   private fit(): void {
     const field = this.element;
     field.style.height = 'auto';
-    this.height = field.scrollHeight;
-    field.style.height = `${this.height}px`;
+    const height = field.scrollHeight;
+    field.style.height = `${height}px`;
+
+    if (height !== this.height) {
+      this.height = height;
+      this.callbacks.onResize?.();
+    }
   }
 
   private save(): void {

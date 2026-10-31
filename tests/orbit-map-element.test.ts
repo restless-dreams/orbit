@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test';
-import { defineOrbitMapElement } from '../src/core/auto-render';
+import { defineOrbitMapElement, hydrateOrbitBlocks, renderOrbitElement } from '../src/core/auto-render';
 import type { OrbitMapElement, OrbitRenderErrorDetail } from '../src/core/auto-render';
 import { OrbitSVGRenderer } from '../src/core/svg-renderer';
 import { useReducedMotion } from './helpers/renderer';
@@ -44,12 +44,28 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe('<orbit-map>', () => {
   it('renders the README example inside a shadow root at the requested height', () => {
-    const element = createMap('\n# 🚀 Project\n\n## Research\n## Build\n', { height: '320', 'view-mode': 'focus' });
+    const element = createMap('\n# 🚀 Project\n\n## Research\n## Build\n', { height: '320', view: 'focus' });
     expect(element.shadowRoot?.querySelector('svg')).not.toBeNull();
     expect(element.style.getPropertyValue('--orbit-map-height')).toBe('320px');
     const styles = element.shadowRoot!.querySelector('style')!.textContent!;
     expect(styles).toContain('display: block');
     expect(styles).toContain('height: var(--orbit-map-height, 420px)');
+  });
+
+  it('takes the options it is brought to life with, over its own attributes, as other blocks do', () => {
+    const element = createMap('# Root\n## A\n## B', { view: 'focus' });
+    const theme = () => element.shadowRoot!.querySelector('.orbit')?.getAttribute('data-orbit-theme');
+    expect(theme()).toBe('paper');
+    expect(renderOrbitElement(element, { theme: 'night', view: 'all' })).toBe(element.renderer);
+    expect(theme()).toBe('night');
+    // Its own attribute says focus, and the call's options win over attributes as they do for other blocks.
+    expect(element.renderer!.getViewMode()).toBe('all');
+    // Drawn again, from new source, it keeps them.
+    element.source = '# Root\n## A\n## C';
+    expect(theme()).toBe('night');
+    const another = createMap('# Other\n## X');
+    hydrateOrbitBlocks(document, { theme: 'night' });
+    expect(another.shadowRoot!.querySelector('.orbit')?.getAttribute('data-orbit-theme')).toBe('night');
   });
 
   it('never renders the raw markdown: the light DOM stays out of view', () => {
@@ -118,18 +134,31 @@ describe('<orbit-map>', () => {
   });
 
   it('keeps the SVG when only a display attribute changes', () => {
-    const element = createMap('# Root\n## A', { 'view-mode': 'focus' });
+    const element = createMap('# Root\n## A', { view: 'focus' });
     const before = element.shadowRoot!.querySelector('svg');
-    element.setAttribute('view-mode', 'all');
+    element.setAttribute('view', 'all');
     expect(element.shadowRoot!.querySelector('svg')).toBe(before);
     expect(element.renderer?.getViewMode()).toBe('all');
+  });
+
+  it('still reads view-mode, the view attribute\'s old name, saying once to use view', () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => undefined);
+    const element = createMap('# Root\n## A', { 'view-mode': 'all' });
+    expect(element.renderer?.getViewMode()).toBe('all');
+    // The new name wins when both are there.
+    element.setAttribute('view', 'focus');
+    expect(element.renderer?.getViewMode()).toBe('focus');
+    expect(warn.mock.calls.map(([message]) => message)).toEqual([
+      '[orbit] The <orbit-map> attribute view-mode is deprecated: use view. It keeps working until Orbit 1.0.',
+    ]);
+    warn.mockRestore();
   });
 
   it('reads display options from data-* attributes, including changes', () => {
     const element = createMap('# Root\n## A');
     element.setAttribute('data-theme', 'night');
     expect(element.shadowRoot!.querySelector('.orbit')?.getAttribute('data-orbit-theme')).toBe('night');
-    element.setAttribute('data-view-mode', 'all');
+    element.setAttribute('data-view', 'all');
     expect(element.renderer?.getViewMode()).toBe('all');
     element.setAttribute('data-height', '280');
     expect(element.style.getPropertyValue('--orbit-map-height')).toBe('280px');

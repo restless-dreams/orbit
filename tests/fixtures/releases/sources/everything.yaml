@@ -52,3 +52,14 @@ nodes:
         embed:
           src: https://example.com/demo
           caption: The demo
+        audio:
+          src: memos/launch.m4a
+          caption: The launch, in a minute
+        children:
+          - text: Launch day
+            image:
+              src: images/launch.jpg
+              motion:
+                src: images/launch.mp4
+                still: 1.5
+              alt: The team on the stage

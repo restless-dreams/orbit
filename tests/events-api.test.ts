@@ -80,7 +80,10 @@ describe('renderer events', () => {
     // Reduced motion: no coast, so the spin settles at once.
     renderer.spin(900);
     expect(settled).toHaveBeenCalledTimes(1);
-    expect(['alpha', 'beta']).toContain(settled.mock.calls[0][0].planet.id);
+    const detail = settled.mock.calls[0][0];
+    expect(['alpha', 'beta']).toContain(detail.node.id);
+    // Its old name, until 1.0.
+    expect(detail.planet).toBe(detail.node);
   });
 
   test('a listener that throws doesn\'t stop the map or the other listeners', () => {
@@ -100,8 +103,42 @@ describe('renderer events', () => {
     reportError.mockRestore();
   });
 
+  test('an on… option that throws is reported as a listener is, and the event still reaches listeners and the DOM', () => {
+    const reportError = spyOn(globalThis as unknown as { reportError: (error: unknown) => void }, 'reportError').mockImplementation(() => undefined);
+
+    const fail = () => {
+      throw new Error('callback failed');
+    };
+
+    const { host, renderer } = mount(MAP, { onFocusChange: fail, onNodeClick: fail });
+    const heard = mock<(detail: OrbitEventMap['focus-change']) => void>(() => undefined);
+    const dom = mock<(event: Event) => void>(() => undefined);
+    renderer.on('focus-change', heard);
+    host.addEventListener('orbit-focus-change', dom);
+
+    renderer.flyTo('beta');
+    expect(renderer.getFocusPath()).toEqual(['root', 'beta']);
+    expect(heard).toHaveBeenCalledTimes(1);
+    expect(dom).toHaveBeenCalledTimes(1);
+
+    // A press goes on to fly in, as if the callback had said nothing.
+    click(node(host, 'beta-one'));
+    expect(renderer.getFocusPath()).toEqual(['root', 'beta', 'beta-one']);
+    expect(reportError).toHaveBeenCalledTimes(3);
+    reportError.mockRestore();
+  });
+
+  test('onFocusChange hears the path from the root, as focus-change has it', () => {
+    const onFocusChange = mock<(node: unknown, path: { id: string }[]) => void>(() => undefined);
+    const { renderer } = mount(MAP, { onFocusChange });
+    renderer.flyTo('alpha-one');
+    const [focused, path] = onFocusChange.mock.calls[0];
+    expect((focused as { id: string }).id).toBe('alpha-one');
+    expect(path.map((entry) => entry.id)).toEqual(['root', 'alpha', 'alpha-one']);
+  });
+
   test('flyTo() switches to focus mode on the node; overview() flies out', () => {
-    const { renderer } = mount(MAP, { viewMode: 'all' });
+    const { renderer } = mount(MAP, { view: 'all' });
     expect(renderer.flyTo('alpha-one')).toBe(true);
     expect(renderer.getViewMode()).toBe('focus');
     expect(renderer.getFocusPath()).toEqual(['root', 'alpha', 'alpha-one']);
@@ -132,7 +169,7 @@ describe('createOrbitMap', () => {
   test('draws markdown into an element in one call', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const renderer = createOrbitMap(host, MAP, { viewMode: 'all' });
+    const renderer = createOrbitMap(host, MAP, { view: 'all' });
     expect(renderer.getViewMode()).toBe('all');
     expect(host.querySelector('[data-orbit-node-id="beta-one"]')).not.toBeNull();
     renderer.destroy();
@@ -142,6 +179,19 @@ describe('createOrbitMap', () => {
   test('strict mode throws on the first problem', () => {
     const host = document.createElement('div');
     expect(() => createOrbitMap(host, '---\nmystery: 1\n---\n# Root', { strict: true })).toThrow(OrbitParseError);
+  });
+
+  test('strict mode that throws leaves the element as it was, with the map already in it', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const first = createOrbitMap(host, MAP);
+    const drawn = host.innerHTML;
+    expect(() => createOrbitMap(host, '---\nmystery: 1\n---\n# Root', { strict: true })).toThrow(OrbitParseError);
+    // Nothing was drawn over it, and the map there still works.
+    expect(host.innerHTML).toBe(drawn);
+    expect(host.querySelectorAll('.orbit')).toHaveLength(1);
+    expect(first.flyTo('beta')).toBe(true);
+    first.destroy();
   });
 
   test('reports parse problems to the console instead of rendering silently', () => {

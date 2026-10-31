@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orbit in an older Chromium</title>
+<style>
+  #map { width: 800px; height: 600px; }
+</style>
+<script>
+  // Before the package loads, so an error in it, or syntax this Chromium can't read, is caught too,
+  // and said in #result even when the checks never run.
+  window.problems = [];
+
+  const record = (problem) => {
+    problems.push(problem);
+    const result = document.getElementById('result');
+
+    if (result && !window.finished) {
+      result.textContent = JSON.stringify({ userAgent: navigator.userAgent, checks: {}, problems });
+    }
+  };
+
+  addEventListener('error', (event) => record(`${event.message} (${event.filename}:${event.lineno})`));
+  addEventListener('unhandledrejection', (event) => record(`Unhandled: ${event.reason}`));
+
+  for (const level of ['error', 'warn']) {
+    const original = console[level].bind(console);
+    console[level] = (...args) => {
+      record(args.map(String).join(' '));
+      original(...args);
+    };
+  }
+</script>
+</head>
+<body>
+<div id="map"></div>
+<orbit-map id="element" height="300">
+  # From the element
+  ## One
+  ## Two
+</orbit-map>
+<pre id="result">The package didn't load.</pre>
+<script type="module">
+  // What Orbit for Android's oldest WebViews run (scripts/check-older-chromium.ts):
+  // the package's main features once each, and what went wrong, as JSON in
+  // #result for the script to read.
+  import { createOrbitMap, defineOrbitMapElement, parseOrbit, renderPrintLayout, renderToSVGString, serializeOrbitMarkdown, serializeOrbitYAML } from '../dist/index.js';
+
+  const MAP = '# Launch\n![The poster](img/mountain.jpg)\n\n## Research <!-- orbit status: active -->\n- Interviews\n- Surveys\n## Build\n### Frontend\n### Backend\n## Ship #launch\n';
+  const checks = {};
+  const frame = () => new Promise((resolve) => setTimeout(resolve, 50));
+
+  const check = async (name, run) => {
+    try {
+      const result = await run();
+      checks[name] = result === true ? true : `got ${JSON.stringify(result)}`;
+    } catch (error) {
+      checks[name] = `threw ${error && error.stack ? error.stack : error}`;
+    }
+  };
+
+  const map = createOrbitMap(document.getElementById('map'), MAP, { transitionDuration: 0, editable: true });
+  await frame();
+  await check('draws every idea', () => document.querySelectorAll('#map [data-orbit-node-id]').length >= 5);
+  await check('flies into an idea', () => map.flyTo('build') && map.getFocusPath().join('/') === 'launch/build');
+  await check('shows the overview', () => {
+    map.overview();
+    return map.getViewMode() === 'all';
+  });
+  await check('opens the picture in the viewer', async () => {
+    map.setViewMode('focus');
+    map.flyTo('launch');
+    const opened = map.openMedia('launch');
+    await frame();
+    const showing = document.querySelector('dialog.orbit-viewer[open]') !== null;
+    map.closeMedia();
+    return opened && showing;
+  });
+  await check('edits on the map, and saves only what changed', () => {
+    map.addNode('launch', { text: 'Celebrate' });
+    map.updateNode('research', { status: 'done' });
+    const saved = map.toMarkdown();
+    return saved.includes('## Celebrate') && saved.includes('## Research <!-- orbit status: done -->') && saved.startsWith('# Launch\n![The poster](img/mountain.jpg)\n');
+  });
+  await check('exports the view as an SVG', () => map.toSVGString().startsWith('<svg'));
+  await check('draws a map without a renderer', () => renderToSVGString(MAP, { width: 600, height: 400, view: 'all' }).startsWith('<svg'));
+  await check('reads and writes both flavors', () => serializeOrbitMarkdown(parseOrbit(MAP)) === MAP && parseOrbit(serializeOrbitYAML(parseOrbit(MAP))).root.children.length === 3);
+  await check('lays a map out for print', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    renderPrintLayout(host, MAP);
+    const laidOut = host.querySelector('svg') !== null && host.textContent.includes('Interviews');
+    host.remove();
+    return laidOut;
+  });
+  await check('draws <orbit-map>', async () => {
+    defineOrbitMapElement();
+    await frame();
+    const element = document.getElementById('element');
+    return element.renderer !== null && element.renderer.getDocument().root.text === 'From the element';
+  });
+
+  window.finished = true;
+  document.getElementById('result').textContent = JSON.stringify({ userAgent: navigator.userAgent, checks, problems: window.problems });
+</script>
+</body>
+</html>

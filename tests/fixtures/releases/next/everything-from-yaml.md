@@ -45,6 +45,9 @@ image:
   width: 640
   alt: The launch poster
   caption: Printed for the stores
+audio:
+  src: memos/launch.m4a
+  caption: "The launch, in a minute"
 -->
 [![](images/thumbnail.jpg)](https://vimeo.com/76979871)
 <!-- orbit caption: Ninety seconds -->
@@ -53,3 +56,12 @@ image:
 contentType: embed
 caption: The demo
 -->
+- Launch day
+  <!-- orbit
+  image:
+    src: images/launch.jpg
+    motion:
+      src: images/launch.mp4
+      still: 1.5
+    alt: The team on the stage
+  -->

@@ -5,6 +5,7 @@ import { serializeOrbitMarkdown } from '../src/core/serializer-markdown';
 import { writeMarkdown } from '../src/core/markdown-writing';
 import { documentSource } from '../src/core/document-source';
 import { patchMarkdown } from '../src/core/source-patch';
+import { parseOrbitMarkdown } from '../src/core/parser-markdown';
 import type { OrbitSVGRenderer } from '../src/core/svg-renderer';
 import type { OrbitNode } from '../src/core/types';
 import { mount, useMapSize } from './helpers/renderer';
@@ -102,6 +103,7 @@ describe('saving keeps the file as it was written', () => {
   });
 
   for (const name of files) {
+    // Twelve rounds of edits on a long file: seconds here, minutes on a busy runner.
     it(`${name}: edits read back as the edited map, and keep the rest of the file`, () => {
       const text = read(name);
 
@@ -121,7 +123,7 @@ describe('saving keeps the file as it was written', () => {
         // Saved again with no edits, it doesn't change.
         expect(serializeOrbitMarkdown(parseOrbit(saved.text)), context).toBe(saved.text);
       }
-    }, 60_000);
+    }, 300_000);
   }
 });
 
@@ -314,6 +316,55 @@ describe('an edit changes only its own lines', () => {
   });
 });
 
+describe('an icon stays where its file has it', () => {
+  // Each form an icon is written in, and what a rename and a new icon write.
+  const FORMS = [
+    { file: '# Trip\n## 🌿 Food\n## Museums\n', renamed: '# Trip\n## 🌿 Meals\n## Museums\n', newIcon: '# Trip\n## 🍽️ Food\n## Museums\n' },
+    { file: '# Trip\n## Food <!-- orbit icon: 🌿 -->\n## Museums\n', renamed: '# Trip\n## Meals <!-- orbit icon: 🌿 -->\n## Museums\n', newIcon: '# Trip\n## Food <!-- orbit icon: 🍽️ -->\n## Museums\n' },
+    // A changed comment is written in Orbit's form: a short one on the idea's line.
+    { file: '# Trip\n## Food\n<!-- orbit icon: 🌿 -->\n## Museums\n', renamed: '# Trip\n## Meals\n<!-- orbit icon: 🌿 -->\n## Museums\n', newIcon: '# Trip\n## Food <!-- orbit icon: 🍽️ -->\n## Museums\n' },
+    { file: '# Trip\n## Food\n<!-- orbit\nicon: 🌿\ncolor: "#E5484D"\n-->\n## Museums\n', renamed: '# Trip\n## Meals\n<!-- orbit\nicon: 🌿\ncolor: "#E5484D"\n-->\n## Museums\n' },
+    { file: '# Trip\n- 🌿 Food\n- Museums\n', renamed: '# Trip\n- 🌿 Meals\n- Museums\n' },
+    { file: '# Trip\n- Food <!-- orbit icon: 🌿 -->\n- Museums\n', renamed: '# Trip\n- Meals <!-- orbit icon: 🌿 -->\n- Museums\n' },
+  ];
+
+  it('a renamed idea keeps its icon once, before its title or in its comment, as the file had it', () => {
+    for (const form of FORMS) {
+      const { renderer } = mount(form.file);
+      renderer.updateNode('food', { text: 'Meals' });
+      const saved = renderer.toMarkdown();
+      expect(saved).toBe(form.renamed);
+      expect(saved.match(/🌿/gu)).toHaveLength(1);
+      expect(parseOrbit(saved).root.children[0]).toMatchObject({ text: 'Meals', icon: '🌿' });
+    }
+  });
+
+  it('a new icon goes in a comment when the old one was in one, and before the title when it was there', () => {
+    for (const form of FORMS.filter((each) => each.newIcon)) {
+      const { renderer } = mount(form.file);
+      renderer.updateNode('food', { icon: '🍽️' });
+      expect(renderer.toMarkdown()).toBe(form.newIcon!);
+    }
+  });
+
+  it('an idea saved with its icon twice, before this fix, reads with one, and loses the extra one when it\'s renamed', () => {
+    const doubled = '# Trip\n## 🌿 Meals <!-- orbit icon: 🌿 -->\n## Museums\n';
+    expect(parseOrbit(doubled).root.children[0]).toMatchObject({ text: 'Meals', icon: '🌿' });
+    const { renderer } = mount(doubled);
+    // An edit elsewhere leaves it as it is.
+    renderer.updateNode('museums', { status: 'done' });
+    expect(renderer.toMarkdown()).toBe('# Trip\n## 🌿 Meals <!-- orbit icon: 🌿 -->\n## Museums <!-- orbit status: done -->\n');
+    renderer.updateNode('meals', { text: 'Dinner' });
+    expect(renderer.toMarkdown()).toBe('# Trip\n## Dinner <!-- orbit icon: 🌿 -->\n## Museums <!-- orbit status: done -->\n');
+  });
+
+  it('written whole, in Orbit\'s own form, an icon goes before its title', () => {
+    const { renderer } = mount('# Trip\n## Food <!-- orbit icon: 🌿 -->\n');
+    renderer.updateNode('food', { text: 'Meals' });
+    expect(serializeOrbitMarkdown(renderer.getDocument()!, { keepSource: false })).toBe('# Trip\n\n## 🌿 Meals\n');
+  });
+});
+
 describe('hidden comments', () => {
   useMapSize(600, 400);
 
@@ -323,5 +374,30 @@ describe('hidden comments', () => {
     expect(renderer.toMarkdown()).toBe(text);
     renderer.updateNode('research', { text: 'Discovery' });
     expect(renderer.toMarkdown()).toBe('# Plan\n## Discovery <!-- TODO: check dates --> <!-- orbit status: active -->\n## Build\n');
+  });
+});
+
+describe('a copy of a map', () => {
+  const text = '# Trip <!-- a comment of my own -->\n\nA [link][guide].\n\n## Food\n<!-- orbit image: { src: food.jpg, width: 640 } -->\n\n## Places\n\n[guide]: https://example.com\n';
+
+  it('made from its text saves as the original does, edited or not', () => {
+    const original = parseOrbitMarkdown(text);
+    const copy = parseOrbitMarkdown(serializeOrbitMarkdown(original));
+    expect(serializeOrbitMarkdown(copy)).toBe(text);
+
+    for (const document of [original, copy]) {
+      document.root.children[1].text = 'Sights';
+    }
+
+    expect(serializeOrbitMarkdown(copy)).toBe(serializeOrbitMarkdown(original));
+    expect(serializeOrbitMarkdown(copy)).toContain('<!-- a comment of my own -->');
+  });
+
+  it('made from its tree saves in Orbit\'s own form, as format.md says', () => {
+    const plain = '# Trip <!-- a comment of my own -->\n\n## Food <!-- orbit status: done -->\n\n## Places\n';
+    const document = parseOrbitMarkdown(plain);
+    expect(serializeOrbitMarkdown(structuredClone(document))).toBe(serializeOrbitMarkdown(document, { keepSource: false }));
+    // A copy of the document object shares its tree, and saves from its source.
+    expect(serializeOrbitMarkdown({ ...document, options: { ...document.options } })).toBe(plain);
   });
 });

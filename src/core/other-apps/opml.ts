@@ -8,7 +8,7 @@
  * same, and other apps read its text, notes, links and checkboxes.
  */
 
-import { parseOrbit } from '../dispatch.js';
+import { documentOf } from '../dispatch.js';
 import { isNodeLink } from '../node-links.js';
 import type { OrbitDocument, OrbitNode } from '../types.js';
 import { buildDocument, ImportReport, newIdea, OrbitImportError, type ImportedIdea } from './ideas.js';
@@ -153,11 +153,11 @@ const DONE_WORDS = new Set(['done', 'complete', 'completed', 'shipped']);
  * with its icon and text, its note in `_note`, its link as `type="link"`
  * with a `url`, its status in `_status` (`checked`, `unchecked` and
  * `indeterminate` for done, todo and active; any other word as it is) and
- * `_complete`, and its tags as `category`. Pictures, videos, colors and
- * priorities have no place in OPML: a zip or the map's own file keeps them.
+ * `_complete`, and its tags as `category`. Pictures, videos, sounds, colors
+ * and priorities have no place in OPML: a zip or the map's own file keeps them.
  */
-export const exportOPML = (input: string | OrbitDocument, options: OrbitOPMLOptions = {}): string => {
-  const document = typeof input === 'string' ? parseOrbit(input) : input;
+export const exportOPML = (input: string | OrbitDocument | OrbitNode, options: OrbitOPMLOptions = {}): string => {
+  const document = documentOf(input);
   const title = options.title ?? (document.options.title || document.root.text);
   const lines = [
     '<?xml version="1.0" encoding="UTF-8"?>',

@@ -7,7 +7,7 @@
 import type { OrbitNode } from '../types.js';
 import { applySimilarity, transformCamera, type Camera, type CameraPath, type Similarity } from './camera.js';
 import { interpolate, within } from './animation-clock.js';
-import { toRadians, type NodeRole, type Scene, type SceneRing } from './scene.js';
+import { toRadians, type NodeRole, type Scene, type ScenePlace, type SceneRing } from './scene.js';
 
 export interface DisplayNode {
   id: string;
@@ -108,12 +108,29 @@ export interface DisplaySlot {
   unturned?: Point;
 }
 
+/** The place a hidden child keeps in its sun's orbit (see `ScenePlace`), where it is this frame. */
+export interface DisplayPlace {
+  id: string;
+  parentId: string;
+  x: number;
+  y: number;
+  radius: number;
+  color: string;
+  opacity: number;
+
+  /** Where the place is in the unturned orbit (see `OrbitTurn`). */
+  unturned?: Point;
+}
+
 export interface Display {
   nodes: Map<string, DisplayNode>;
   rings: DisplayRing[];
   links: DisplayLink[];
   camera: Camera;
   addSlot?: DisplaySlot;
+
+  /** The places of a hidden sun's children. */
+  hiddenPlaces?: DisplayPlace[];
 
   /** A focused orbit at rest. */
   turn?: OrbitTurn;
@@ -191,7 +208,23 @@ export const sceneDisplay = (scene: Scene, rotation: number, camera: Camera): Di
     links: scene.links.map((link) => ({ ...link, opacity: 1 })),
     camera,
     addSlot,
+    hiddenPlaces: scene.hiddenPlaces?.map((place) => placeAt(place, centerX, centerY, rotation)),
     turn: scene.kind === 'focus' ? { cx: centerX, cy: centerY, rotation } : undefined,
+  };
+};
+
+/** A hidden child's place in an orbit about (`centerX`, `centerY`) turned `rotation` degrees. */
+const placeAt = (place: ScenePlace, centerX: number, centerY: number, rotation: number): DisplayPlace => {
+  const angle = toRadians(place.orbitAngle + rotation);
+  return {
+    id: place.id,
+    parentId: place.parentId,
+    x: centerX + place.orbitRadius * Math.cos(angle),
+    y: centerY + place.orbitRadius * Math.sin(angle),
+    radius: place.radius,
+    color: place.color,
+    opacity: 1,
+    unturned: place,
   };
 };
 
@@ -366,7 +399,61 @@ export const transitionDisplay = (transition: Transition, progress: number): Dis
     links,
     camera: transition.cameraPath.at(progress),
     addSlot: transitionSlot(from.addSlot, restingTarget.addSlot && placeSlot(restingTarget.addSlot, placement), progress),
+    hiddenPlaces: transitionPlaces(from.hiddenPlaces, restingTarget.hiddenPlaces?.map((place) => placedPlace(place, placement)), destination, progress),
   };
+};
+
+/** A destination's place, placed in today's world by `placement`. */
+const placedPlace = (place: DisplayPlace, placement: Similarity): DisplayPlace => {
+  const point = applySimilarity(placement, place);
+  return { ...place, x: point.x, y: point.y, radius: place.radius * placement.scale, unturned: undefined };
+};
+
+/**
+ * Hidden children's places during a flight. A place in both views moves
+ * with its orbit. One whose child arrives (it's shown) stays where it is
+ * while the child grows out of the sun toward it, and fades as the child
+ * lands on it; one that goes with its orbit, as the map flies away from the
+ * sun, fades with the orbit's rings. One that comes fades in as the flight
+ * lands, after its child has shrunk into the sun.
+ */
+const transitionPlaces = (
+  start: DisplayPlace[] | undefined,
+  end: DisplayPlace[] | undefined,
+  arriving: ReadonlyMap<string, DisplayNode>,
+  progress: number,
+): DisplayPlace[] | undefined => {
+  if (!start?.length && !end?.length) {
+    return undefined;
+  }
+
+  const ending = new Map((end ?? []).map((place) => [`${place.parentId}\n${place.id}`, place]));
+  const places: DisplayPlace[] = [];
+
+  for (const place of start ?? []) {
+    const key = `${place.parentId}\n${place.id}`;
+    const target = ending.get(key);
+
+    if (target) {
+      ending.delete(key);
+      places.push({
+        ...target,
+        x: interpolate(place.x, target.x, progress),
+        y: interpolate(place.y, target.y, progress),
+        radius: interpolate(place.radius, target.radius, progress),
+        opacity: interpolate(place.opacity, 1, progress),
+      });
+    } else {
+      const fade = arriving.has(place.id) ? within(progress, 0.5, 0.95) : within(progress, 0, 0.5);
+      places.push({ ...place, unturned: undefined, opacity: place.opacity * (1 - fade) });
+    }
+  }
+
+  for (const place of ending.values()) {
+    places.push({ ...place, opacity: within(progress, 0.6, 1) });
+  }
+
+  return places;
 };
 
 const placeSlot = (slot: DisplaySlot, placement: Similarity): DisplaySlot => {
@@ -417,6 +504,7 @@ export const fadeDisplay = (transition: Transition, progress: number): Display =
       links: transition.from.links.map((link) => ({ ...link, opacity: link.opacity * visible })),
       camera: transition.from.camera,
       addSlot: slot && { ...slot, opacity: slot.opacity * visible },
+      hiddenPlaces: transition.from.hiddenPlaces?.map((place) => ({ ...place, opacity: place.opacity * visible })),
     };
   }
 
@@ -433,5 +521,6 @@ export const fadeDisplay = (transition: Transition, progress: number): Display =
     rings: resting.rings.map((ring) => ({ ...ring, opacity: visible })),
     links: resting.links.map((link) => ({ ...link, opacity: visible })),
     addSlot: resting.addSlot && { ...resting.addSlot, opacity: visible },
+    hiddenPlaces: resting.hiddenPlaces?.map((place) => ({ ...place, opacity: visible })),
   };
 };

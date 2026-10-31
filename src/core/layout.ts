@@ -17,6 +17,13 @@ export interface LayoutConfig {
    * the rings it began with. Rings never come out smaller than the planets need.
    */
   keptRings?: number[];
+
+  /**
+   * Nodes whose children are hidden from view (see `OrbitSVGRenderer.hideChildren`):
+   * laid out as if folded, with no moons and nothing under them. The node a
+   * focus layout centers on still lays its children out, for their places.
+   */
+  hidden?: ReadonlySet<string>;
 }
 
 /** A node with its place in the layout. */
@@ -36,6 +43,14 @@ interface MeasuredNode {
   node: OrbitNode;
   radius: number;
   subtreeRadius: number;
+
+  /**
+   * How far the subtree reaches back toward the node's parent, from the
+   * node's center: the node itself, for a chain that goes straight on, or
+   * the whole subtree circle, for children fanned out, which can reach back.
+   */
+  backReach: number;
+
   childOrbitRadius: number;
   children: MeasuredNode[];
 }
@@ -114,7 +129,7 @@ export const calculateFocusLayout = (
     MIN_PLANET_RADIUS,
     MAX_PLANET_RADIUS,
   );
-  const compact = children.every((child) => visibleChildren(child).length === 0);
+  const compact = children.every((child) => visibleChildren(child, config.hidden).length === 0);
   let orbitPlan = calculateFocusRingPlan(childCount, sunRadius, planetRadius, baseDim, compact);
 
   // A crowded orbit shrinks its sun on screen with everything else: the sun grows with its rings,
@@ -134,7 +149,7 @@ export const calculateFocusLayout = (
     orbitPlan.rings = orbitPlan.rings.map((radius, index) => Math.max(radius, keptRings[index]));
   } else {
     const moonsHidden = config.maxDepth !== undefined && focusedNode.level + 1 >= config.maxDepth;
-    const moonCounts = children.map((child) => (moonsHidden ? 0 : Math.min(visibleChildren(child).length, MOON_LIMIT)));
+    const moonCounts = children.map((child) => (moonsHidden ? 0 : Math.min(visibleChildren(child, config.hidden).length, MOON_LIMIT)));
     makeRoomForMoons(orbitPlan, planetRadius, moonCounts);
   }
 
@@ -194,8 +209,8 @@ export const calculateAllLayout = (
   parentAngle: number = -90,
 ): PositionedNode[] => {
   const baseDim = layoutBasis(config.containerWidth, config.containerHeight);
-  const complexityScale = clamp(Math.pow(18 / countVisibleNodes(node), 0.18), 0.74, 1.08);
-  const measured = measureSubtree(node, baseDim, complexityScale, config.maxDepth ?? Infinity);
+  const complexityScale = clamp(Math.pow(18 / countVisibleNodes(node, config.hidden), 0.18), 0.74, 1.08);
+  const measured = measureSubtree(node, baseDim, complexityScale, config.maxDepth ?? Infinity, config.hidden);
   const positionedNodes: PositionedNode[] = [];
 
   placeSubtree(measured, config.cx, config.cy, parentAngle, 0, positionedNodes);
@@ -210,15 +225,24 @@ export const getOrbitRings = (
 ): { centerId: string; cx: number; cy: number; r: number }[] => {
   const rings: { centerId: string; cx: number; cy: number; r: number }[] = [];
   const seen = new Set<string>();
+  // Each node's first child in the list, found in one pass: looking for it from the top of the list for every node took
+  // time that grew with the square of the map's size.
+  const firstChildren = new Map<string, PositionedNode>();
+
+  for (const node of positionedNodes) {
+    const parentId = node.parent?.id;
+
+    if (parentId !== undefined && parentId !== node.id && !firstChildren.has(parentId)) {
+      firstChildren.set(parentId, node);
+    }
+  }
 
   for (const node of positionedNodes) {
     if (visibleChildren(node).length === 0) {
       continue;
     }
 
-    const childNode = positionedNodes.find(
-      (n) => n.parent?.id === node.id && n.id !== node.id,
-    );
+    const childNode = firstChildren.get(node.id);
 
     if (!childNode) {
       continue;
@@ -243,19 +267,31 @@ const measureSubtree = (
   baseDim: number,
   complexityScale: number,
   depthRemaining: number,
+  hidden: ReadonlySet<string> | undefined,
 ): MeasuredNode => {
   const radius = radiusForLevel(baseDim, node.level, complexityScale);
-  const children = depthRemaining > 0 ? visibleChildren(node) : [];
-  const childMeasures = children.map((child) => measureSubtree(child, baseDim, complexityScale, depthRemaining - 1));
+  const children = depthRemaining > 0 ? visibleChildren(node, hidden) : [];
+  const childMeasures = children.map((child) => measureSubtree(child, baseDim, complexityScale, depthRemaining - 1, hidden));
 
   const childBounds = childMeasures.map((child) => child.subtreeRadius);
-  const childOrbitRadius = requiredOrbitRadius(radius, childBounds);
+  const childOrbitRadius = requiredOrbitRadius(radius, childMeasures);
   const maxChildBound = childBounds.length > 0 ? Math.max(...childBounds) : 0;
+  const subtreeRadius = Math.max(radius, childOrbitRadius + maxChildBound);
+
+  // A single child goes straight on from its parent, and so does its own subtree (see placeSubtree): the subtree reaches
+  // back no further than the node itself. Clearing a chain's whole subtree circle at every step instead doubled its size
+  // with each level, out of all proportion to the few ideas in it.
+  const backReach = childMeasures.length === 0
+    ? radius
+    : childMeasures.length === 1
+      ? Math.max(radius, childMeasures[0].backReach - childOrbitRadius)
+      : subtreeRadius;
 
   return {
     node,
     radius,
-    subtreeRadius: Math.max(radius, childOrbitRadius + maxChildBound),
+    subtreeRadius,
+    backReach,
     childOrbitRadius,
     children: childMeasures,
   };
@@ -314,18 +350,25 @@ const placeSubtree = (
   });
 };
 
-const requiredOrbitRadius = (centerRadius: number, childRadii: number[]): number => {
-  if (childRadii.length === 0) {
+/**
+ * How far from a node its children's orbit goes: far enough for each child's
+ * subtree to clear the node, by how far it reaches back, and for neighboring
+ * subtree circles to clear each other.
+ */
+const requiredOrbitRadius = (centerRadius: number, children: MeasuredNode[]): number => {
+  if (children.length === 0) {
     return 0;
   }
 
   const parentClearance = Math.max(
-    ...childRadii.map((childRadius) => centerRadius + childRadius + NODE_GAP),
+    ...children.map((child) => centerRadius + child.backReach + NODE_GAP),
   );
 
-  if (childRadii.length === 1) {
+  if (children.length === 1) {
     return parentClearance;
   }
+
+  const childRadii = children.map((child) => child.subtreeRadius);
 
   const angleStep = (2 * Math.PI) / childRadii.length;
   const chordFactor = 2 * Math.sin(angleStep / 2);
@@ -625,12 +668,13 @@ const layoutBasis = (containerWidth: number, containerHeight: number): number =>
   return Math.min(areaDim, shortSide * 1.25);
 };
 
-const countVisibleNodes = (node: OrbitNode): number => {
-  return 1 + visibleChildren(node).reduce((sum, child) => sum + countVisibleNodes(child), 0);
+const countVisibleNodes = (node: OrbitNode, hidden: ReadonlySet<string> | undefined): number => {
+  return 1 + visibleChildren(node, hidden).reduce((sum, child) => sum + countVisibleNodes(child, hidden), 0);
 };
 
-const visibleChildren = (node: OrbitNode): OrbitNode[] => {
-  return node.collapsed ? [] : node.children;
+/** The children a layout draws: none under a folded node, or one whose children are hidden. */
+const visibleChildren = (node: OrbitNode, hidden?: ReadonlySet<string>): OrbitNode[] => {
+  return node.collapsed || hidden?.has(node.id) ? [] : node.children;
 };
 
 const toRadians = (degrees: number): number => {

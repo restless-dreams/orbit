@@ -1,15 +1,20 @@
 /**
- * The media viewer: a node's picture or video over the whole window, to see
- * the one up close and to play the other. A native `<dialog>` opened as a
- * modal, so it sits in the top layer above a map of any size, keeps focus
- * inside and makes the page behind it inert.
+ * The media viewer: a node's picture, video or sound over the whole window,
+ * to see the one up close and to play the others. A native `<dialog>`
+ * opened as a modal, so it sits in the top layer above a map of any size,
+ * keeps focus inside and makes the page behind it inert.
  *
  * Pictures fit the window. The wheel, a pinch, a double click or tap, the
  * +, − and 0 keys and the zoom buttons zoom them around the point under the
- * pointer, and a zoomed picture pans with a drag. Previous and next step
- * through the map's pictures and videos in reading order; so do the arrow
- * keys and, on touch screens, a swipe, while the picture isn't zoomed. Esc,
- * a click around the media or a swipe down closes it.
+ * pointer, and a zoomed picture pans with a drag. A live photo's motion plays
+ * over its picture (see live-photo.ts): once as it shows, and again while
+ * the picture, its mark or the space bar is held. A sound plays in Orbit's
+ * own player, under its idea's picture or art made of its color. Previous
+ * and next step through the map's pictures, videos and sounds in reading
+ * order; so do the arrow keys and, on touch screens, a swipe, while the
+ * picture isn't zoomed. Space or K plays and pauses, J and L go ten seconds
+ * back and on, and M turns a sound off and on. Esc, a click around the
+ * media or a swipe down closes it.
  *
  * On a map that isn't interactive, the viewer is the page's to drive: no
  * buttons, no input of its own and no controls on videos.
@@ -20,8 +25,11 @@ import type { OrbitWords } from '../languages.js';
 import { guardUrl, resolveUrl } from '../url-guard.js';
 import { detectVideoProvider, hasMediaSource, videoPageUrl } from '../media.js';
 import { wheelZoomFactor } from '../input-controller.js';
+import { focusedElement } from '../browser.js';
 import { createIcon, type IconName } from './icons.js';
 import { createPlayer, type MediaPlayer, type PlaybackState } from './media-players.js';
+import { AudioPlayer, SKIP_SECONDS } from './audio-player.js';
+import { HOLD_TIME, LivePhoto, liveMotion } from './live-photo.js';
 import {
   FITTED,
   clampView,
@@ -36,9 +44,9 @@ import {
   type Size,
 } from './media-zoom.js';
 
-export type MediaKind = 'image' | 'video';
+export type MediaKind = 'image' | 'video' | 'audio';
 
-/** A node's picture or its video. */
+/** A node's picture, its video or its sound. */
 export interface MediaItem {
   node: OrbitNode;
   kind: MediaKind;
@@ -46,7 +54,7 @@ export interface MediaItem {
 
 /** What the viewer asks the map, and tells it. */
 export interface MediaViewerContext {
-  /** The map's pictures and videos, in reading order. */
+  /** The map's pictures, videos and sounds, in reading order. */
   items(): MediaItem[];
 
   /** The map's node with this id, while it has one. */
@@ -57,8 +65,14 @@ export interface MediaViewerContext {
   /** Whether the map takes input; without it, neither does the viewer. */
   interactive(): boolean;
 
+  /** Whether the reader asked for less motion: a live photo then plays only when asked. */
+  reducedMotion(): boolean;
+
   /** The icon before a node's title: its own, or its type's. */
   icon(node: OrbitNode): string | undefined;
+
+  /** The color the map draws a node with, for a sound's art. */
+  color(node: OrbitNode): string | null;
 
   /** It shows `item`, `index` of `total`: as it opens, and at every step. */
   onShow(item: MediaItem, index: number, total: number): void;
@@ -66,18 +80,21 @@ export interface MediaViewerContext {
   /** It closed while showing `item`. */
   onClose(item: MediaItem, index: number, total: number): void;
 
-  /** The video it shows started, paused, moved on, ended or was muted. */
-  onState(node: OrbitNode, state: PlaybackState): void;
+  /** The video, sound or live photo's motion it shows started, paused, moved on, ended or was muted. */
+  onState(node: OrbitNode, kind: MediaKind, state: PlaybackState): void;
 
   /** The map's words, in its language. */
   words(): OrbitWords;
+
+  /** Puts keyboard focus on the map, when what had it before the viewer opened has gone. */
+  returnFocus?(): void;
 }
 
 export interface MediaShowOptions {
-  /** Start a video playing. Default true. */
+  /** Start a video or sound playing, and play a live photo's motion once. Default true. */
   autoplay?: boolean;
 
-  /** Start a video this many seconds in: where the detail sheet's player was, or where the page says. */
+  /** Start a video or sound this many seconds in: where the detail sheet's player was, or where the page says. */
   startAt?: number;
 }
 
@@ -93,6 +110,12 @@ const WIDE_STAGE = 720;
  */
 const STEP_ROW = 60;
 const STEP_SIZE = 44;
+/** A sound's art is at most this wide (px), and its player at least this wide… */
+const SOUND_ART = 400;
+const SOUND_CONTROLS_WIDTH = 300;
+/** …and the player takes this much height under the art, which shows only when it can be this big. */
+const SOUND_CONTROLS_HEIGHT = 150;
+const SOUND_ART_SMALLEST = 96;
 /** Zoom per press of a zoom button, +, or −. */
 const STEP_ZOOM = 1.5;
 /** The arrow keys pan a zoomed picture by this share of the stage. */
@@ -108,22 +131,30 @@ const DOUBLE_TAP_TIME = 320;
 const DOUBLE_TAP_DISTANCE = 28;
 /** Elements that handle presses themselves: gestures never start on them. */
 const CONTROLS = 'button, a, video, iframe, input, select, textarea';
+/** A live photo's mark sits this far (px) inside the picture's top left corner, or the stage's when the picture is bigger. */
+const LIVE_MARK_INSET = 12;
 
-/** Whether a node's picture or video can be shown: it has one, at a URL allowed there. */
+/** Whether a node's picture, video or sound can be shown: it has one, at a URL allowed there. */
 export const showsMedia = (node: OrbitNode, kind: MediaKind): boolean => {
   if (kind === 'image') {
     return hasMediaSource(node.image) && guardUrl(node.image.src, 'image') !== null;
+  }
+
+  if (kind === 'audio') {
+    return hasMediaSource(node.audio) && guardUrl(node.audio.src, 'audio') !== null;
   }
 
   return hasMediaSource(node.video) && guardUrl(node.video.src, 'video') !== null;
 };
 
 /**
- * The map's pictures and videos in reading order: depth first, as the
- * outline lists the map, a node's picture before its video. Nodes below
- * `maxDepth` are left out, as they are from the map.
+ * The map's pictures, videos and sounds in reading order: depth first, as
+ * the outline lists the map, a node's picture before its video, and its
+ * video before its sound. Nodes below `maxDepth` are left out, as they are
+ * from the map, and so are the ideas under the nodes `hidden` names (see
+ * `hideChildren`), as they are from the outline.
  */
-export const galleryItems = (tree: OrbitNode, maxDepth?: number): MediaItem[] => {
+export const galleryItems = (tree: OrbitNode, maxDepth?: number, hidden?: ReadonlySet<string>): MediaItem[] => {
   const items: MediaItem[] = [];
   const stack: OrbitNode[] = [tree];
 
@@ -138,7 +169,11 @@ export const galleryItems = (tree: OrbitNode, maxDepth?: number): MediaItem[] =>
       items.push({ node, kind: 'video' });
     }
 
-    if (maxDepth === undefined || node.level < maxDepth) {
+    if (showsMedia(node, 'audio')) {
+      items.push({ node, kind: 'audio' });
+    }
+
+    if ((maxDepth === undefined || node.level < maxDepth) && hidden?.has(node.id) !== true) {
       for (let index = node.children.length - 1; index >= 0; index -= 1) {
         stack.push(node.children[index]);
       }
@@ -186,14 +221,20 @@ interface Picture {
   maximum: number;
 }
 
-/** A press on the stage: still a tap, or a drag that pans, swipes across (`swipe`) or pulls down (`pull`). */
+/**
+ * A press on the stage: still a tap, a drag that pans, swipes across
+ * (`swipe`) or pulls down (`pull`), or a live photo held to play (`hold`).
+ */
 interface Press {
   id: number;
   type: string;
   start: Point;
   last: Point;
   moved: boolean;
-  mode: 'none' | 'pan' | 'swipe' | 'pull';
+  mode: 'none' | 'pan' | 'swipe' | 'pull' | 'hold';
+
+  /** When it began (`performance.now()`). */
+  startedAt: number;
 }
 
 interface StageBox {
@@ -218,6 +259,21 @@ export class MediaViewer {
 
   /** The player's frame or video, in the box fitted to its width over height. */
   private playerBox: HTMLElement | null = null;
+
+  /** A sound's art and player, laid out to the stage. */
+  private soundBox: { box: HTMLElement; art: HTMLElement } | null = null;
+
+  /** The live photo the picture is, when it has a motion that can play. */
+  private live: LivePhoto | null = null;
+
+  /** The stage's size as it was last laid out. */
+  private stageSize: Size | null = null;
+
+  /** A press on a live photo that becomes a hold if it stays still a moment. */
+  private holdTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** The space bar is held on a live photo, playing it. */
+  private spaceHeld = false;
 
   private returnFocus: HTMLElement | SVGElement | null = null;
   private resizeObserver: ResizeObserver | null = null;
@@ -245,14 +301,19 @@ export class MediaViewer {
     return this.shown ? this.items[this.index] ?? null : null;
   }
 
-  /** The video it shows, while it shows one that can be driven. */
+  /** The video or sound it shows, while it shows one that can be driven. */
   get video(): MediaPlayer | null {
     return this.shown && this.player?.controllable ? this.player : null;
   }
 
+  /** The live photo it shows, while its motion can be played. */
+  private get livePhoto(): LivePhoto | null {
+    return this.shown && this.items[this.index]?.kind === 'image' ? this.live : null;
+  }
+
   /**
-   * Shows a node's picture or video, opening the viewer if it's closed.
-   * Returns false when the node has no such media to show.
+   * Shows a node's picture, video or sound, opening the viewer if it's
+   * closed. Returns false when the node has no such media to show.
    */
   open(item: MediaItem, options: MediaShowOptions = {}): boolean {
     if (!showsMedia(item.node, item.kind)) {
@@ -316,7 +377,7 @@ export class MediaViewer {
     this.finish();
   }
 
-  /** Steps to the previous (-1) or next (1) picture or video. Returns false at either end. */
+  /** Steps to the previous (-1) or next (1) picture, video or sound. Returns false at either end. */
   step(direction: 1 | -1): boolean {
     return this.go(this.index + direction);
   }
@@ -347,7 +408,8 @@ export class MediaViewer {
     }
 
     const next = items[index];
-    const source = (item: MediaItem) => (item.kind === 'image' ? item.node.image?.src : item.node.video?.src);
+    // A live photo is its picture and its motion.
+    const source = (item: MediaItem) => (item.kind === 'image' ? `${item.node.image?.src} ${item.node.image?.motion?.src ?? ''}` : item.node[item.kind]?.src);
     this.items = items;
 
     if (source(next) !== source(current)) {
@@ -358,22 +420,40 @@ export class MediaViewer {
 
     this.index = index;
     this.player?.setControls(this.context.interactive());
+    this.live?.setControls(this.context.interactive());
     this.describe();
     this.layout();
   }
 
+  /** Plays the video or sound it shows, or its live photo's motion through once, with its sound. */
   play(): boolean {
+    const live = this.livePhoto;
+
+    if (live) {
+      live.playOnce();
+      return true;
+    }
+
     const video = this.video;
     video?.play();
     return video !== null;
   }
 
+  /** Pauses the video or sound, or settles the live photo's motion back on its picture. */
   pause(): boolean {
+    const live = this.livePhoto;
+
+    if (live) {
+      live.settle();
+      return true;
+    }
+
     const video = this.video;
     video?.pause();
     return video !== null;
   }
 
+  /** Takes the video or sound to `seconds` in. A live photo's motion always plays from its start: false. */
   seek(seconds: number): boolean {
     const video = this.video;
 
@@ -385,7 +465,15 @@ export class MediaViewer {
     return true;
   }
 
+  /** Turns on the video's or sound's sound, or the live photo's, for its motion now and its opening if it hasn't started. */
   unmute(): boolean {
+    const live = this.livePhoto;
+
+    if (live) {
+      live.unmute();
+      return true;
+    }
+
     const video = this.video;
     video?.unmute();
     return video !== null;
@@ -414,6 +502,12 @@ export class MediaViewer {
     setLabel(parts.close, words.text('close'));
     setLabel(parts.previous, words.text('previous'));
     setLabel(parts.next, words.text('next'));
+
+    if (this.player instanceof AudioPlayer) {
+      this.player.relabel(words);
+    }
+
+    this.live?.relabel(words);
 
     if (this.shown) {
       this.describe();
@@ -449,7 +543,9 @@ export class MediaViewer {
     this.setStatus(null);
 
     if (item.kind === 'image') {
-      this.showPicture(item.node);
+      this.showPicture(item.node, options);
+    } else if (item.kind === 'audio') {
+      this.showSound(item.node, options);
     } else {
       this.showVideo(item.node, options);
     }
@@ -461,10 +557,11 @@ export class MediaViewer {
     this.describe();
   }
 
-  private showPicture(node: OrbitNode): void {
+  private showPicture(node: OrbitNode, options: MediaShowOptions): void {
     const parts = this.parts as ViewerParts;
     const image = node.image as NonNullable<OrbitNode['image']>;
-    const url = resolveUrl(guardUrl(image.src, 'image') as string, this.context.baseUrl());
+    const baseUrl = this.context.baseUrl();
+    const url = resolveUrl(guardUrl(image.src, 'image') as string, baseUrl);
     const element = document.createElement('img');
     element.className = 'orbit-viewer__picture';
     // The picture's description is its name; without one, its caption or the node's title.
@@ -484,6 +581,37 @@ export class MediaViewer {
     this.setStatus('', true);
     element.src = url;
     parts.layer.appendChild(element);
+    const motion = liveMotion(image);
+
+    if (motion) {
+      const live = new LivePhoto(element, {
+        source: resolveUrl(motion, baseUrl),
+        still: image.motion?.still,
+        words: this.context.words(),
+        controls: this.context.interactive(),
+        onUnavailable: () => {
+          // The picture stays, as a picture.
+          if (this.live === live) {
+            this.live = null;
+            element.classList.remove('orbit-viewer__picture--live');
+          }
+        },
+        onState: (state) => {
+          if (this.live === live) {
+            this.context.onState(this.items[this.index].node, 'image', state);
+          }
+        },
+      });
+
+      this.live = live;
+      element.classList.add('orbit-viewer__picture--live');
+      parts.layer.appendChild(live.mark);
+
+      // It plays once as the viewer shows it, unless the page or the reader would rather it didn't.
+      if (options.autoplay !== false && !this.context.reducedMotion()) {
+        live.open();
+      }
+    }
 
     if (element.complete && element.naturalWidth > 0) {
       this.pictureLoaded(picture);
@@ -501,6 +629,7 @@ export class MediaViewer {
     picture.scalable ||= !(naturalWidth > 0 && naturalHeight > 0);
     this.setStatus(null);
     this.layout();
+    this.live?.showPicture();
   }
 
   private showVideo(node: OrbitNode, options: MediaShowOptions): void {
@@ -519,7 +648,7 @@ export class MediaViewer {
       baseUrl,
       onState: (state) => {
         if (player !== null && this.player === player) {
-          this.context.onState(this.items[this.index].node, state);
+          this.context.onState(this.items[this.index].node, 'video', state);
         }
       },
       onRatio: () => {
@@ -547,15 +676,85 @@ export class MediaViewer {
     parts.layer.appendChild(box);
   }
 
-  /** Lets go of the media shown: a video stops. */
+  /**
+   * A sound in Orbit's own player, under the idea's picture or, without one,
+   * art made of the idea's color and icon, whose rings turn while it plays.
+   */
+  private showSound(node: OrbitNode, options: MediaShowOptions): void {
+    const parts = this.parts as ViewerParts;
+    const audio = node.audio as NonNullable<OrbitNode['audio']>;
+    const words = this.context.words();
+    const baseUrl = this.context.baseUrl();
+    const box = element('div', 'orbit-viewer__sound');
+    const art = element('div', 'orbit-viewer__art');
+    art.setAttribute('aria-hidden', 'true');
+
+    if (showsMedia(node, 'image')) {
+      const image = node.image as NonNullable<OrbitNode['image']>;
+      const picture = document.createElement('img');
+      picture.className = 'orbit-viewer__art-picture';
+      picture.alt = '';
+      picture.draggable = false;
+      picture.src = resolveUrl(guardUrl(image.src, 'image') as string, baseUrl);
+      art.appendChild(picture);
+    } else {
+      art.classList.add('orbit-viewer__art--made');
+      const color = this.context.color(node);
+
+      if (color) {
+        art.style.setProperty('--orbit-art-color', color);
+      }
+
+      const icon = this.context.icon(node);
+      const center = element('span', 'orbit-viewer__art-center');
+      center.appendChild(icon ? document.createTextNode(icon) : createIcon('audio'));
+      art.append(element('span', 'orbit-viewer__art-ring'), element('span', 'orbit-viewer__art-ring orbit-viewer__art-ring--outer'), center);
+    }
+
+    // Declared first: a player can report before it's returned.
+    let player: AudioPlayer | null = null;
+    player = new AudioPlayer({
+      source: resolveUrl(guardUrl(audio.src, 'audio') as string, baseUrl),
+      autoplay: options.autoplay !== false,
+      controls: this.context.interactive(),
+      startAt: options.startAt,
+      title: node.text || audio.caption || words.text('audio'),
+      words,
+      size: 'stage',
+      onState: (state) => {
+        if (player !== null && this.player === player) {
+          this.dialog?.classList.toggle('orbit-viewer--playing', state.playing);
+          this.context.onState(this.items[this.index].node, 'audio', state);
+        }
+      },
+      onError: () => {
+        if (player !== null && this.player === player) {
+          this.setStatus(this.context.words().text('audioUnavailable'));
+        }
+      },
+    });
+
+    this.player = player;
+    // A sound that started before the player was returned reported it too soon.
+    this.dialog?.classList.toggle('orbit-viewer--playing', player.state.playing);
+    box.append(art, player.element);
+    this.soundBox = { box, art };
+    parts.layer.appendChild(box);
+  }
+
+  /** Lets go of the media shown: a video or sound stops. */
   private clearMedia(): void {
     this.resetGestures();
     this.player?.destroy();
     this.player = null;
+    this.live?.destroy();
+    this.live = null;
+    this.spaceHeld = false;
     this.picture = null;
     this.playerBox = null;
+    this.soundBox = null;
     this.parts?.layer.replaceChildren();
-    this.dialog?.classList.remove('orbit-viewer--zoomed');
+    this.dialog?.classList.remove('orbit-viewer--zoomed', 'orbit-viewer--playing');
   }
 
   /** The title, caption, description, counter, link and buttons, for what's shown. */
@@ -564,7 +763,7 @@ export class MediaViewer {
     const dialog = this.dialog as HTMLDialogElement;
     const item = this.items[this.index];
     const { node } = item;
-    const media = item.kind === 'image' ? node.image : node.video;
+    const media = node[item.kind];
     const interactive = this.context.interactive();
     dialog.classList.toggle('orbit-viewer--still', !interactive);
     dialog.dataset.orbitMedia = item.kind;
@@ -613,10 +812,16 @@ export class MediaViewer {
     this.keepFocus();
   }
 
-  /** Where to see the picture on its own, or the video on its site; none for pictures in the map itself (`data:` and `blob:` URLs). */
+  /** Where to see the picture on its own, the video on its site, or the sound on its own; none for media in the map itself (`data:` and `blob:` URLs). */
   private mediaLink(item: MediaItem): { href: string; label: string } | null {
     const { node } = item;
     const baseUrl = this.context.baseUrl();
+
+    if (item.kind === 'audio') {
+      const source = node.audio?.src ?? '';
+      const link = /^\s*(?:data|blob):/i.test(source) ? null : guardUrl(source, 'link');
+      return link ? { href: resolveUrl(link, baseUrl), label: this.context.words().text('openAudioInNewTab') } : null;
+    }
 
     if (item.kind === 'image') {
       const source = node.image?.src ?? '';
@@ -665,6 +870,7 @@ export class MediaViewer {
     }
 
     const stage = this.readStageBox();
+    this.stageSize = { width: stage.width, height: stage.height };
     const steps = this.items.length > 1 && this.context.interactive();
     const stepsUnder = steps && this.playerBox !== null && stage.width < WIDE_STAGE;
     const room = this.mediaRoom(stage, steps, stepsUnder);
@@ -675,10 +881,12 @@ export class MediaViewer {
       picture.fitted = fitted;
       picture.maximum = maximumZoom(picture.natural, fitted);
       const style = picture.element.style;
-      style.width = `${round(fitted.width)}px`;
-      style.height = `${round(fitted.height)}px`;
-      style.left = `${round((stage.width - fitted.width) / 2)}px`;
-      style.top = `${round((stage.height - fitted.height) / 2)}px`;
+      const box = { left: (stage.width - fitted.width) / 2, top: (stage.height - fitted.height) / 2, width: fitted.width, height: fitted.height };
+      style.width = `${round(box.width)}px`;
+      style.height = `${round(box.height)}px`;
+      style.left = `${round(box.left)}px`;
+      style.top = `${round(box.top)}px`;
+      this.live?.place(box);
       this.setView(clampView(picture.view, fitted, stage, picture.maximum), false);
     }
 
@@ -697,6 +905,27 @@ export class MediaViewer {
 
       if (stepsUnder) {
         stepTop = `${round(top + height + (STEP_ROW - STEP_SIZE) / 2)}px`;
+      }
+    }
+
+    const sound = this.soundBox;
+
+    if (sound) {
+      // The art as big as the room left over the player allows, and none on a screen too short for it.
+      const fits = Math.min(SOUND_ART, room.width, room.height - SOUND_CONTROLS_HEIGHT);
+      const art = fits >= SOUND_ART_SMALLEST ? fits : 0;
+      // As wide as the art, but never narrower than the player needs, unless the stage itself is.
+      const width = Math.min(room.width, Math.max(SOUND_CONTROLS_WIDTH, art));
+      sound.box.style.width = `${round(width)}px`;
+      sound.box.style.setProperty('--_orbit-viewer-art', `${round(art)}px`);
+      sound.art.hidden = art === 0;
+      const top = (stage.height - art - SOUND_CONTROLS_HEIGHT) / 2;
+      sound.box.style.left = `${round((stage.width - width) / 2)}px`;
+      sound.box.style.top = `${round(Math.max(0, top))}px`;
+
+      // Previous and next sit beside the art's middle, clear of the player's buttons.
+      if (steps && art > 0) {
+        stepTop = `${round(Math.max(0, top) + art / 2 - STEP_SIZE / 2)}px`;
       }
     }
 
@@ -736,10 +965,29 @@ export class MediaViewer {
 
     picture.view = view;
     const element = picture.element;
+    const transform = `translate(${round(view.x)}px, ${round(view.y)}px) scale(${Math.round(view.scale * 10000) / 10000})`;
     element.classList.toggle('orbit-viewer__picture--gliding', glide);
-    element.style.transform = `translate(${round(view.x)}px, ${round(view.y)}px) scale(${Math.round(view.scale * 10000) / 10000})`;
+    element.style.transform = transform;
+    this.live?.follow(transform, glide);
+    this.placeLiveMark(glide);
     this.dialog?.classList.toggle('orbit-viewer--zoomed', isZoomed(view));
     this.updateZoomButtons();
+  }
+
+  /** A live photo's mark: inside the top left corner of the picture as it's drawn, or of the stage while the picture is bigger. */
+  private placeLiveMark(glide: boolean): void {
+    const live = this.live;
+    const picture = this.picture;
+    const stage = this.stageSize;
+
+    if (!live || !picture?.natural || !stage) {
+      return;
+    }
+
+    const { view, fitted } = picture;
+    const left = stage.width / 2 + view.x - (fitted.width * view.scale) / 2;
+    const top = stage.height / 2 + view.y - (fitted.height * view.scale) / 2;
+    live.placeMark(Math.max(0, left) + LIVE_MARK_INSET, Math.max(0, top) + LIVE_MARK_INSET, glide);
   }
 
   /** Zooms the picture by `factor` around `anchor` (from the stage's center). */
@@ -856,6 +1104,7 @@ export class MediaViewer {
     this.relabel();
 
     dialog.addEventListener('keydown', this.handleKeyDown);
+    dialog.addEventListener('keyup', this.handleKeyUp);
     dialog.addEventListener('cancel', this.handleCancel);
 
     // Only the click that ends a drag is swallowed: any new press is clicked as usual.
@@ -878,6 +1127,7 @@ export class MediaViewer {
     stage.addEventListener('pointerup', this.handlePointerUp);
     stage.addEventListener('pointercancel', this.handlePointerUp);
     stage.addEventListener('dblclick', this.handleDoubleClick);
+    stage.addEventListener('contextmenu', this.handleContextMenu);
     this.host.appendChild(dialog);
     this.dialog = dialog;
     return dialog;
@@ -906,8 +1156,11 @@ export class MediaViewer {
     const target = this.returnFocus;
     this.returnFocus = null;
 
-    if (target && target.isConnected) {
+    // A button made again while the viewer was open, such as the one that opened it, has left the page.
+    if (target?.isConnected) {
       target.focus({ preventScroll: true });
+    } else if (target) {
+      this.context.returnFocus?.();
     }
 
     if (item) {
@@ -980,7 +1233,36 @@ export class MediaViewer {
         handled = this.fitPicture();
         break;
       case ' ':
+        // On a live photo, the space bar is held as a finger holds the picture.
+        if (this.live && !onVideo && !target?.closest('button, a')) {
+          if (!event.repeat) {
+            this.spaceHeld = true;
+            this.live.press();
+          }
+
+          break;
+        }
+
         handled = !onVideo && !target?.closest('button, a') && this.togglePlayback();
+        break;
+      case 'k':
+      case 'K':
+        handled = !onVideo && this.togglePlayback();
+        break;
+      case 'j':
+      case 'J':
+      case 'l':
+      case 'L':
+        handled = !onVideo && this.skip(event.key.toLowerCase() === 'l' ? SKIP_SECONDS : -SKIP_SECONDS);
+        break;
+      case 'm':
+      case 'M':
+        handled = this.player instanceof AudioPlayer;
+
+        if (this.player instanceof AudioPlayer) {
+          this.player.toggleMute();
+        }
+
         break;
       default:
         handled = false;
@@ -991,7 +1273,16 @@ export class MediaViewer {
     }
   };
 
-  /** Plays the video if it's paused, and pauses it if it plays. */
+  /** Letting go of the space bar settles a live photo it held, or lets a quick press play through. */
+  private readonly handleKeyUp = (event: KeyboardEvent): void => {
+    if (event.key === ' ' && this.spaceHeld) {
+      this.spaceHeld = false;
+      this.live?.release();
+      event.preventDefault();
+    }
+  };
+
+  /** Plays the video or sound if it's paused, and pauses it if it plays. */
   private togglePlayback(): boolean {
     const video = this.video;
 
@@ -999,12 +1290,26 @@ export class MediaViewer {
       return false;
     }
 
-    if (video.state.playing) {
+    if (video instanceof AudioPlayer) {
+      video.togglePlayback();
+    } else if (video.state.playing) {
       video.pause();
     } else {
       video.play();
     }
 
+    return true;
+  }
+
+  /** Moves the video or sound `seconds` back (below 0) or on. */
+  private skip(seconds: number): boolean {
+    const video = this.video;
+
+    if (!video) {
+      return false;
+    }
+
+    video.seek(Math.max(0, video.state.time + seconds));
     return true;
   }
 
@@ -1101,13 +1406,17 @@ export class MediaViewer {
 
     const point = { x: event.clientX, y: event.clientY };
     this.pointers.set(event.pointerId, point);
+    this.live?.skipOpening();
 
     if (this.pointers.size === 2) {
-      // Two fingers pinch the picture; a swipe one of them began goes back.
+      // Two fingers pinch the picture; a swipe one of them began goes back, and a live photo it held settles.
       if (this.press?.mode === 'swipe' || this.press?.mode === 'pull') {
         this.settleLayer();
+      } else if (this.press?.mode === 'hold') {
+        this.live?.release();
       }
 
+      this.cancelHold();
       this.press = null;
 
       if (this.picture?.natural) {
@@ -1126,7 +1435,41 @@ export class MediaViewer {
       return;
     }
 
-    this.press = { id: event.pointerId, type: event.pointerType, start: point, last: point, moved: false, mode: 'none' };
+    this.press = { id: event.pointerId, type: event.pointerType, start: point, last: point, moved: false, mode: 'none', startedAt: now() };
+
+    // Held still for a moment, a live photo plays.
+    if (this.live && event.target === this.picture?.element) {
+      this.holdTimer = setTimeout(() => this.holdLive(), HOLD_TIME);
+    }
+  };
+
+  /** A press on a live photo that stayed still: its motion plays, with its sound, until it's let go. */
+  private holdLive(): void {
+    this.holdTimer = null;
+    const press = this.press;
+
+    if (!press || press.moved || !this.live || this.pointers.size !== 1) {
+      return;
+    }
+
+    press.moved = true;
+    press.mode = 'hold';
+    this.capture(press.id);
+    this.live.press(press.startedAt);
+  }
+
+  private cancelHold(): void {
+    if (this.holdTimer !== null) {
+      clearTimeout(this.holdTimer);
+      this.holdTimer = null;
+    }
+  }
+
+  /** A long press on a live photo plays it: the browser's menu for the picture stays closed. */
+  private readonly handleContextMenu = (event: MouseEvent): void => {
+    if (this.live && (this.holdTimer !== null || this.press?.mode === 'hold')) {
+      event.preventDefault();
+    }
   };
 
   private readonly handlePointerMove = (event: PointerEvent): void => {
@@ -1160,6 +1503,12 @@ export class MediaViewer {
       return;
     }
 
+    // A held live photo stays held wherever the finger goes.
+    if (press.mode === 'hold') {
+      press.last = point;
+      return;
+    }
+
     const deltaX = point.x - press.start.x;
     const deltaY = point.y - press.start.y;
 
@@ -1168,6 +1517,7 @@ export class MediaViewer {
         return;
       }
 
+      this.cancelHold();
       press.moved = true;
       press.mode = this.dragMode(press.type, deltaX, deltaY);
       this.capture(event.pointerId);
@@ -1202,7 +1552,7 @@ export class MediaViewer {
         const remaining = Array.from(this.pointers.entries())[0];
 
         if (remaining) {
-          this.press = { id: remaining[0], type: event.pointerType, start: remaining[1], last: remaining[1], moved: true, mode: this.zoomed ? 'pan' : 'none' };
+          this.press = { id: remaining[0], type: event.pointerType, start: remaining[1], last: remaining[1], moved: true, mode: this.zoomed ? 'pan' : 'none', startedAt: now() };
         }
       }
 
@@ -1216,7 +1566,16 @@ export class MediaViewer {
     }
 
     this.press = null;
+    this.cancelHold();
     this.dialog?.classList.remove('orbit-viewer--dragging');
+
+    // Letting go of a live photo settles it back on its picture.
+    if (press.mode === 'hold') {
+      this.suppressClick = true;
+      this.live?.release();
+      return;
+    }
+
     const cancelled = event.type === 'pointercancel';
     const deltaX = event.clientX - press.start.x;
     const deltaY = event.clientY - press.start.y;
@@ -1296,6 +1655,7 @@ export class MediaViewer {
   }
 
   private resetGestures(): void {
+    this.cancelHold();
     this.pointers.clear();
     this.press = null;
     this.pinch = null;
@@ -1328,18 +1688,6 @@ export class MediaViewer {
   }
 }
 
-/** The element with focus, inside shadow roots too. */
-const focusedElement = (host: Node): HTMLElement | SVGElement | null => {
-  const root = host.getRootNode() as Document | ShadowRoot;
-  let active: Element | null = root.activeElement ?? host.ownerDocument?.activeElement ?? null;
-
-  while (active?.shadowRoot?.activeElement) {
-    active = active.shadowRoot.activeElement;
-  }
-
-  return active instanceof HTMLElement || active instanceof SVGElement ? active : null;
-};
-
 const iconButton = (icon: IconName, onClick: () => void): HTMLButtonElement => {
   const button = element('button', 'orbit-button orbit-button--icon');
   button.type = 'button';
@@ -1362,4 +1710,8 @@ const element = <Name extends keyof HTMLElementTagNameMap>(name: Name, className
 
 const round = (value: number): number => {
   return Math.round(value * 100) / 100;
+};
+
+const now = (): number => {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
 };

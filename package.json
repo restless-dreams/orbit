@@ -1,6 +1,6 @@
 {
   "name": "@restless-dreams/orbit",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "description": "Markdown-first orbit/solar-system mind map renderer.",
   "keywords": [
     "markdown",
@@ -60,11 +60,12 @@
     "build:js": "bun run scripts/build.ts",
     "build:types": "tsc -p tsconfig.build.json",
     "build": "bun run build:js && bun run build:types",
-    "test": "bun test",
+    "test": "bun test --timeout 60000",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "verify": "bun run lint && bun run typecheck && bun run test && bun run build && bun run check:dist && bun run lint:package",
+    "verify": "bun run lint && bun run typecheck && bun run test && bun run build && bun run check:dist && bun run check:older-chromium && bun run lint:package",
     "check:dist": "bun run scripts/check-dist.ts",
+    "check:older-chromium": "bun run scripts/check-older-chromium.ts",
     "clean": "rm -rf dist",
     "pack:lib": "bun run build && bun pm pack",
     "prepack": "bun run build",

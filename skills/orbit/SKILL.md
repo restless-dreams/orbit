@@ -41,7 +41,7 @@ color: "#C6B4F2"
 - Text under a heading, or indented under a list item, is the node's note (markdown, shown in the detail sheet). Quote a bullet list with `>` to keep it in the note instead of making children.
 - An emoji at the start of a title is the node's icon; a link in the title sets its link (`#id` flies to that node); `[ ]` / `[x]` / `[/]` set status `todo` / `done` / `active`; hashtags at the end are tags. `**bold**`, `*italics*` and `` `code` `` show as plain text; a backslash keeps a character literal.
 - A line with only `![alt](src)` is the node's image. A line with only a markdown link to a YouTube or Vimeo video, or to an `.mp4`, `.webm` or `.mov` file, is its video: `[Trailer](https://youtu.be/…)` (a bare address stays text in the note). Under a list item, indent them.
-- Attributes go in `<!-- orbit key: value -->` (at the end of a line; separate several with commas) or a block `<!-- orbit … -->` (YAML, after a heading or indented under a list item): `color`, `icon`, `status`, `priority` (a number), `tags` (a list, or words separated by commas), `collapsed`, `type`, `link`, `note`, `noteFormat`, `image`, `video`, `embed`, `caption`, `id`. Other keys are kept as your own attributes. Other HTML comments are hidden, as in markdown: `<!-- status: done -->` without `orbit` sets nothing, and `validate` says so.
+- Attributes go in `<!-- orbit key: value -->` (at the end of a line; separate several with commas) or a block `<!-- orbit … -->` (YAML, after a heading or indented under a list item): `color`, `paletteColor` (which of the palette's colors, by number), `icon`, `status`, `priority` (a number), `tags` (a list, or words separated by commas), `collapsed`, `type`, `link`, `note`, `noteFormat`, `image`, `video`, `audio`, `embed`, `caption`, `id`. Other keys are kept as your own attributes. A sound is only ever the `audio` attribute, a URL or `{ src, caption }`, never a line of its own. A live photo is a picture with `motion`, its video's address, in the `image` attribute: `image: { src: summit.jpg, motion: summit.mp4 }` (or `motion: { src, still }`, `still` being the second the picture was taken). Other HTML comments are hidden, as in markdown: `<!-- status: done -->` without `orbit` sets nothing, and `validate` says so.
 - Status words with a colored dot: `active`, `done`, `blocked`, `todo` (and synonyms such as `in progress`, `shipped`, `at risk`, `planned`).
 - Frontmatter: `title` (the map's accessible name too), `theme`, `view` (`focus` or `all`), `palette`, `maxDepth`, `showRings`, `interactive`, `animation`, `speed` (seconds per turn of the drift), `baseUrl`, `className`, and `height`, which sizes `<orbit-map>` and marked's placeholders only (in code and React, size the container).
 - Themes: `paper` (default), `night`, `glass`, `glass-night`, `cosmos`, `blueprint`, `ink`, `contrast`, `flat`, `flat-night`, `material`, `material-night`, `liquid`, `liquid-night`, `auto`. In code, `materialTheme('#0B57D0')` makes a Material theme from any color.
@@ -91,7 +91,7 @@ import { OrbitMindMap } from '@restless-dreams/orbit/react';
 ```ts
 // No browser: static SVG for files, emails, server rendering
 import { renderToSVGString } from '@restless-dreams/orbit';
-const svg = renderToSVGString(markdown, { width: 1200, height: 800, theme: 'paper', viewMode: 'all' });
+const svg = renderToSVGString(markdown, { width: 1200, height: 800, theme: 'paper', view: 'all' });
 ```
 
 - **Afterwards:** `map.render(source)` redraws and keeps the reader's place, `map.setOptions({ … })` changes options, `map.flyTo(id)` and `map.overview()` move, and `map.destroy()` cleans up. Events come through `map.on(name, listener)`, or as `orbit-<name>` DOM events that bubble out of `<orbit-map>` (details in `event.detail`).
@@ -108,7 +108,7 @@ Every option, event and method: [references/guide.md](references/guide.md). Vue,
 
 ## Pictures, videos and languages
 
-- Pictures and videos open in a viewer over the whole window, to zoom into and to play, stepping through the map's media. `mediaViewer: false` shows them in the detail sheet instead, an `onAction` that returns `false` handles them yourself, and `map.openMedia(id)` opens one from code. YouTube's videos don't play in a page opened from a file: serve it. All of it: [references/media.md](references/media.md).
+- Pictures, videos and sounds open in a viewer over the whole window, to zoom into and to play, stepping through the map's media. `showMediaViewer: false` shows them in the detail sheet instead, an `onAction` that returns `false` handles them yourself, and `map.openMedia(id)` opens one from code. YouTube's videos don't play in a page opened from a file: serve it. All of it: [references/media.md](references/media.md).
 - Maps speak the language of the closest `lang` around them: English and Spanish are built in, and other languages fall back to English. `language: 'es'` picks one, `strings: { … }` changes single words, `registerLanguage(tag, strings)` adds a language, and `orbit render --language es` draws in one. Every word: [references/languages.md](references/languages.md).
 
 ## Extend it
@@ -126,6 +126,7 @@ Every option, with examples: [references/extending.md](references/extending.md).
 - `onNodeContext: ({ node, x, y }) => …` (or `map.on('node-context', …)`) fires for a long press, a right click or the context menu key on a node: show your own menu at `x`, `y` (CSS pixels from the map's top left corner), and call `map.editNode(id)` or `map.editNewNode(parentId)` from it.
 - `map.addNode(parentId, { text, … }, index?)`, `map.updateNode(id, changes)` (`undefined` removes an attribute), `map.removeNode(id)` and `map.moveNode(id, parentId, index?)` change the map with an animation, fire `edit` (`onEdit`), and return the node, or `null` when there's nothing to do.
 - Ids follow the text: read a node's current id from what the method returns.
+- For text or files dragged onto the map from elsewhere, light up the node under the pointer on `dragover` with `map.setDropTarget(map.getNodeAt(event.clientX, event.clientY)?.id ?? null)`, and on `drop` add to that node (or `map.getFocusedNode()`), then `map.setDropTarget(null)`.
 - For an AI assistant in an app, `createMapTools(map)` gives a language model tools to read the map and change it: `tools.for('anthropic' | 'openai' | 'openai-chat' | 'gemini')` for its API (`tools.definitions` for MCP), `tools.instructions` for its system prompt, and `tools.run(call.name, call.input).text` as each call's result. Don't write tools of your own for this: these check every call, animate each change, and say what to fix when a call is wrong.
 
 Ids, focus, saving, React and `<orbit-map>`: [references/editing.md](references/editing.md). The map tools, with the loop for each provider: [references/map-tools.md](references/map-tools.md).
@@ -133,8 +134,8 @@ Ids, focus, saving, React and `<orbit-map>`: [references/editing.md](references/
 ## Mistakes to avoid
 
 - A container without a height: the map is 0 px tall.
-- `view: overview`: the overview is `view: all`. In code it's `viewMode: 'all'`, and `view-mode="all"` on `<orbit-map>`; the frontmatter's `animation`, `speed` and `title` are `orbitAnimation`, `orbitSpeed` and `ariaLabel` in code.
+- `view: overview`: the overview is `view: all`, as in code (`view: 'all'`) and on `<orbit-map>` (`view="all"`). The frontmatter's `title` is `ariaLabel` in code.
 - A bullet list meant as part of a note, written without `>`: it becomes child nodes.
 - A `#id` link to a node that isn't in the map: `validate` reports it and suggests the id you meant.
 - YAML nodes use `text` and `children` (not `title`, `name` or `items`, which `validate` reports); `nodes:` holds the root (several share one named after `title`).
-- Inventing options: every option and prop is typed in the package's declarations (`RendererOptions`). TypeScript rejects one that doesn't exist; plain JavaScript ignores it without a word. `validate` checks the map file only.
+- Inventing options: every option and prop is typed in the package's declarations (`OrbitRendererOptions`). TypeScript rejects one that doesn't exist; plain JavaScript ignores it without a word. `validate` checks the map file only.

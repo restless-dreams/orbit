@@ -10,7 +10,7 @@
 
 import type { OrbitDocument, OrbitNewNode, OrbitNode, OrbitNodeInput } from '../types.js';
 import type { OrbitSVGRenderer } from '../svg-renderer.js';
-import { parseOrbit } from '../dispatch.js';
+import { documentOf } from '../dispatch.js';
 import { leadingEmoji, parseOrbitMarkdown } from '../parser-markdown.js';
 import { formatDiagnostic } from '../diagnostics.js';
 import { addToTree, moveInTree, newNodeFrom, removeFromTree, updateInTree } from '../editing.js';
@@ -21,7 +21,7 @@ import { findIndexedLinkedNode, findLinkedNode, indexNodes, isNodeLink, nodeLink
 import { findNodeById, getNodePath, nodeSlug } from '../utils.js';
 import { suggest } from '../suggest.js';
 import { guardUrl } from '../url-guard.js';
-import { ATTRIBUTES, definitionOf, formatDefinitions, TOOL_SPECS, type MapToolDefinition, type MapToolFormats, type MapToolName, type MapToolProvider, type ToolAttribute, type ToolSpec } from './definitions.js';
+import { ATTRIBUTES, definitionOf, formatDefinitions, TOOL_SPECS, type OrbitMapToolDefinition, type OrbitMapToolFormats, type OrbitMapToolName, type OrbitMapToolProvider, type ToolAttribute, type ToolSpec } from './definitions.js';
 import { InputError, list, readInput } from './input.js';
 import { count, descendants, findNodes, nameOf, nodeDetails, outlineOf, readOutline, searchable, type Search } from './reading.js';
 
@@ -34,7 +34,7 @@ const COLOR_SYNTAX = /^(?:#(?:[\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})|[a-z]+|(?:rgba
 /** Diagnostics an outline of new nodes always has, or can't judge alone. */
 const OUTLINE_CODES_LEFT_OUT = new Set(['synthetic-root', 'no-structure', 'unknown-link-target']);
 
-export interface MapToolsOptions {
+export interface OrbitMapToolsOptions {
   /** Offer only the tools that read the map, for an assistant that answers questions about it. Default false. */
   readOnly?: boolean;
 
@@ -42,8 +42,11 @@ export interface MapToolsOptions {
   readLimit?: number;
 }
 
+/** @deprecated Use `OrbitMapToolsOptions`: this name goes in Orbit 1.0. */
+export type MapToolsOptions = OrbitMapToolsOptions;
+
 /** What a tool call did, to send back to the model. */
-export interface MapToolResult {
+export interface OrbitMapToolResult {
   /** False when the call couldn't be carried out: nothing changed, and `text` says why and what to send instead. */
   ok: boolean;
 
@@ -54,27 +57,33 @@ export interface MapToolResult {
   changed: boolean;
 }
 
+/** @deprecated Use `OrbitMapToolResult`: this name goes in Orbit 1.0. */
+export type MapToolResult = OrbitMapToolResult;
+
 /** Map tools for one map (see `createMapTools`). */
-export interface MapTools {
+export interface OrbitMapTools {
   /** The tools: name, description, input as JSON Schema, and hints. The shape MCP takes, and the data for any other. */
-  readonly definitions: MapToolDefinition[];
+  readonly definitions: OrbitMapToolDefinition[];
 
   /** How to use the tools, to add to the model's system prompt. */
   readonly instructions: string;
 
   /** The tools in the shape a provider's API takes: `anthropic`, `openai` (Responses), `openai-chat` (Chat Completions, and most other providers) or `gemini`. */
-  for<Provider extends MapToolProvider>(provider: Provider): MapToolFormats[Provider];
+  for<Provider extends OrbitMapToolProvider>(provider: Provider): OrbitMapToolFormats[Provider];
 
   /**
    * Carries out a tool call: its name, and its input as an object or as
    * the JSON text OpenAI sends. Never throws for a call a model gets wrong:
    * the result says what went wrong instead.
    */
-  run(name: string, input?: unknown): MapToolResult;
+  run(name: string, input?: unknown): OrbitMapToolResult;
 
   /** The map as it is now. Edits change it in place. */
   readonly document: OrbitDocument | null;
 }
+
+/** @deprecated Use `OrbitMapTools`: this name goes in Orbit 1.0. */
+export type MapTools = OrbitMapTools;
 
 /** What a map on screen offers the tools: an `OrbitSVGRenderer` has it all. */
 type LiveMap = Pick<OrbitSVGRenderer, 'getDocument' | 'addNode' | 'updateNode' | 'moveNode' | 'removeNode' | 'flyTo' | 'getFocusedNode' | 'getViewMode'>;
@@ -109,7 +118,7 @@ interface Outcome {
  * `renderer`), where each change animates and fires `edit`, or a document
  * (or its markdown or YAML), which they change in place.
  */
-export const createMapTools = (map: OrbitSVGRenderer | OrbitDocument | string, options: MapToolsOptions = {}): MapTools => {
+export const createMapTools = (map: OrbitSVGRenderer | OrbitDocument | OrbitNode | string, options: OrbitMapToolsOptions = {}): OrbitMapTools => {
   const target = targetOf(map);
   const readLimit = typeof options.readLimit === 'number' && Number.isFinite(options.readLimit) ? Math.max(10, Math.trunc(options.readLimit)) : READ_LIMIT;
   const specs = TOOL_SPECS.filter((spec) => (spec.name !== 'show_node' || target.live !== null) && (spec.readOnly || !options.readOnly));
@@ -119,15 +128,15 @@ export const createMapTools = (map: OrbitSVGRenderer | OrbitDocument | string, o
   const removed = new Map<string, string>();
   const notes: string[] = [];
 
-  /** The node an id names: a node's id, with or without its #, an id from before a rename, or a title only one node has. */
+  /**
+   * The node an id names: a node's id, with or without its #, an id from
+   * before a rename, or a title only one node has. An id another node has
+   * taken since this session renamed or removed the node it named may mean
+   * either one, so it's refused rather than change the wrong node.
+   */
   const resolve = (root: OrbitNode, given: string, field: string): OrbitNode => {
     const id = given.trim().replace(/^#/, '');
     const direct = findNodeById(root, id);
-
-    if (direct) {
-      return direct;
-    }
-
     let current = id;
     const seen = new Set<string>();
 
@@ -137,6 +146,16 @@ export const createMapTools = (map: OrbitSVGRenderer | OrbitDocument | string, o
     }
 
     const followed = current === id ? null : findNodeById(root, current);
+
+    if (direct) {
+      const before = followed && followed !== direct ? `${nameOf(followed)} had it before` : removed.has(id) ? `"${removed.get(id)}" had it before it was removed` : null;
+
+      if (before) {
+        throw new CallError(`#${id} has named two nodes this session: ${nameOf(direct)} has it now, and ${before}. Give ${field} the id the node you mean has now, or its title.`);
+      }
+
+      return direct;
+    }
 
     if (followed) {
       notes.push(`#${id} is ${nameOf(followed)} now.`);
@@ -164,7 +183,7 @@ export const createMapTools = (map: OrbitSVGRenderer | OrbitDocument | string, o
     throw new CallError(`No node has the id "${id}".${nearNode ? ` Did you mean ${nameOf(nearNode)}?` : ''} read_map and find_nodes give every node's id.`);
   };
 
-  const calls: Record<MapToolName, (values: Record<string, unknown>, root: OrbitNode, document: OrbitDocument) => Outcome> = {
+  const calls: Record<OrbitMapToolName, (values: Record<string, unknown>, root: OrbitNode, document: OrbitDocument) => Outcome> = {
     read_map: (values, root, document) => {
       const start = typeof values.node_id === 'string' ? resolve(root, values.node_id, 'node_id') : root;
       const levels = typeof values.depth === 'number' ? values.depth : Infinity;
@@ -386,7 +405,7 @@ export const createMapTools = (map: OrbitSVGRenderer | OrbitDocument | string, o
     return child;
   };
 
-  const run = (name: string, input?: unknown): MapToolResult => {
+  const run = (name: string, input?: unknown): OrbitMapToolResult => {
     notes.length = 0;
     const spec = TOOL_SPECS.find((each) => each.name === name);
     const offered = specs.find((each) => each.name === name);
@@ -443,11 +462,11 @@ export const createMapTools = (map: OrbitSVGRenderer | OrbitDocument | string, o
   };
 };
 
-const failure = (message: string, spec?: ToolSpec): MapToolResult => {
+const failure = (message: string, spec?: ToolSpec): OrbitMapToolResult => {
   return { ok: false, text: spec && !spec.readOnly ? `${message} Nothing changed.` : message, changed: false };
 };
 
-const targetOf = (map: OrbitSVGRenderer | OrbitDocument | string): Target => {
+const targetOf = (map: OrbitSVGRenderer | OrbitDocument | OrbitNode | string): Target => {
   if (isLiveMap(map)) {
     return {
       document: () => map.getDocument(),
@@ -456,14 +475,17 @@ const targetOf = (map: OrbitSVGRenderer | OrbitDocument | string): Target => {
       move: (id, parentId, index) => map.moveNode(id, parentId, index),
       remove: (id) => map.removeNode(id),
       live: map,
-      newer: false,
+      // The map on screen now: the page may have drawn another since.
+      get newer() {
+        return (map.getDocument()?.diagnostics ?? []).some((diagnostic) => diagnostic.code === 'unsupported-schema-version');
+      },
     };
   }
 
-  const document = typeof map === 'string' ? parseOrbit(map) : map;
+  const document = map !== null && (typeof map === 'string' || typeof map === 'object') ? documentOf(map) : null;
 
   if (!document || typeof document !== 'object' || !document.root || !Array.isArray(document.root.children)) {
-    throw new TypeError(`createMapTools() takes a map on screen (createOrbitMap's result, or <orbit-map>'s renderer), a parsed document, or a map's markdown or YAML, but got ${map === null ? 'null' : typeof map}.`);
+    throw new TypeError(`createMapTools() takes a map on screen (createOrbitMap's result, or <orbit-map>'s renderer), a parsed document, a tree's root node, or a map's markdown or YAML, but got ${map === null ? 'null' : typeof map}.`);
   }
 
   // Edits keep top-level nodes' colors, as they do on a map on screen.
@@ -722,7 +744,7 @@ const readChanges = (values: Record<string, unknown>, root: OrbitNode, node: Orb
     changes.link = link;
   }
 
-  for (const name of ['image', 'video', 'embed'] as const) {
+  for (const name of ['image', 'video', 'audio', 'embed'] as const) {
     const media = values[name] as Record<string, string> | undefined;
 
     if (media === undefined) {
@@ -737,12 +759,15 @@ const readChanges = (values: Record<string, unknown>, root: OrbitNode, node: Orb
     }
 
     if (guardUrl(src, name, false) === null) {
-      throw new CallError(`${name} can't show "${src}": use a web address, such as https://example.com/${name === 'image' ? 'photo.jpg' : name === 'video' ? 'video.mp4' : 'page'}.`);
+      const example = { image: 'photo.jpg', video: 'video.mp4', audio: 'memo.m4a', embed: 'page' }[name];
+      throw new CallError(`${name} can't ${name === 'audio' ? 'play' : 'show'} "${src}": use a web address, such as https://example.com/${example}.`);
     }
 
     const extras = Object.fromEntries(Object.entries(media).filter(([key, value]) => key !== 'src' && value.trim() !== '').map(([key, value]) => [key, value.trim()]));
-    (changes as Record<string, unknown>)[name] = { src, ...extras };
-    set.push(name === 'image' ? 'picture' : name === 'embed' ? 'embedded page' : 'video');
+    // A picture given again at its own address, to change its caption say, keeps its live photo's motion.
+    const motion = name === 'image' && node.image?.src === src ? node.image.motion : undefined;
+    (changes as Record<string, unknown>)[name] = { src, ...extras, ...(motion ? { motion } : {}) };
+    set.push({ image: 'picture', video: 'video', audio: 'sound', embed: 'embedded page' }[name]);
   }
 
   if (values.collapsed !== undefined) {

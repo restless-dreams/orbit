@@ -5,7 +5,8 @@
 
 export type IconName =
   | 'back' | 'home' | 'chevron' | 'focus' | 'overview' | 'zoom-in' | 'zoom-out' | 'fit'
-  | 'image' | 'video' | 'embed' | 'note' | 'link' | 'goto' | 'info' | 'close' | 'previous' | 'next' | 'list' | 'expand';
+  | 'image' | 'video' | 'audio' | 'embed' | 'note' | 'link' | 'goto' | 'info' | 'close' | 'previous' | 'next' | 'list' | 'expand'
+  | 'play' | 'pause' | 'sound-on' | 'sound-off' | 'skip-back' | 'skip-forward' | 'live';
 
 const ICONS: Record<IconName, string[]> = {
   back: ['M19 12H5', 'M11 6l-6 6 6 6'],
@@ -18,6 +19,7 @@ const ICONS: Record<IconName, string[]> = {
   fit: ['M4 9V4h5', 'M20 9V4h-5', 'M4 15v5h5', 'M20 15v5h-5'],
   image: ['M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z', 'M20 15l-4.5-4.5L6 20', 'M9 7.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 1 0 0-3z'],
   video: ['M8 5.5v13l10.5-6.5z'],
+  audio: ['M4 10v4', 'M8 7v10', 'M12 4v16', 'M16 7v10', 'M20 10v4'],
   embed: ['M8.5 8l-4 4 4 4', 'M15.5 8l4 4-4 4', 'M13.5 5l-3 14'],
   note: ['M6 4h9l4 4v11a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z', 'M15 4v4h4', 'M8.5 12.5h7', 'M8.5 16h5'],
   link: ['M14 4h6v6', 'M20 4l-9 9', 'M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4'],
@@ -28,7 +30,22 @@ const ICONS: Record<IconName, string[]> = {
   next: ['M9.5 6l6 6-6 6'],
   list: ['M9 6h11', 'M9 12h11', 'M9 18h11', 'M4.5 6h.01', 'M4.5 12h.01', 'M4.5 18h.01'],
   expand: ['M14.5 4H20v5.5', 'M20 4l-6.5 6.5', 'M9.5 20H4v-5.5', 'M4 20l6.5-6.5'],
+  play: ['M8 5.5v13l10.5-6.5z'],
+  pause: ['M7.5 5.5h3v13h-3z', 'M13.5 5.5h3v13h-3z'],
+  'sound-on': ['M4 9.5h3.5L12 5.5v13l-4.5-4H4z', 'M15.5 9a4.2 4.2 0 0 1 0 6', 'M18.2 6.4a8 8 0 0 1 0 11.2'],
+  'sound-off': ['M4 9.5h3.5L12 5.5v13l-4.5-4H4z', 'M16 9.5l5 5', 'M21 9.5l-5 5'],
+  'skip-back': ['M5.2 12a6.8 6.8 0 1 0 2-4.8', 'M5 4.5v3.2h3.2'],
+  'skip-forward': ['M18.8 12a6.8 6.8 0 1 1-2-4.8', 'M19 4.5v3.2h-3.2'],
+  // A live photo: a sun, its ring, and a dashed orbit around them, last, so it can turn on its own.
+  live: [
+    'M12 10.9a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 1 0 0-2.2z',
+    'M12 6.75a5.25 5.25 0 1 0 0 10.5 5.25 5.25 0 1 0 0-10.5z',
+    'M10.71 2.84A9.25 9.25 0 0 1 13.29 2.84M17.57 4.61A9.25 9.25 0 0 1 19.39 6.43M21.16 10.71A9.25 9.25 0 0 1 21.16 13.29M19.39 17.57A9.25 9.25 0 0 1 17.57 19.39M13.29 21.16A9.25 9.25 0 0 1 10.71 21.16M6.43 19.39A9.25 9.25 0 0 1 4.61 17.57M2.84 13.29A9.25 9.25 0 0 1 2.84 10.71M4.61 6.43A9.25 9.25 0 0 1 6.43 4.61',
+  ],
 };
+
+/** Icons drawn filled rather than outlined. */
+const FILLED = new Set<IconName>(['video', 'play', 'pause']);
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
@@ -46,7 +63,7 @@ export const createIcon = (name: IconName): SVGSVGElement => {
     svg.appendChild(path);
   }
 
-  if (name === 'video') {
+  if (FILLED.has(name)) {
     svg.classList.add('orbit-icon--filled');
   }
 

@@ -16,7 +16,7 @@ const map = createOrbitMap(element, markdown, {
 With `editable`:
 
 - **A + in the orbit.** In focus mode, the orbit keeps a free place after the planets, drawn as a dashed planet with a plus.
-  - Press it and type: the text goes inside the new planet.
+  - Press it and type: the text goes inside the new planet. A + too small to type in, as a phone's map gets over its keyboard, gets a field floating over it at a size you can read. Names on pills keep clear of the field while you type.
   - Enter adds the idea right where it was typed and opens the next one after it, so ideas go in one after another, the keyboard staying up.
   - Escape, or Enter with nothing typed, stops.
 - **Text edited where it is.** A long press, a right click or F2 on a node turns its label into a field.
@@ -74,6 +74,44 @@ const map = createOrbitMap(element, markdown, {
 
 `node-drag` reports each step: `start` as the node leaves its place (with where it was), `over` whenever where it would go changes (`parent` and `index`, or `null` over no place, for haptics or a hint), and `end` when it's let go (where it went, after the `edit`; `null` when it went back).
 
+## Drops from elsewhere
+
+Text, links and files dragged onto a map, from another app or another part of the page, can go into the node they're let go over. `getNodeAt(x, y)` finds the node drawn at a point, in client coordinates (an event's `clientX` and `clientY`), and `setDropTarget(id)` lights it up as a node dragged on the map lights its target: it grows and takes a ring. `null` puts it out. What a drop adds is up to you.
+
+```js
+const map = createOrbitMap(element, markdown, {
+  editable: true,
+  onEdit: () => save(map.toMarkdown()),
+});
+
+element.addEventListener('dragover', (event) => {
+  event.preventDefault();
+  map.setDropTarget(map.getNodeAt(event.clientX, event.clientY)?.id ?? null);
+});
+
+element.addEventListener('dragleave', (event) => {
+  if (!element.contains(event.relatedTarget)) {
+    map.setDropTarget(null);
+  }
+});
+
+element.addEventListener('drop', (event) => {
+  event.preventDefault();
+  map.setDropTarget(null);
+  // Let go where there's no node, it goes into the one in focus.
+  const node = map.getNodeAt(event.clientX, event.clientY) ?? map.getFocusedNode();
+  const text = event.dataTransfer?.getData('text/plain').trim();
+
+  if (node && text) {
+    map.addNode(node.id, { text });
+  }
+});
+```
+
+- **What catches a drop:** the sun, a planet, a moon, or a node of the overview, a little past its edge, so small moons can be hit. Where nodes are close, the most central catch wins. Outside the map, or where no node is drawn, `getNodeAt` returns `null`.
+- **One target at a time:** while a node of the map is being dragged, its own target shows instead, and drawing another map, or another version of this one, puts the light out.
+- **Any map:** both work whether or not the map is `editable`, as the methods that change it do.
+
 ## Keys for editing
 
 With `editingKeys` as well as `editable`, the keyboard builds a map the way mind-map apps do:
@@ -105,14 +143,16 @@ const map = createOrbitMap(element, markdown, { editable: true, editingKeys: tru
 | `updateNode(id, changes)` | Changes text and attributes: `{ text: 'Budget' }`, `{ status: 'done', color: '#E8A33D' }`. `undefined` removes one: `{ color: undefined }`. Returns the node. |
 | `removeNode(id)` | Removes a node and everything under it. The root stays. Returns the removed node. |
 | `moveNode(id, parentId, index?)` | Moves a node, with everything under it, under `parentId` at `index`. Under the same parent, it changes the order. Returns the node. |
+| `getNodeAt(x, y)` | The node drawn at a point on the page, in client coordinates, or `null`: where something dragged onto the map from elsewhere would go (see [Drops from elsewhere](#drops-from-elsewhere)). |
+| `setDropTarget(id)` | Lights a node up as where a drop from elsewhere would go; `null` puts it out. |
 | `getDocument()` | The map as a document: its tree, and the options its frontmatter set. |
 | `toMarkdown()` | The map as orbit-md, frontmatter included. |
 
 To let a language model make these changes, see [Map tools for AI](map-tools.md).
 
-`editNode` and `editNewNode` return false, and the others `null`, when there's nothing to do: an id that isn't in the map, removing or moving the root, or moving a node inside itself. They work on any interactive map. `editable` adds the ways people edit by themselves: the +, editing on a long press, a right click, the context menu key or F2, and dragging.
+`editNode` and `editNewNode` return false, and the others `null`, when there's nothing to do: an id that isn't in the map, removing or moving the root, or moving a node inside itself. `editNewNode` also returns false for a node whose ideas are hidden ([Hiding ideas to reveal later](guide.md#hiding-ideas-to-reveal-later)), which has no + either: a new idea would be typed out of sight, among the ideas the page keeps for later, so reveal them first. They work on any interactive map. `editable` adds the ways people edit by themselves: the +, editing on a long press, a right click, the context menu key or F2, and dragging.
 
-Besides `text`, `addNode` and `updateNode` take the node's attributes: `icon`, `color`, `paletteColor`, `status`, `priority`, `tags`, `collapsed`, `type`, `link`, `note`, `noteFormat`, `image`, `video`, `embed`, and `attrs` for your own.
+Besides `text`, `addNode` and `updateNode` take the node's attributes: `icon`, `color`, `paletteColor`, `status`, `priority`, `tags`, `collapsed`, `type`, `typeVersion`, `link`, `note`, `noteFormat`, `image`, `video`, `audio`, `embed`, and `attrs` for your own. They read them as a file's are, so the format's shorthands work: a picture, video, sound or embed can be its address (`{ image: 'summit.jpg' }`), and so can a live photo's motion (`{ image: { src: 'summit.jpg', motion: 'summit-motion.mp4' } }`); tags can be `'web, mobile'`, and a type `'task@2'`. A value Orbit can't read, such as a picture without an address, throws a `TypeError` that says what it takes, and the map stays as it was.
 
 - **Ids come from the text,** as when a map is read from markdown: "Night markets" is `night-markets`, and a second "Ideas" is `ideas-2`. New text gives a node a new id, so the saved file needs no `id` attribute. A node keeps its id when a `#id` link points at it, or when the id was set by hand. Read a node's current id from what the method returns.
 - **Titles are one line:** line breaks become spaces, typed or pasted.
@@ -141,7 +181,8 @@ map.on('edit', () => localStorage.setItem('map', map.toMarkdown()));
 ```
 
 - **`toMarkdown()` reads back as the same map,** ids included, and keeps the file as it was written: only the ideas an edit changed are written again, so a note written by hand or by another app keeps its formatting and everything Orbit doesn't read (see [What saving keeps](format.md#what-saving-keeps)). New ideas are written the way people write maps: headings for the root and its children, lists below them, checkboxes for statuses, hashtags for tags. For YAML, use `serializeOrbitYAML(map.getDocument())`.
-- **A map written for a newer version of the format** has an `unsupported-schema-version` diagnostic: open it without `editable`, so nothing is changed that this version doesn't understand.
+- **Keep the map Orbit gave you, or its text.** What saving keeps stays with the tree Orbit read, which edits change in place: a copy of the tree, made with `structuredClone` or JSON, sent to a worker, a frame or a WebView, or made by a state store, saves without the file's own comments and formatting (see [What saving keeps](format.md#what-saving-keeps)). To keep a map somewhere else, keep its text, and parse it there.
+- **A map written for a newer version of the format** has an `unsupported-schema-version` diagnostic, in `getDocument().diagnostics` too. Orbit doesn't let people edit it on the map, even with `editable`, so nothing is changed that this version doesn't understand, and a console warning says why: show it as read-only in your own UI as well. The editing methods still work, but an edit that would replace what this version can't read throws, and the map stays as it was: an idea added or moved under one whose ideas are written in a newer version's form, new text for text it can't read, or a new value for an attribute whose value it couldn't read. Removing an idea or a value is allowed.
 - **Drawing the saved text again is fine.** When `render()` gets the map as it already is, Orbit keeps the view, and an edit's animation carries on.
 - **Undo is yours to keep:** save the markdown before an edit, and `render()` it to go back. Orbit animates to the restored map and keeps the reader's place.
 

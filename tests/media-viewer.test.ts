@@ -146,7 +146,7 @@ describe('the map’s pictures and videos', () => {
 });
 
 describe('opening the viewer', () => {
-  test('"View image" shows the picture over the whole window, with the node’s title and a link to the picture', () => {
+  test('"View picture" shows the picture over the whole window, with the node’s title and a link to the picture', () => {
     const { host } = mount(TRIP);
     const dialog = view(host, 'image');
     const image = dialog.querySelector<HTMLImageElement>('img.orbit-viewer__picture');
@@ -213,12 +213,12 @@ describe('opening the viewer', () => {
   });
 
   test('without the viewer, they open in the detail sheet, and with neither, nothing opens', () => {
-    const { host } = mount(TRIP, { mediaViewer: false });
+    const { host } = mount(TRIP, { showMediaViewer: false });
     click(host.querySelector('.orbit-action--image')!);
     expect(openViewer(host)).toBeNull();
     expect(openSheet(host)?.querySelector('img')?.getAttribute('src')).toBe('https://example.com/summit.jpg');
 
-    const { host: bare } = mount(TRIP, { mediaViewer: false, showDetailSheet: false });
+    const { host: bare } = mount(TRIP, { showMediaViewer: false, showDetailSheet: false });
     click(bare.querySelector('.orbit-action--image')!);
     expect(bare.querySelector('dialog[open]')).toBeNull();
   });
@@ -470,7 +470,7 @@ describe('the detail sheet', () => {
     click(host.querySelector('.orbit-action--note')!);
     const sheet = openSheet(host)!;
     const picture = sheet.querySelector<HTMLButtonElement>('button.orbit-sheet__picture')!;
-    expect(picture.getAttribute('aria-label')).toBe('View image: Sunrise from the summit');
+    expect(picture.getAttribute('aria-label')).toBe('View picture: Sunrise from the summit');
     picture.focus();
     click(picture);
     const dialog = openViewer(host)!;
@@ -507,7 +507,7 @@ describe('the detail sheet', () => {
   });
 
   test('without the viewer, its picture is only a picture', () => {
-    const { host, renderer } = mount(TRIP, { mediaViewer: false });
+    const { host, renderer } = mount(TRIP, { showMediaViewer: false });
     click(host.querySelector('.orbit-action--note')!);
     expect(openSheet(host)?.querySelector('.orbit-sheet__picture')).toBeNull();
     expect(openSheet(host)?.querySelector('img')).not.toBeNull();

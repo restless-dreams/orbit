@@ -53,6 +53,17 @@ nodes:
           src: "https://vimeo.com/76979871"
           thumbnail: images/thumbnail.jpg
           caption: Ninety seconds
+        audio:
+          src: memos/launch.m4a
+          caption: "The launch, in a minute"
         embed:
           src: "https://example.com/demo"
           caption: The demo
+        children:
+          - text: Launch day
+            image:
+              motion:
+                src: images/launch.mp4
+                still: 1.5
+              src: images/launch.jpg
+              alt: The team on the stage

@@ -7,12 +7,13 @@
  */
 
 import type { OrbitNode } from '../types.js';
-import type { DisplayNode, DisplayRing, DisplaySlot } from './display.js';
+import type { DisplayNode, DisplayPlace, DisplayRing, DisplaySlot } from './display.js';
 import type { NodeRole } from './scene.js';
 import { guardUrl, resolveUrl } from '../url-guard.js';
 import { hasMediaSource, youtubeThumbnailUrl } from '../media.js';
 import type { MapExtensions, OrbitNodeType } from '../extensions.js';
 import { breakUnits, graphemes, wordPieces, type TextUnit } from '../text-layout.js';
+import { hyphenationPoints } from '../hyphenation/hyphenation.js';
 import { COUNT_ESTIMATE, INSIDE_ESTIMATE, onMeasurementsReset, type TextMeasure } from './text-measure.js';
 import { OrbitWords } from '../languages.js';
 
@@ -146,14 +147,12 @@ export const turnShading = (defs: SVGDefsElement, ids: ViewIds, turn: number): v
 
 const ENGLISH = new OrbitWords('en');
 
-/** Labels and the assistive name of a node, in the map's language (English without one). */
-export const describeNode = (
-  node: OrbitNode,
-  hiddenChildren: number,
-  visibleChildren: number,
-  extensions?: MapExtensions,
-  words: OrbitWords = ENGLISH,
-): string => {
+/**
+ * Labels and the assistive name of a node, in the map's language (English
+ * without one). A node whose ideas are `hidden` for later (`hideChildren`)
+ * says how many are hidden, as the outline does, instead of how many it holds.
+ */
+export const describeNode = (node: OrbitNode, hidden: boolean, extensions?: MapExtensions, words: OrbitWords = ENGLISH): string => {
   const type = extensions?.nodeType(node);
   const parts = [[extensions ? extensions.icon(node) : node.icon, node.text || words.text('untitled')].filter(Boolean).join(' ')];
 
@@ -162,13 +161,11 @@ export const describeNode = (
   }
 
   if (node.status) {
-    parts.push(words.text('status', { status: node.status }));
+    parts.push(words.text('status', { status: words.statusName(node.status) }));
   }
 
-  const total = visibleChildren + hiddenChildren;
-
-  if (total > 0) {
-    parts.push(words.count('ideaCount', total));
+  if (node.children.length > 0) {
+    parts.push(words.count(hidden ? 'hiddenIdeaCount' : 'ideaCount', node.children.length));
   }
 
   const content = [
@@ -176,6 +173,7 @@ export const describeNode = (
     node.note ? words.text('hasNote') : '',
     hasMediaSource(node.image) ? words.text('hasImage') : '',
     hasMediaSource(node.video) ? words.text('hasVideo') : '',
+    hasMediaSource(node.audio) ? words.text('hasAudio') : '',
     hasMediaSource(node.embed) ? words.text('hasEmbed') : '',
     node.link ? words.text('hasLink') : '',
   ].filter(Boolean);
@@ -186,6 +184,9 @@ export const describeNode = (
 
   return parts.join(', ');
 };
+
+/** A sound's badge: three bars of a sound wave, drawn as strokes in the badge's unit circle. */
+export const SOUND_WAVE = 'M-0.42 -0.2 V0.2 M0 -0.46 V0.46 M0.42 -0.2 V0.2';
 
 /** Bodies smaller than this on screen (px) are drawn flat: there a shadow is a smudge. */
 const SMALL_BODY_RADIUS = 12;
@@ -266,7 +267,7 @@ export class NodeView {
   /** Shows a picture (an image, or a video's thumbnail) rather than a plain color. */
   hasImage = false;
 
-  /** Shows a status, a note's marker or a play button: a crowded orbit's planet with one stays a body down to the usual size (see `speckRadius`). */
+  /** Shows a status, a note's marker, a play button or a sound's badge: a crowded orbit's planet with one stays a body down to the usual size (see `speckRadius`). */
   private readonly hasBadges: boolean;
 
   private readonly body: SVGGElement;
@@ -349,17 +350,29 @@ export class NodeView {
     this.body.appendChild(this.shade);
 
     const hasMarker = node.note || hasMediaSource(node.image) || hasMediaSource(node.embed) || node.link || type?.details;
+    const hasVideo = hasMediaSource(node.video);
+    const hasSound = hasMediaSource(node.audio);
 
-    if (hasMediaSource(node.video)) {
+    if (hasVideo) {
       const play = svgElement('g', { class: 'orbit-node__play', transform: 'translate(0.62 0.62) scale(0.3)' });
       play.appendChild(svgElement('circle', { r: '1' }));
       play.appendChild(svgElement('path', { d: 'M-0.32 -0.48 L0.52 0 L-0.32 0.48 Z' }));
       this.body.appendChild(play);
-    } else if (hasMarker) {
+    }
+
+    // A sound's badge, in the note marker's colors and as big as a status's dot, where the marker goes: across from a video's play button when the node has one.
+    if (hasSound) {
+      const sound = svgElement('g', { class: 'orbit-node__sound', transform: `translate(${hasVideo ? '-0.72' : '0.72'} 0.72) scale(0.17)` });
+      sound.appendChild(svgElement('circle', { r: '1' }));
+      sound.appendChild(svgElement('path', { d: SOUND_WAVE }));
+      this.body.appendChild(sound);
+    }
+
+    if (!hasVideo && !hasSound && hasMarker) {
       this.body.appendChild(svgElement('circle', { class: 'orbit-node__marker', cx: '0.72', cy: '0.72', r: '0.13' }));
     }
 
-    this.hasBadges = hasMediaSource(node.video) || Boolean(hasMarker) || Boolean(node.status);
+    this.hasBadges = hasVideo || hasSound || Boolean(hasMarker) || Boolean(node.status);
 
     if (node.status) {
       const look = extensions.status(node.status);
@@ -617,6 +630,7 @@ export class NodeView {
  */
 export class AddSlotView {
   readonly element: SVGGElement;
+  private readonly held: boolean;
   private shown = false;
   private pending = false;
   private drop: 'target' | 'waiting' | false = false;
@@ -630,9 +644,11 @@ export class AddSlotView {
 
   /** `held`: the place held for a node being dragged, which only shows, rather than the + to press. */
   constructor(held = false) {
+    this.held = held;
+    // Hidden until it's drawn, for assistive technology too.
     this.element = held
       ? svgElement('g', { class: 'orbit-add orbit-add--held', 'aria-hidden': 'true' })
-      : svgElement('g', { class: 'orbit-add', 'data-orbit-add': '', tabindex: '-1' });
+      : svgElement('g', { class: 'orbit-add', 'data-orbit-add': '', tabindex: '-1', 'aria-hidden': 'true' });
 
     if (!held) {
       this.element.setAttribute('role', 'button');
@@ -660,6 +676,14 @@ export class AddSlotView {
 
     if (shown !== this.shown) {
       this.element.style.display = shown ? '' : 'none';
+
+      // Chromium's WebView still tells TalkBack of a button `display: none` hides, in the middle of its node.
+      if (!this.held && shown) {
+        this.element.removeAttribute('aria-hidden');
+      } else if (!this.held) {
+        this.element.setAttribute('aria-hidden', 'true');
+      }
+
       this.shown = shown;
     }
 
@@ -707,8 +731,87 @@ export class AddSlotView {
   }
 }
 
-/** CSS hooks for a node's element and label: `data-orbit-type`, `data-orbit-status` and `data-orbit-tags`. */
-export const markNode = (element: HTMLElement | SVGElement, node: OrbitNode, type: string | undefined = node.type): void => {
+/** One hidden child's place, as last drawn. */
+interface PlaceDrawing {
+  element: SVGGElement;
+  transform: string;
+  opacity: string;
+  color: string;
+}
+
+/**
+ * The places a hidden sun's children keep in its orbit (see `ScenePlace`):
+ * faint discs in each child's color, where the child lands once it's shown.
+ * They're only a picture, hidden from assistive technology: the sun's
+ * announcement says how many ideas are hidden.
+ */
+export class HiddenPlacesView {
+  readonly element: SVGGElement;
+  private readonly places = new Map<string, PlaceDrawing>();
+
+  constructor() {
+    this.element = svgElement('g', { class: 'orbit-hidden-places', 'aria-hidden': 'true' });
+  }
+
+  /**
+   * Draws `places`, or none. In an orbit turned `turn` degrees, each is drawn
+   * where it is in the unturned orbit, as the planets are (see `OrbitTurn`).
+   */
+  update(places: readonly DisplayPlace[] | undefined, turn?: number): void {
+    const shown = new Set<string>();
+
+    for (const place of places ?? []) {
+      if (place.opacity <= 0.01 || place.radius <= 0.05) {
+        continue;
+      }
+
+      const key = `${place.parentId}\n${place.id}`;
+      shown.add(key);
+      let drawing = this.places.get(key);
+
+      if (!drawing) {
+        const element = svgElement('g', { class: 'orbit-hidden-place' });
+        element.append(svgElement('circle', { class: 'orbit-hidden-place__disc', r: '1' }));
+        this.element.appendChild(element);
+        drawing = { element, transform: '', opacity: '', color: '' };
+        this.places.set(key, drawing);
+      }
+
+      const point = turn === undefined ? place : place.unturned ?? place;
+      const transform = `translate(${round(point.x)} ${round(point.y)}) scale(${round(place.radius, 4)})`;
+
+      if (transform !== drawing.transform) {
+        drawing.element.setAttribute('transform', transform);
+        drawing.transform = transform;
+      }
+
+      const opacity = place.opacity >= 0.999 ? '' : String(round(place.opacity, 3));
+
+      if (opacity !== drawing.opacity) {
+        drawing.element.style.opacity = opacity;
+        drawing.opacity = opacity;
+      }
+
+      if (place.color !== drawing.color) {
+        drawing.element.style.setProperty('--orbit-node-color', place.color);
+        drawing.color = place.color;
+      }
+    }
+
+    for (const [key, drawing] of this.places) {
+      if (!shown.has(key)) {
+        drawing.element.remove();
+        this.places.delete(key);
+      }
+    }
+  }
+}
+
+/**
+ * CSS hooks for a node's element and label: `data-orbit-type` (the type it's
+ * drawn as, `type`), `data-orbit-status` and `data-orbit-tags`.
+ */
+export const markNode = (element: HTMLElement | SVGElement, node: OrbitNode, type: string | undefined): void => {
   if (type) {
     element.setAttribute('data-orbit-type', type.toLowerCase());
   }
@@ -1086,31 +1189,40 @@ const fourLineSplits = (total: number, fill: (start: number, end: number, line: 
   return splits;
 };
 
-/** A name cut to fit its lines: the lines, how wide each is (ems), how many characters show, and whether any don't. */
+/**
+ * A name cut to fit its lines: the lines, how wide each is (ems), how many
+ * characters show, whether any don't, and the most times one word broke
+ * across lines.
+ */
 interface CutText {
   lines: string[];
   widths: number[];
   shown: number;
   truncated: boolean;
+  breaks: number;
 }
 
 /**
  * As much of the text as `widths` hold, word pieces kept whole, the last line
  * ending with an ellipsis when text was cut (cut between characters if need
  * be), and how many characters show. Null when a line can't hold even its
- * first piece.
+ * first piece. Long words break where `language` lets them (see `hyphenate`),
+ * as late as the line allows, or, when `even`, where a word's last two lines
+ * come out most even.
  */
-const cutUnits = (metrics: TextMetrics, fontSize: number, widths: number[]): CutText | null => {
+const cutUnits = (metrics: TextMetrics, fontSize: number, widths: number[], language: string, even = false): CutText | null => {
   const sized = metrics.at(fontSize);
   const total = sized.units.reduce((sum, unit) => sum + unit.text.length, 0);
   const lines: string[] = [];
   const usedEms: number[] = [];
   const last = widths.length - 1;
   const widest = Math.max(...widths);
-  const room = () => widths[lines.length] - (lines.length === last ? sized.ellipsis : 0);
+  const roomOf = (line: number) => widths[line] - (line === last ? sized.ellipsis : 0);
+  const room = () => roomOf(lines.length);
   let line = '';
   let used = 0;
   let shown = 0;
+  let breaks = 0;
 
   for (let unit of sized.units) {
     let space = used > 0 && unit.spaced ? sized.space : 0;
@@ -1129,8 +1241,10 @@ const cutUnits = (metrics: TextMetrics, fontSize: number, widths: number[]): Cut
         return null;
       }
 
+      let splits = 0;
+
       while (unit.ems > room() && lines.length < last) {
-        const split = hyphenate(unit, room(), metrics, fontSize);
+        const split = hyphenate(unit, room(), metrics, fontSize, language, even ? roomOf(lines.length + 1) : undefined);
 
         if (!split) {
           return null;
@@ -1140,7 +1254,10 @@ const cutUnits = (metrics: TextMetrics, fontSize: number, widths: number[]): Cut
         usedEms.push(split.headEms);
         shown += split.head.length - 1;
         unit = split.rest;
+        splits += 1;
       }
+
+      breaks = Math.max(breaks, splits);
     }
 
     if (used + space + unit.ems <= room()) {
@@ -1171,23 +1288,57 @@ const cutUnits = (metrics: TextMetrics, fontSize: number, widths: number[]): Cut
   const truncated = shown < total;
   lines.push(truncated ? `${line.trimEnd()}…` : line.trimEnd());
   usedEms.push(used + (truncated ? sized.ellipsis : 0));
-  return { lines, widths: usedEms, shown, truncated };
+  return { lines, widths: usedEms, shown, truncated, breaks };
+};
+
+/**
+ * `cutUnits`, with a long word broken where its lines come out most even
+ * whenever the name still shows whole that way. Breaking as late as the line
+ * allows leaves the most room for what follows, but can leave a syllable
+ * alone on the next line.
+ */
+const cutEvenly = (metrics: TextMetrics, fontSize: number, widths: number[], language: string): CutText | null => {
+  const latest = cutUnits(metrics, fontSize, widths, language);
+
+  if (!latest || latest.truncated) {
+    return latest;
+  }
+
+  const even = cutUnits(metrics, fontSize, widths, language, true);
+  return even && !even.truncated ? even : latest;
 };
 
 /** Words this long or longer may break with a hyphen when a name is cut short anyway. */
 const HYPHENATED_WORD = /^\p{L}{8,}$/u;
 
-/** A long word's head (with a hyphen) that fits in `room` ems, how wide it is (ems), and the rest of the word; null for anything else. */
-const hyphenate = (unit: MeasuredUnit, room: number, metrics: TextMetrics, fontSize: number): { head: string; headEms: number; rest: MeasuredUnit } | null => {
+/** Without patterns for a language, a long word breaks anywhere it leaves this many letters on each side. */
+const UNPATTERNED_SIDE = 3;
+
+/**
+ * A long word's head (with a hyphen) that fits in `room` ems, how wide it is
+ * (ems), and the rest of the word; null for anything else. It breaks where
+ * `language`'s hyphenation patterns let it, as close to the end of the room
+ * as it can ("Pho-to-syn-the-sis", never "Photosy-nthesis"), or, in a
+ * language without patterns, wherever the room ends. Given the next line's
+ * room (`nextRoom`), a word whose rest fits there breaks where the two lines
+ * fill their rooms most evenly instead: "Electroen- / cephalography", not
+ * "Electroencephalogra- / phy".
+ */
+const hyphenate = (unit: MeasuredUnit, room: number, metrics: TextMetrics, fontSize: number, language: string, nextRoom?: number): { head: string; headEms: number; rest: MeasuredUnit } | null => {
   if (!HYPHENATED_WORD.test(unit.text)) {
     return null;
   }
 
   const characters = graphemes(unit.text);
-  let head = '';
+  const points = hyphenationPoints(characters, language)
+    ?? characters.map((_, index) => index).filter((index) => index >= UNPATTERNED_SIDE && characters.length - index >= UNPATTERNED_SIDE);
+  const breaks = new Set(points);
   let used = metrics.at(fontSize).hyphen;
-  let count = 0;
   let headEms = 0;
+  let count = 0;
+  let latest: { count: number; used: number; headEms: number } | null = null;
+  // The break whose fuller line fills the least of its room, among those whose rest fits the next line.
+  let evenest: { count: number; used: number; headEms: number; fill: number } | null = null;
 
   for (const character of characters) {
     const width = metrics.character(character, fontSize);
@@ -1196,20 +1347,36 @@ const hyphenate = (unit: MeasuredUnit, room: number, metrics: TextMetrics, fontS
       break;
     }
 
-    head += character;
     used += width;
     headEms += width;
     count += 1;
+
+    if (!breaks.has(count)) {
+      continue;
+    }
+
+    latest = { count, used, headEms };
+    const rest = unit.ems - headEms;
+
+    if (nextRoom !== undefined && rest <= nextRoom) {
+      const fill = Math.max(used / room, rest / nextRoom);
+
+      if (!evenest || fill < evenest.fill) {
+        evenest = { count, used, headEms, fill };
+      }
+    }
   }
 
-  // At least three letters on each side of the hyphen.
-  if (count < 3 || characters.length - count < 3) {
+  const best = evenest ?? latest;
+
+  if (!best) {
     return null;
   }
 
-  const rest = characters.slice(count).join('');
+  const head = characters.slice(0, best.count).join('');
+  const rest = characters.slice(best.count).join('');
   // What's left of the word is as wide as the word less its head (give or take kerning).
-  return { head: `${head}-`, headEms: used, rest: { text: rest, ems: Math.max(0, unit.ems - headEms), spaced: false } };
+  return { head: `${head}-`, headEms: best.used, rest: { text: rest, ems: Math.max(0, unit.ems - best.headEms), spaced: false } };
 };
 
 /** The width (px) of a circle of radius `room` at height `y` from its center. */
@@ -1333,11 +1500,12 @@ export const insideLabelReach = (layout: InsideLabelLayout): number => {
 
 /**
  * A name's fit at one size, in its font's own width, and once tried (when
- * the map is still), the narrower one it may need.
+ * the map is still), the better one it may have: larger with a long word
+ * broken, or in a narrower width.
  */
 interface InsideFits {
   own: InsideLabelLayout | null;
-  narrower?: InsideLabelLayout | null;
+  still?: InsideLabelLayout | null;
 }
 
 /** Fitted labels by font, then role, size and text: labels are fitted on every frame while the map moves. */
@@ -1362,14 +1530,19 @@ onMeasurementsReset(() => {
  * default, widths are estimated).
  *
  * A name that doesn't fit at its font's width tries narrower ones (see
- * `fitInside`) only when `narrower` allows, as it does while the map is
- * still: while the map moves, trying hundreds of names in each width would
- * make frames late. A fit already made with them is kept, though.
+ * `fitNarrower`), and a name that shrinks to fit a long word whole tries
+ * breaking the word instead (see `fitBroken`), only when `narrower` allows,
+ * as it does while the map is still: while the map moves, trying hundreds of
+ * names at each size would make frames late. A fit already made is kept,
+ * though.
  *
  * A node showing a "+N" `countWidth` px wide (see `measureCount`) keeps its
  * name clear of it: the name rises above it, or gets smaller.
+ *
+ * A long word cut across lines breaks where `language` (the map's, a tag
+ * such as `es-MX`) lets it: see `hyphenate`.
  */
-export const insideLabelLayout = (role: NodeRole, screenRadius: number, text: string, hasIcon = false, measure: TextMeasure = INSIDE_ESTIMATE, narrower = true, countWidth = 0): InsideLabelLayout | null => {
+export const insideLabelLayout = (role: NodeRole, screenRadius: number, text: string, hasIcon = false, measure: TextMeasure = INSIDE_ESTIMATE, narrower = true, countWidth = 0, language = 'en'): InsideLabelLayout | null => {
   // In steps of about 6% (2 px at least), so a zoom or a flight doesn't fit and write the text again on every frame.
   const step = Math.max(2, Math.round(screenRadius * 0.06));
   const radius = Math.floor(screenRadius / step) * step;
@@ -1386,7 +1559,7 @@ export const insideLabelLayout = (role: NodeRole, screenRadius: number, text: st
     insideLayouts.set(measure, inFont);
   }
 
-  const key = `${role}|${radius}|${hasIcon ? 1 : 0}|${countWidth}|${text}`;
+  const key = `${role}|${radius}|${hasIcon ? 1 : 0}|${countWidth}|${language}|${text}`;
   let fits = inFont.get(key);
 
   if (fits === undefined) {
@@ -1394,22 +1567,115 @@ export const insideLabelLayout = (role: NodeRole, screenRadius: number, text: st
       inFont.clear();
     }
 
-    const own = fitInFont(role, radius, text, hasIcon, measure, countWidth);
-    // A name that shows whole in its font's own width needs nothing narrower.
-    fits = own !== null && !own.truncated ? { own, narrower: own } : { own };
+    const own = fitInFont(role, radius, text, hasIcon, measure, countWidth, language);
+    // A name that shows whole in its font's own width needs nothing narrower, nor broken unless that shows it larger.
+    fits = own !== null && !own.truncated && !mightBreakLarger(role, radius, text, measure, own) ? { own, still: own } : { own };
     inFont.set(key, fits);
   }
 
-  if (fits.narrower !== undefined) {
-    return fits.narrower;
+  if (fits.still !== undefined) {
+    return fits.still;
   }
 
   if (!narrower) {
     return fits.own;
   }
 
-  fits.narrower = fitNarrower(role, radius, text, hasIcon, measure, countWidth) ?? fits.own;
-  return fits.narrower;
+  const own = fits.own;
+
+  if (own !== null && !own.truncated) {
+    fits.still = fitBroken(role, radius, text, hasIcon, measure, countWidth, language, own.fontSize + BROKEN_GAIN) ?? own;
+  } else {
+    fits.still = fitNarrower(role, radius, text, hasIcon, measure, countWidth, language) ?? own;
+  }
+
+  return fits.still;
+};
+
+/**
+ * How much larger (px) a name has to show for a long word in it to break
+ * across lines rather than shrink to fit whole: breaking a word costs some
+ * reading, and a little size doesn't pay for it.
+ */
+const BROKEN_GAIN = 2;
+
+/**
+ * The size a name with long words could show at if they broke across lines:
+ * as large as the text's area allows in the circle (a broken word's pieces,
+ * not the whole word, have to fit its width).
+ */
+const brokenStart = (role: NodeRole, radius: number, metrics: TextMetrics): number => {
+  const largest = LABEL_FONT_SIZE[role];
+  const sized = metrics.at(largest);
+  const breakable = Math.max(sized.total - sized.space * LABEL_LINES[role], 0.01);
+  return Math.floor(Math.min(largest, insideRoom(radius) * Math.sqrt((1.25 * Math.PI) / (LINE_HEIGHT * breakable))) * 2) / 2;
+};
+
+/**
+ * Whether a name shown whole at `whole`'s size might show at least
+ * `BROKEN_GAIN` px larger with a long word broken: it has one, and its
+ * area leaves room. An overview's names stay whole, on pills when they must.
+ */
+const mightBreakLarger = (role: NodeRole, radius: number, text: string, measure: TextMeasure, whole: InsideLabelLayout): boolean => {
+  if (role === 'node') {
+    return false;
+  }
+
+  const metrics = textMetrics(text, measure);
+  return metrics.at(whole.fontSize).units.some((unit) => HYPHENATED_WORD.test(unit.text)) && brokenStart(role, radius, metrics) >= whole.fontSize + BROKEN_GAIN;
+};
+
+/**
+ * A name whole inside its node with its long words broken across lines where
+ * `language` breaks them, once each at most, at the largest size from the
+ * text's area down to `floor` (px); null when breaking fits it at none of
+ * them. A word in three pieces reads worse than a smaller one in two.
+ */
+const fitBroken = (role: NodeRole, radius: number, text: string, hasIcon: boolean, measure: TextMeasure, countWidth: number, language: string, floor: number): InsideLabelLayout | null => {
+  const room = insideRoom(radius);
+  const badge = countBox(radius, countWidth);
+  const metrics = textMetrics(text, measure);
+  const largest = LABEL_FONT_SIZE[role];
+  const start = brokenStart(role, radius, metrics);
+  const attempts: [boolean, number][] = [];
+
+  if (hasIcon) {
+    for (let fontSize = start; fontSize >= Math.max(floor, largest - ICON_SHRINK); fontSize -= 0.5) {
+      attempts.push([true, fontSize]);
+    }
+  }
+
+  for (let fontSize = start; fontSize >= floor; fontSize -= 0.5) {
+    attempts.push([false, fontSize]);
+  }
+
+  for (const [icon, fontSize] of attempts) {
+    // A broken word takes two lines at least.
+    for (let count = 2; count <= LABEL_LINES[role]; count += 1) {
+      const tried = lineWidths(room, fontSize, count, icon, badge);
+
+      if (!tried) {
+        break;
+      }
+
+      const cut = cutEvenly(metrics, fontSize, tried.widths.map((width) => width / fontSize), language);
+
+      if (!cut || cut.truncated || cut.breaks !== 1) {
+        continue;
+      }
+
+      // Fewer lines than tried sit elsewhere, where the circle may be narrower: they show only if they fit there.
+      const shown = cut.lines.length === count ? tried : lineWidths(room, fontSize, cut.lines.length, icon, badge);
+
+      if (!shown || !fitRooms(cut.widths, shown.widths, fontSize)) {
+        continue;
+      }
+
+      return { width: Math.floor(Math.max(...shown.widths.slice(0, cut.lines.length))), fontSize, lines: cut.lines, icon, truncated: false, lift: shown.lift };
+    }
+  }
+
+  return null;
 };
 
 /** How far below its usual size a name shrinks before its node's icon makes way (px). */
@@ -1435,7 +1701,7 @@ const NARROWER_ROOM = 16;
  * in a narrower width of it (a font with a width axis draws semi-condensed,
  * then condensed), when that shows it whole; null when none does.
  */
-const fitNarrower = (role: NodeRole, radius: number, text: string, hasIcon: boolean, measure: TextMeasure, countWidth: number): InsideLabelLayout | null => {
+const fitNarrower = (role: NodeRole, radius: number, text: string, hasIcon: boolean, measure: TextMeasure, countWidth: number, language: string): InsideLabelLayout | null => {
   const narrower = insideRoom(radius) >= NARROWER_ROOM ? measure.narrower() : null;
 
   if (!narrower || !mightFitWhole(role, radius, text, narrower.narrower() ?? narrower)) {
@@ -1443,7 +1709,7 @@ const fitNarrower = (role: NodeRole, radius: number, text: string, hasIcon: bool
   }
 
   for (let width: TextMeasure | null = narrower; width; width = width.narrower()) {
-    const attempt = fitInFont(role, radius, text, hasIcon, width, countWidth);
+    const attempt = fitInFont(role, radius, text, hasIcon, width, countWidth, language);
 
     if (attempt && !attempt.truncated) {
       return { ...attempt, stretch: width.stretch };
@@ -1466,7 +1732,7 @@ const mightFitWhole = (role: NodeRole, radius: number, text: string, measure: Te
   return sized.longestUnbreakable * smallest <= 2 * room && smallest <= room * Math.sqrt((1.25 * Math.PI) / (LINE_HEIGHT * breakable));
 };
 
-const fitInFont = (role: NodeRole, radius: number, text: string, hasIcon: boolean, measure: TextMeasure, countWidth: number): InsideLabelLayout | null => {
+const fitInFont = (role: NodeRole, radius: number, text: string, hasIcon: boolean, measure: TextMeasure, countWidth: number, language: string): InsideLabelLayout | null => {
   const room = insideRoom(radius);
   const badge = countBox(radius, countWidth);
 
@@ -1547,7 +1813,7 @@ const fitInFont = (role: NodeRole, radius: number, text: string, hasIcon: boolea
       break;
     }
 
-    const cut = cutUnits(metrics, smallest, tried.widths.map((width) => width / smallest));
+    const cut = cutEvenly(metrics, smallest, tried.widths.map((width) => width / smallest), language);
 
     if (!cut || cut.shown <= mostShown) {
       continue;
@@ -1568,15 +1834,24 @@ const fitInFont = (role: NodeRole, radius: number, text: string, hasIcon: boolea
 };
 
 /**
+ * A planet at least this big (radius, px) whose name has no room inside it,
+ * whole or cut, shows it on a pill instead, where one fits clear of the rest:
+ * a planet with no name among named ones looks broken. A crowded orbit's
+ * smaller planets show none until you zoom in.
+ */
+const PLANET_PILL_RADIUS = 16;
+
+/**
  * Where a node's label goes at this on-screen size. A name goes inside its
  * node whenever it fits there (see `insideLabelLayout`). A pill beside the
  * node is for the nodes that need one: nodes showing a picture, the focused
- * node when its name doesn't fit inside, and overview nodes too small for
- * their names. Any other node too small for its name shows none until you
- * zoom in. A name inside a node keeps clear of its "+N", `countWidth` px wide.
+ * node and planets when their names don't fit inside, and overview nodes too
+ * small for their names. Any other node too small for its name shows none
+ * until you zoom in. A name inside a node keeps clear of its "+N",
+ * `countWidth` px wide.
  */
-export const labelPlacement = (role: NodeRole, screenRadius: number, text: string, hasImage: boolean, hasIcon = false, measure: TextMeasure = INSIDE_ESTIMATE, narrower = true, countWidth = 0): LabelPlacement => {
-  if (!hasImage && insideLabelLayout(role, screenRadius, text, hasIcon, measure, narrower, countWidth)) {
+export const labelPlacement = (role: NodeRole, screenRadius: number, text: string, hasImage: boolean, hasIcon = false, measure: TextMeasure = INSIDE_ESTIMATE, narrower = true, countWidth = 0, language = 'en'): LabelPlacement => {
+  if (!hasImage && insideLabelLayout(role, screenRadius, text, hasIcon, measure, narrower, countWidth, language)) {
     return 'inside';
   }
 
@@ -1586,6 +1861,10 @@ export const labelPlacement = (role: NodeRole, screenRadius: number, text: strin
 
   if (hasImage || role === 'node') {
     return screenRadius >= (role === 'moon' ? 11 : 4) ? 'outside' : 'hidden';
+  }
+
+  if (role === 'planet' && screenRadius >= PLANET_PILL_RADIUS) {
+    return 'outside';
   }
 
   return 'hidden';
@@ -1635,11 +1914,14 @@ export interface LabelDrawing {
   /** The font a name inside its node is fitted in, as its placement was (default: estimated widths). */
   measure?: TextMeasure;
 
-  /** Whether a name inside its node may try narrower widths of its font, as it does while the map is still (default: true). */
+  /** Whether a name inside its node may try the fits that take longer, narrower widths of its font or a long word broken at a larger size, as it does while the map is still (default: true). */
   narrower?: boolean;
 
   /** The width (px) of the node's "+N", which a name inside it keeps clear of (default: 0, when it shows none). */
   countWidth?: number;
+
+  /** The map's language, which long words break by (default: English; see `insideLabelLayout`). */
+  language?: string;
 
   /** The side of its node a pill touches, a unit vector (default: below). */
   direction?: { x: number; y: number };
@@ -1764,7 +2046,7 @@ export class NodeLabel {
     let transform: string;
 
     if (placement === 'inside') {
-      const layout = insideLabelLayout(role, screenRadius, this.node.text, this.hasIcon, drawing.measure, drawing.narrower, drawing.countWidth) ?? {
+      const layout = insideLabelLayout(role, screenRadius, this.node.text, this.hasIcon, drawing.measure, drawing.narrower, drawing.countWidth, drawing.language) ?? {
         width: insideLabelWidth(role, screenRadius),
         fontSize: MINIMUM_FONT_SIZE[role],
         lines: [this.node.text],

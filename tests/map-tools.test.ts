@@ -130,6 +130,30 @@ describe('ids a model gets wrong', () => {
     });
   });
 
+  test('an id two nodes have had this session is refused, so a stale one never changes the wrong node', () => {
+    const document = parseOrbit('# Map\n## Alpha\n## Beta\n');
+    const tools = createMapTools(document);
+    // Alpha leaves #alpha, and Beta takes it: #alpha now names Beta, and Alpha had it before.
+    tools.run('update_node', { node_id: 'alpha', text: 'Gamma' });
+    tools.run('update_node', { node_id: 'beta', text: 'Alpha' });
+    const removed = tools.run('remove_node', { node_id: 'alpha' });
+    expect(removed).toMatchObject({ ok: false, changed: false });
+    expect(removed.text).toContain('"Alpha" #alpha has it now, and "Gamma" #gamma had it before');
+    expect(serializeOrbitMarkdown(document, { keepSource: false })).toBe('# Map\n\n## Gamma\n\n## Alpha\n');
+    // Its current id or its title still finds either one.
+    expect(tools.run('remove_node', { node_id: 'gamma' }).ok).toBe(true);
+    expect(tools.run('update_node', { node_id: 'Alpha', status: 'done' }).ok).toBe(true);
+  });
+
+  test('an id a removed node had, taken since by another, is refused too', () => {
+    const tools = createMapTools('# Map\n## Alpha\n## Beta\n');
+    tools.run('remove_node', { node_id: 'alpha' });
+    tools.run('update_node', { node_id: 'beta', text: 'Alpha' });
+    const changed = tools.run('update_node', { node_id: 'alpha', status: 'done' });
+    expect(changed).toMatchObject({ ok: false, changed: false });
+    expect(changed.text).toContain('"Alpha" #alpha has it now, and "Alpha" had it before it was removed');
+  });
+
   test('an id from before a rename still finds the node, and a removed one says it was removed', () => {
     const tools = createMapTools(MAP);
     expect(tools.run('update_node', { node_id: 'survey', text: 'Customer survey' }).text).toBe('Changed "Customer survey" #customer-survey: set its title. Its id is #customer-survey now: it was #survey.');
@@ -228,7 +252,7 @@ describe('changing nodes', () => {
     expect(text({ priority: 'high' })).toBe('priority takes a number, like 1, not "high". Nothing changed.');
     expect(text({ text: '  ' })).toStartWith('text can\'t be empty');
     expect(text({ status: 'done', clear: ['status'] })).toBe('status is both given and in clear: give it a value, or clear it. Nothing changed.');
-    expect(text({ clear: ['owner'] })).toBe('clear can\'t take "owner". It takes note, status, priority, tags, icon, color, link, image, video, embed and collapsed. Nothing changed.');
+    expect(text({ clear: ['owner'] })).toBe('clear can\'t take "owner". It takes note, status, priority, tags, icon, color, link, image, video, audio, embed and collapsed. Nothing changed.');
     expect(tools.document!.root.children[0].children[1]).toEqual(parseOrbit(MAP).root.children[0].children[1]);
   });
 
@@ -284,8 +308,8 @@ describe('calls a model gets wrong', () => {
     expect(tools.run('add_nodes', '{"parent_id": "build",').text).toStartWith('add_nodes\'s input isn\'t valid JSON');
     expect(tools.run('add_nodes', ['build']).text).toBe('add_nodes takes an object, like {"parent_id": "…"}, not a list. Nothing changed.');
     expect(tools.run('update_node', { id: 'qa', title: 'Testing', colour: 'tomato', index: null }).text).toBe('Changed "Testing" #testing: set its title and color. Its id is #testing now: it was #qa.');
-    expect(tools.run('update_node', { node_id: 'testing', stauts: 'done' }).text).toBe('update_node has no field "stauts". Did you mean "status"? It takes node_id, text, note, status, priority, tags, icon, color, link, image, video, embed, collapsed and clear. Nothing changed.');
-    expect(tools.run('update_node', { node_id: 'testing', status: 'done', reason: 'Asked for it' }).text).toBe('Changed "Testing" #testing: set its status.\nNote: update_node doesn\'t take "reason", so it was left out. It takes node_id, text, note, status, priority, tags, icon, color, link, image, video, embed, collapsed and clear.');
+    expect(tools.run('update_node', { node_id: 'testing', stauts: 'done' }).text).toBe('update_node has no field "stauts". Did you mean "status"? It takes node_id, text, note, status, priority, tags, icon, color, link, image, video, audio, embed, collapsed and clear. Nothing changed.');
+    expect(tools.run('update_node', { node_id: 'testing', status: 'done', reason: 'Asked for it' }).text).toBe('Changed "Testing" #testing: set its status.\nNote: update_node doesn\'t take "reason", so it was left out. It takes node_id, text, note, status, priority, tags, icon, color, link, image, video, audio, embed, collapsed and clear.');
     expect(tools.run('read_node', {}).text).toBe('read_node needs node_id: the node to read, by the id read_map or find_nodes gave.');
   });
 });

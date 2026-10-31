@@ -6,9 +6,7 @@
 import { Marked, marked } from 'marked';
 import type { MarkedExtension, RendererExtension, TokenizerExtension } from 'marked';
 import { parseOrbit } from '../core/dispatch.js';
-import { renderOrbitMarkdownBlocks } from '../core/auto-render.js';
-import type { AutoRenderOptions } from '../core/auto-render.js';
-import type { OrbitSVGRenderer } from '../core/svg-renderer.js';
+import { hydrateOrbitBlocks } from '../core/auto-render.js';
 import type { OrbitNode } from '../core/types.js';
 
 interface OrbitToken {
@@ -22,8 +20,8 @@ interface OrbitToken {
 const SETTING_ATTRIBUTES: Record<string, string> = {
   height: 'data-height',
   theme: 'data-theme',
-  view: 'data-view-mode',
-  'view-mode': 'data-view-mode',
+  view: 'data-view',
+  'view-mode': 'data-view',
   'max-depth': 'data-max-depth',
   maxDepth: 'data-max-depth',
   palette: 'data-palette',
@@ -115,13 +113,7 @@ export const configureMarked = <Instance extends { use: (...extensions: MarkedEx
   return instance;
 };
 
-/**
- * Turns every orbit placeholder under `root` (default: the whole document)
- * into a live map. Call it after inserting the rendered HTML.
- */
-export const hydrateOrbitBlocks = (root?: ParentNode, options: AutoRenderOptions = {}): OrbitSVGRenderer[] => {
-  return renderOrbitMarkdownBlocks(root, options);
-};
+export { hydrateOrbitBlocks };
 
 const parseSettings = (infoString: string): Record<string, string> => {
   const settings: Record<string, string> = {};

@@ -143,7 +143,7 @@ new OrbitSVGRenderer(container, options?): OrbitSVGRenderer;
 | Parameter | Type |
 | ------ | ------ |
 | `container` | `HTMLElement` |
-| `options` | [`RendererOptions`](#rendereroptions) |
+| `options` | [`OrbitRendererOptions`](#orbitrendereroptions) |
 
 ###### Returns
 
@@ -165,7 +165,8 @@ Adds a node under `parentId`, at `index` among its children (default:
 last), with any `children` it lists under it; it flies out of its parent
 into place. Ids come from the text, as when the map is read from
 markdown. Fires `edit` once. Returns the new node, or null when there's
-no such parent.
+no such parent. In a map written for a newer format, it throws, changing
+nothing, where the parent's ideas are in a form this version can't read.
 
 ###### Parameters
 
@@ -212,7 +213,9 @@ Adds an idea by typing it on the map: a field opens in the orbit of
 (default: after the last), flying there first. Enter adds the idea
 where it was typed and opens the next one after it; Escape, or Enter
 with nothing typed, stops. Fires `editor-open`, `edit` for each idea,
-then `editor-close`. Returns false when there's no such node.
+then `editor-close`. Returns false when there's no such node, or when
+its ideas are hidden (`hideChildren`): a new one would be typed out of
+sight, among ideas the page keeps for later, so reveal them first.
 
 ###### Parameters
 
@@ -303,8 +306,9 @@ id isn't in the map.
 getDocument(): OrbitDocument | null;
 ```
 
-The map as a document: its tree, and the options its source set in
-frontmatter. Edits change this tree in place.
+The map as a document: its tree, the options its source set in
+frontmatter, and the problems found reading it (`diagnostics`, empty
+for a bare tree). Edits change this tree in place.
 
 ###### Returns
 
@@ -334,6 +338,30 @@ Ids from the root to the focused node.
 
 `string`[]
 
+##### getNodeAt()
+
+```ts
+getNodeAt(x, y): OrbitNode | null;
+```
+
+The node drawn at a point on the page, in client coordinates (an
+event's `clientX` and `clientY`): the sun, a planet, a moon, or a node of
+the overview. A node catches a point a little past its edge, so small
+moons can be hit, and the most central catch wins. Null where no node
+is drawn, or outside the map. With `setDropTarget`, for what's dragged
+onto the map from elsewhere, such as text or files.
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `x` | `number` |
+| `y` | `number` |
+
+###### Returns
+
+[`OrbitNode`](#orbitnode) \| `null`
+
 ##### getNodeColor()
 
 ```ts
@@ -361,6 +389,8 @@ the id isn't in the map.
 getSVGElement(): SVGSVGElement;
 ```
 
+The map's `<svg>` element, inside the container.
+
 ###### Returns
 
 `SVGSVGElement`
@@ -368,12 +398,44 @@ getSVGElement(): SVGSVGElement;
 ##### getViewMode()
 
 ```ts
-getViewMode(): ViewMode;
+getViewMode(): OrbitViewMode;
 ```
 
 ###### Returns
 
-[`ViewMode`](#viewmode)
+[`OrbitViewMode`](#orbitviewmode)
+
+##### hideChildren()
+
+```ts
+hideChildren(ids): boolean;
+```
+
+Hides the ideas under each node `ids` names, to show later with
+`revealChildren`: the next card of a quiz, or the next step of a talk.
+In the node's own focus view its orbit keeps a faint place for each of
+them, in their colors, laid out where they'll land; elsewhere the node
+shows as if folded, with a "+N" and no moons. The outline and the media
+viewer's gallery leave them out, and the node tells assistive
+technology how many are hidden. A node in focus has its children shrink
+into it.
+
+Only the view changes: the map, its `toMarkdown()` and its events stay
+as they were, and nothing is edited, so what reads the map itself
+(prints, `renderToSVGString` and map tools) reads every idea. A node an
+edit renames keeps its ideas hidden. Returns whether any node's ideas
+were newly hidden; ids not in the map, and nodes with no ideas under
+them, are left out.
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `ids` | `string` \| readonly `string`[] |
+
+###### Returns
+
+`boolean`
 
 ##### moveNode()
 
@@ -388,7 +450,9 @@ moveNode(
 Moves a node, with everything under it, under `parentId` at `index`
 among its children (default: last). Fires `edit`. Returns the node,
 or null when either node is missing, the node is the root, or
-`parentId` is inside the node.
+`parentId` is inside the node. In a map written for a newer format, it
+throws, changing nothing, where the parent's ideas are in a form this
+version can't read.
 
 ###### Parameters
 
@@ -434,15 +498,16 @@ same events are dispatched on the container as `orbit-<name>` DOM events.
 openMedia(nodeId, options?): boolean;
 ```
 
-Shows a node's picture or video in the media viewer, over the whole
-window, opening it if it's closed: to show a picture big, or play a
-video, from your own controls. A node with both shows its picture
-unless `kind` is `video`, and a video starts playing unless `autoplay`
-is `false`, from the start or `startAt` seconds in. It opens whatever
-`mediaViewer`, `showDetailSheet` and `interactive` say; on a map that
+Shows a node's picture, video or sound in the media viewer, over the
+whole window, opening it if it's closed: to show a picture big, or play
+a video or a sound, from your own controls. A node with more than one
+shows its picture, then its video, then its sound, unless `kind` says
+which, and a video or sound starts playing unless `autoplay` is
+`false`, from the start or `startAt` seconds in. It opens whatever
+`showMediaViewer`, `showDetailSheet` and `interactive` say; on a map that
 isn't interactive, the viewer takes no input of its own and has no
 buttons. Fires `media-open`. Returns false when the map has no such
-node, or the node no such picture or video.
+node, or the node no such picture, video or sound.
 
 ###### Parameters
 
@@ -473,7 +538,7 @@ Flies out to the overview of the whole map (fires onViewModeChange).
 pauseMedia(): boolean;
 ```
 
-Pauses the video in the media viewer. Returns false when it shows no video it can pause.
+Pauses the video or sound in the media viewer, or settles a live photo's motion back on its picture. Returns false when it shows none it can pause.
 
 ###### Returns
 
@@ -485,9 +550,10 @@ Pauses the video in the media viewer. Returns false when it shows no video it ca
 playMedia(): boolean;
 ```
 
-Plays the video in the media viewer. Returns false when it shows no
-video, or one on a site Orbit has no player for. Files, YouTube and
-Vimeo play.
+Plays the video or sound in the media viewer, or a live photo's motion
+through once, with its sound. Returns false when it shows none of them,
+or a video on a site Orbit has no player for. Files, YouTube and Vimeo
+play.
 
 ###### Returns
 
@@ -535,13 +601,37 @@ still exists.
 
 `void`
 
+##### revealChildren()
+
+```ts
+revealChildren(ids?): boolean;
+```
+
+Shows the ideas `hideChildren` hid under `ids`, or under every node
+when none are given: in focus, they grow out of their node to their
+places with Orbit's own motion, and the outline lists them again. A
+node in focus announces them to assistive technology. Returns whether
+any were shown.
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `ids?` | `string` \| readonly `string`[] |
+
+###### Returns
+
+`boolean`
+
 ##### seekMedia()
 
 ```ts
 seekMedia(seconds): boolean;
 ```
 
-Moves the video in the media viewer to `seconds` from its start. Returns false when it shows no video it can move.
+Moves the video or sound in the media viewer to `seconds` from its
+start. Returns false when it shows none it can move: a live photo's
+motion always plays from its start.
 
 ###### Parameters
 
@@ -553,17 +643,40 @@ Moves the video in the media viewer to `seconds` from its start. Returns false w
 
 `boolean`
 
+##### setDropTarget()
+
+```ts
+setDropTarget(id): void;
+```
+
+Lights node `id` up as where something dragged onto the map from
+elsewhere would go, as a node dragged on the map lights its target: it
+grows and takes a ring. Null puts it out, as drawing another map does.
+While a node of the map is being dragged, its own target shows instead.
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `id` | `string` \| `null` |
+
+###### Returns
+
+`void`
+
 ##### setOptions()
 
 ```ts
 setOptions(options): void;
 ```
 
+Changes the options given, which win over the document's frontmatter as the constructor's do, and keeps the others: to follow the page's theme or language, say.
+
 ###### Parameters
 
 | Parameter | Type |
 | ------ | ------ |
-| `options` | [`RendererOptions`](#rendereroptions) |
+| `options` | [`OrbitRendererOptions`](#orbitrendereroptions) |
 
 ###### Returns
 
@@ -581,7 +694,7 @@ Switches between focus mode and the overview (fires onViewModeChange).
 
 | Parameter | Type |
 | ------ | ------ |
-| `mode` | [`ViewMode`](#viewmode) |
+| `mode` | [`OrbitViewMode`](#orbitviewmode) |
 
 ###### Returns
 
@@ -646,7 +759,11 @@ toSVGString(): string;
 ```
 
 The current view as a standalone SVG document: colors resolved, labels
-as SVG text, nothing that depends on the page's stylesheet.
+as SVG text, nothing that depends on the page's stylesheet, and ids made
+from the drawing, so exports of different maps can share a page. It's
+the view as it is: ideas hidden with `hideChildren` stay hidden, and a
+node in focus keeps their places, as on screen. `renderToSVGString` has
+no view to follow, so it draws every idea.
 
 ###### Returns
 
@@ -676,10 +793,12 @@ Destroys the renderer drawing into `target`, if there is one. Returns whether th
 unmuteMedia(): boolean;
 ```
 
-Turns on the sound of the video in the media viewer: one a browser
-started muted, say. Browsers allow sound only once the reader has
-interacted with the page, so call it from a press, such as a "Tap for
-sound" button's. Returns false when it shows no video it can drive.
+Turns on the sound of the video or sound in the media viewer: a video
+a browser started muted, say. A live photo's motion has its sound from
+then on, its opening included. Browsers allow sound
+only once the reader has interacted with the page, so call it from a
+press, such as a "Tap for sound" button's. Returns false when it shows
+none it can drive.
 
 ###### Returns
 
@@ -695,7 +814,9 @@ Changes a node's text or attributes: `{ text: 'Budget' }`, `{ status:
 'done' }`, or `{ color: undefined }` to remove one. New text gives the
 node a new id when its id came from its text and no link points at it,
 so the saved map needs no id attribute. Fires `edit`. Returns the
-node, or null when there's no such node.
+node, or null when there's no such node. In a map written for a newer
+format, it throws, changing nothing, rather than replace a value this
+version can't read.
 
 ###### Parameters
 
@@ -728,217 +849,6 @@ Zooms by `factor` around the middle of the map (above 1 zooms in).
 
 ## Interfaces
 
-### AutoRenderOptions
-
-#### Extends
-
-- [`RendererOptions`](#rendereroptions)
-
-#### Properties
-
-| Property | Type | Description | Inherited from |
-| ------ | ------ | ------ | ------ |
-| <a id="property-actions"></a> `actions?` | [`OrbitAction`](#orbitaction)[] | Your own buttons under the focused node and in its detail sheet, before the registered ones. | [`RendererOptions`](#rendereroptions).[`actions`](#property-actions-3) |
-| <a id="property-arialabel"></a> `ariaLabel?` | `string` | The map's accessible name. Default: the document's `title`. | [`RendererOptions`](#rendereroptions).[`ariaLabel`](#property-arialabel-2) |
-| <a id="property-baseurl"></a> `baseUrl?` | `string` | Resolves relative image, video and link URLs. | [`RendererOptions`](#rendereroptions).[`baseUrl`](#property-baseurl-5) |
-| <a id="property-classname"></a> `className?` | `string` | - | - |
-| <a id="property-editable"></a> `editable?` | `boolean` | Build the map on the map: a + in the orbit adds an idea, typed right in its new planet, and a long press, a right click or F2 edits a node's text where it is. A node held still, by a long press or the mouse, lifts: drag it onto another node to move it there, or to a place in the orbit to put it there. Default false. | [`RendererOptions`](#rendereroptions).[`editable`](#property-editable-2) |
-| <a id="property-editingkeys"></a> `editingKeys?` | `boolean` | Keys for building an editable map at speed, as in mind-map apps. On a node with keyboard focus, Tab (or Insert) adds an idea under it, Shift+Enter adds one beside it, and Delete removes it. While typing, Tab keeps what was typed and goes on a level down, under it; with nothing typed, it moves the field under the idea before. Shift+Tab goes on a level up, beside the parent. Tab then stays in the map; Shift+Tab from a node still leaves it. Default false. | [`RendererOptions`](#rendereroptions).[`editingKeys`](#property-editingkeys-2) |
-| <a id="property-focus"></a> `focus?` | `string` | The node in focus when the map first draws, by id: to open a map where the reader left it. Default: the root. Later renders keep the reader's place. | [`RendererOptions`](#rendereroptions).[`focus`](#property-focus-5) |
-| <a id="property-height"></a> `height?` | `number` | - | - |
-| <a id="property-insets"></a> `insets?` | [`OrbitInsets`](#orbitinsets) | The parts of the map the page covers with its own controls, such as a toolbar floating over its bottom edge, in px from each edge. Views are fitted into what's left, and the map still draws under the controls. Changing them glides a fitted view to its new place. | [`RendererOptions`](#rendereroptions).[`insets`](#property-insets-2) |
-| <a id="property-interactive"></a> `interactive?` | `boolean` | `false` draws a still picture: no clicks, drags, zoom or keyboard. Default true. | [`RendererOptions`](#rendereroptions).[`interactive`](#property-interactive-3) |
-| <a id="property-language"></a> `language?` | `string` | The language of the map's controls, sheets and announcements: a BCP 47 tag such as `es` or `pt-BR`. Default: the language the map's element is in (the closest `lang` attribute), then English. Orbit speaks English and Spanish; `registerLanguage` adds others. | [`RendererOptions`](#rendereroptions).[`language`](#property-language-4) |
-| <a id="property-longpressdelay"></a> `longPressDelay?` | `number` | How long (ms) a finger or pen holds still on a node before it counts as a long press (see `onNodeContext`). Default 500; apps can pass their platform's own, such as Android's 400. | [`RendererOptions`](#rendereroptions).[`longPressDelay`](#property-longpressdelay-2) |
-| <a id="property-maxdepth"></a> `maxDepth?` | `number` | Levels below the root to render (1 = root + direct children). | [`RendererOptions`](#rendereroptions).[`maxDepth`](#property-maxdepth-3) |
-| <a id="property-mediaviewer"></a> `mediaViewer?` | `boolean` | Show pictures and videos in the media viewer, over the whole window: "View image" and "Play video" open it, and so do the pictures and videos in the detail sheet. Default true. With `false`, those buttons open the detail sheet instead (unless `showDetailSheet` is `false` too). `openMedia` opens the viewer either way. | [`RendererOptions`](#rendereroptions).[`mediaViewer`](#property-mediaviewer-2) |
-| <a id="property-nodetypefor"></a> `nodeTypeFor?` | (`node`) => `string` \| `undefined` | The type a node that names none is drawn as, for display only: as if it said `type: name`, with that type's look, content and actions. Orbit never writes it to the map, and asks again whenever it draws; return undefined to draw the node as it is. Called often: keep it quick. | [`RendererOptions`](#rendereroptions).[`nodeTypeFor`](#property-nodetypefor-3) |
-| <a id="property-nodetypes"></a> `nodeTypes?` | `Record`\<`string`, [`OrbitNodeType`](#orbitnodetype)\> | Node types by name: what nodes with `type: name` look like, draw inside them, show in the detail sheet and offer as actions. They come before the ones registered with `registerNodeType`. | [`RendererOptions`](#rendereroptions).[`nodeTypes`](#property-nodetypes-3) |
-| <a id="property-noterenderer"></a> `noteRenderer?` | (`note`, `context`) => `string` | Renders a note to HTML yourself. The HTML is used as-is: sanitize untrusted notes. | [`RendererOptions`](#rendereroptions).[`noteRenderer`](#property-noterenderer-2) |
-| <a id="property-onaction"></a> `onAction?` | (`event`) => `false` \| `void` | A button was pressed. Return `false` to skip what it does (the detail sheet, the link, or your action's `run`). | [`RendererOptions`](#rendereroptions).[`onAction`](#property-onaction-2) |
-| <a id="property-onedit"></a> `onEdit?` | (`edit`) => `void` | The map was edited with `addNode`, `updateNode`, `removeNode` or `moveNode`; save `renderer.toMarkdown()` to keep it. | [`RendererOptions`](#rendereroptions).[`onEdit`](#property-onedit-2) |
-| <a id="property-oneditorclose"></a> `onEditorClose?` | (`event`) => `void` | The field for typing on the map closed. | [`RendererOptions`](#rendereroptions).[`onEditorClose`](#property-oneditorclose-2) |
-| <a id="property-oneditoropen"></a> `onEditorOpen?` | (`event`) => `void` | The field for typing on the map opened. | [`RendererOptions`](#rendereroptions).[`onEditorOpen`](#property-oneditoropen-2) |
-| <a id="property-onfocuschange"></a> `onFocusChange?` | (`node`) => `void` | A new node is in focus. | [`RendererOptions`](#rendereroptions).[`onFocusChange`](#property-onfocuschange-2) |
-| <a id="property-onmediaclose"></a> `onMediaClose?` | (`event`) => `void` | The media viewer closed. | [`RendererOptions`](#rendereroptions).[`onMediaClose`](#property-onmediaclose-2) |
-| <a id="property-onmediaopen"></a> `onMediaOpen?` | (`event`) => `void` | The media viewer opened, or stepped to another picture or video. | [`RendererOptions`](#rendereroptions).[`onMediaOpen`](#property-onmediaopen-2) |
-| <a id="property-onmediastate"></a> `onMediaState?` | (`state`) => `void` | The video in the media viewer started, paused, moved on, ended or was muted; while it plays, its time a few times a second. | [`RendererOptions`](#rendereroptions).[`onMediaState`](#property-onmediastate-2) |
-| <a id="property-onnodeclick"></a> `onNodeClick?` | (`node`) => `void` | A node was clicked or activated with the keyboard, before the map reacts. | [`RendererOptions`](#rendereroptions).[`onNodeClick`](#property-onnodeclick-2) |
-| <a id="property-onnodecontext"></a> `onNodeContext?` | (`event`) => `void` | A node was long-pressed, right-clicked or chosen with the context menu key: show a menu of things to do with it at (`x`, `y`). With this callback or a `node-context` listener, the press is yours: it doesn't open the node, and the browser's own menu stays closed. | [`RendererOptions`](#rendereroptions).[`onNodeContext`](#property-onnodecontext-2) |
-| <a id="property-onnodedrag"></a> `onNodeDrag?` | (`event`) => `void` | A node is dragged somewhere else (see `editable` and the `node-drag` event). | [`RendererOptions`](#rendereroptions).[`onNodeDrag`](#property-onnodedrag-2) |
-| <a id="property-onspinsettle"></a> `onSpinSettle?` | (`planet`) => `void` | Called when a flicked orbit comes to rest, with the planet nearest the top. | [`RendererOptions`](#rendereroptions).[`onSpinSettle`](#property-onspinsettle-2) |
-| <a id="property-onviewmodechange"></a> `onViewModeChange?` | (`mode`) => `void` | - | [`RendererOptions`](#rendereroptions).[`onViewModeChange`](#property-onviewmodechange-2) |
-| <a id="property-orbitanimation"></a> `orbitAnimation?` | `boolean` | Keep the orbit turning slowly on its own. | [`RendererOptions`](#rendereroptions).[`orbitAnimation`](#property-orbitanimation-3) |
-| <a id="property-orbitspeed"></a> `orbitSpeed?` | `number` | Seconds per revolution of `orbitAnimation`. | [`RendererOptions`](#rendereroptions).[`orbitSpeed`](#property-orbitspeed-3) |
-| <a id="property-palette"></a> `palette?` | `string`[] | Node colors: the first for the root, then one per top-level branch (cycling). Default: the theme's. | [`RendererOptions`](#rendereroptions).[`palette`](#property-palette-4) |
-| <a id="property-selector"></a> `selector?` | `string` | - | - |
-| <a id="property-showactionbuttons"></a> `showActionButtons?` | `boolean` | Buttons under the focused node for its note, media, link and actions. Default true. | [`RendererOptions`](#rendereroptions).[`showActionButtons`](#property-showactionbuttons-2) |
-| <a id="property-showcontrols"></a> `showControls?` | `boolean` | Breadcrumbs, the view switch, the list button and zoom buttons. Default true. | [`RendererOptions`](#rendereroptions).[`showControls`](#property-showcontrols-2) |
-| <a id="property-showdetailsheet"></a> `showDetailSheet?` | `boolean` | Open the built-in detail sheet for notes, embeds and the details of a node's type. Default true. | [`RendererOptions`](#rendereroptions).[`showDetailSheet`](#property-showdetailsheet-2) |
-| <a id="property-showrings"></a> `showRings?` | `boolean` | Draw the dashed orbit rings. Default true. | [`RendererOptions`](#rendereroptions).[`showRings`](#property-showrings-3) |
-| <a id="property-spin"></a> `spin?` | [`OrbitSpinOptions`](#orbitspinoptions) | How a flicked orbit spins. | [`RendererOptions`](#rendereroptions).[`spin`](#property-spin-2) |
-| <a id="property-statuses"></a> `statuses?` | `Record`\<`string`, [`OrbitStatusStyle`](#orbitstatusstyle)\> | Status words and how they look: a dot tone (`active`, `done`, `blocked`, `todo`, `neutral`) or any CSS color, as in `{ review: 'active', 'on hold': '#A855F7' }`. | [`RendererOptions`](#rendereroptions).[`statuses`](#property-statuses-3) |
-| <a id="property-strict"></a> `strict?` | `boolean` | - | - |
-| <a id="property-strings"></a> `strings?` | `Partial`\<[`OrbitStrings`](#orbitstrings)\> | Words to change on this map only, over its language's: `{ zoomIn: 'Closer' }`. | [`RendererOptions`](#rendereroptions).[`strings`](#property-strings-4) |
-| <a id="property-theme"></a> `theme?` | \| [`OrbitThemePreset`](#orbitthemepreset) \| [`OrbitRendererTheme`](#orbitrenderertheme) \| `string` & `object` | A theme name (`'night'`, `'cosmos'`, or one registered with `registerTheme`) or a theme object. An object without a `preset` keeps the document's theme and changes the tokens it names. | [`RendererOptions`](#rendereroptions).[`theme`](#property-theme-5) |
-| <a id="property-transitionduration"></a> `transitionDuration?` | `number` \| `"auto"` | Navigation flight length in milliseconds, or `auto` to scale with the distance travelled. | [`RendererOptions`](#rendereroptions).[`transitionDuration`](#property-transitionduration-2) |
-| <a id="property-viewmode"></a> `viewMode?` | [`ViewMode`](#viewmode) | The first view: `focus` (default) or `all`, the overview. | [`RendererOptions`](#rendereroptions).[`viewMode`](#property-viewmode-5) |
-| <a id="property-zoom"></a> `zoom?` | [`OrbitZoomOptions`](#orbitzoomoptions) | How the wheel, trackpads and pinches zoom. | [`RendererOptions`](#rendereroptions).[`zoom`](#property-zoom-3) |
-
-***
-
-### CreateOrbitMapOptions
-
-#### Extends
-
-- [`RendererOptions`](#rendereroptions)
-
-#### Properties
-
-| Property | Type | Description | Inherited from |
-| ------ | ------ | ------ | ------ |
-| <a id="property-actions-1"></a> `actions?` | [`OrbitAction`](#orbitaction)[] | Your own buttons under the focused node and in its detail sheet, before the registered ones. | [`RendererOptions`](#rendereroptions).[`actions`](#property-actions-3) |
-| <a id="property-arialabel-1"></a> `ariaLabel?` | `string` | The map's accessible name. Default: the document's `title`. | [`RendererOptions`](#rendereroptions).[`ariaLabel`](#property-arialabel-2) |
-| <a id="property-baseurl-1"></a> `baseUrl?` | `string` | Resolves relative image, video and link URLs. | [`RendererOptions`](#rendereroptions).[`baseUrl`](#property-baseurl-5) |
-| <a id="property-editable-1"></a> `editable?` | `boolean` | Build the map on the map: a + in the orbit adds an idea, typed right in its new planet, and a long press, a right click or F2 edits a node's text where it is. A node held still, by a long press or the mouse, lifts: drag it onto another node to move it there, or to a place in the orbit to put it there. Default false. | [`RendererOptions`](#rendereroptions).[`editable`](#property-editable-2) |
-| <a id="property-editingkeys-1"></a> `editingKeys?` | `boolean` | Keys for building an editable map at speed, as in mind-map apps. On a node with keyboard focus, Tab (or Insert) adds an idea under it, Shift+Enter adds one beside it, and Delete removes it. While typing, Tab keeps what was typed and goes on a level down, under it; with nothing typed, it moves the field under the idea before. Shift+Tab goes on a level up, beside the parent. Tab then stays in the map; Shift+Tab from a node still leaves it. Default false. | [`RendererOptions`](#rendereroptions).[`editingKeys`](#property-editingkeys-2) |
-| <a id="property-focus-1"></a> `focus?` | `string` | The node in focus when the map first draws, by id: to open a map where the reader left it. Default: the root. Later renders keep the reader's place. | [`RendererOptions`](#rendereroptions).[`focus`](#property-focus-5) |
-| <a id="property-insets-1"></a> `insets?` | [`OrbitInsets`](#orbitinsets) | The parts of the map the page covers with its own controls, such as a toolbar floating over its bottom edge, in px from each edge. Views are fitted into what's left, and the map still draws under the controls. Changing them glides a fitted view to its new place. | [`RendererOptions`](#rendereroptions).[`insets`](#property-insets-2) |
-| <a id="property-interactive-1"></a> `interactive?` | `boolean` | `false` draws a still picture: no clicks, drags, zoom or keyboard. Default true. | [`RendererOptions`](#rendereroptions).[`interactive`](#property-interactive-3) |
-| <a id="property-language-1"></a> `language?` | `string` | The language of the map's controls, sheets and announcements: a BCP 47 tag such as `es` or `pt-BR`. Default: the language the map's element is in (the closest `lang` attribute), then English. Orbit speaks English and Spanish; `registerLanguage` adds others. | [`RendererOptions`](#rendereroptions).[`language`](#property-language-4) |
-| <a id="property-longpressdelay-1"></a> `longPressDelay?` | `number` | How long (ms) a finger or pen holds still on a node before it counts as a long press (see `onNodeContext`). Default 500; apps can pass their platform's own, such as Android's 400. | [`RendererOptions`](#rendereroptions).[`longPressDelay`](#property-longpressdelay-2) |
-| <a id="property-maxdepth-1"></a> `maxDepth?` | `number` | Levels below the root to render (1 = root + direct children). | [`RendererOptions`](#rendereroptions).[`maxDepth`](#property-maxdepth-3) |
-| <a id="property-mediaviewer-1"></a> `mediaViewer?` | `boolean` | Show pictures and videos in the media viewer, over the whole window: "View image" and "Play video" open it, and so do the pictures and videos in the detail sheet. Default true. With `false`, those buttons open the detail sheet instead (unless `showDetailSheet` is `false` too). `openMedia` opens the viewer either way. | [`RendererOptions`](#rendereroptions).[`mediaViewer`](#property-mediaviewer-2) |
-| <a id="property-nodetypefor-1"></a> `nodeTypeFor?` | (`node`) => `string` \| `undefined` | The type a node that names none is drawn as, for display only: as if it said `type: name`, with that type's look, content and actions. Orbit never writes it to the map, and asks again whenever it draws; return undefined to draw the node as it is. Called often: keep it quick. | [`RendererOptions`](#rendereroptions).[`nodeTypeFor`](#property-nodetypefor-3) |
-| <a id="property-nodetypes-1"></a> `nodeTypes?` | `Record`\<`string`, [`OrbitNodeType`](#orbitnodetype)\> | Node types by name: what nodes with `type: name` look like, draw inside them, show in the detail sheet and offer as actions. They come before the ones registered with `registerNodeType`. | [`RendererOptions`](#rendereroptions).[`nodeTypes`](#property-nodetypes-3) |
-| <a id="property-noterenderer-1"></a> `noteRenderer?` | (`note`, `context`) => `string` | Renders a note to HTML yourself. The HTML is used as-is: sanitize untrusted notes. | [`RendererOptions`](#rendereroptions).[`noteRenderer`](#property-noterenderer-2) |
-| <a id="property-onaction-1"></a> `onAction?` | (`event`) => `false` \| `void` | A button was pressed. Return `false` to skip what it does (the detail sheet, the link, or your action's `run`). | [`RendererOptions`](#rendereroptions).[`onAction`](#property-onaction-2) |
-| <a id="property-onedit-1"></a> `onEdit?` | (`edit`) => `void` | The map was edited with `addNode`, `updateNode`, `removeNode` or `moveNode`; save `renderer.toMarkdown()` to keep it. | [`RendererOptions`](#rendereroptions).[`onEdit`](#property-onedit-2) |
-| <a id="property-oneditorclose-1"></a> `onEditorClose?` | (`event`) => `void` | The field for typing on the map closed. | [`RendererOptions`](#rendereroptions).[`onEditorClose`](#property-oneditorclose-2) |
-| <a id="property-oneditoropen-1"></a> `onEditorOpen?` | (`event`) => `void` | The field for typing on the map opened. | [`RendererOptions`](#rendereroptions).[`onEditorOpen`](#property-oneditoropen-2) |
-| <a id="property-onfocuschange-1"></a> `onFocusChange?` | (`node`) => `void` | A new node is in focus. | [`RendererOptions`](#rendereroptions).[`onFocusChange`](#property-onfocuschange-2) |
-| <a id="property-onmediaclose-1"></a> `onMediaClose?` | (`event`) => `void` | The media viewer closed. | [`RendererOptions`](#rendereroptions).[`onMediaClose`](#property-onmediaclose-2) |
-| <a id="property-onmediaopen-1"></a> `onMediaOpen?` | (`event`) => `void` | The media viewer opened, or stepped to another picture or video. | [`RendererOptions`](#rendereroptions).[`onMediaOpen`](#property-onmediaopen-2) |
-| <a id="property-onmediastate-1"></a> `onMediaState?` | (`state`) => `void` | The video in the media viewer started, paused, moved on, ended or was muted; while it plays, its time a few times a second. | [`RendererOptions`](#rendereroptions).[`onMediaState`](#property-onmediastate-2) |
-| <a id="property-onnodeclick-1"></a> `onNodeClick?` | (`node`) => `void` | A node was clicked or activated with the keyboard, before the map reacts. | [`RendererOptions`](#rendereroptions).[`onNodeClick`](#property-onnodeclick-2) |
-| <a id="property-onnodecontext-1"></a> `onNodeContext?` | (`event`) => `void` | A node was long-pressed, right-clicked or chosen with the context menu key: show a menu of things to do with it at (`x`, `y`). With this callback or a `node-context` listener, the press is yours: it doesn't open the node, and the browser's own menu stays closed. | [`RendererOptions`](#rendereroptions).[`onNodeContext`](#property-onnodecontext-2) |
-| <a id="property-onnodedrag-1"></a> `onNodeDrag?` | (`event`) => `void` | A node is dragged somewhere else (see `editable` and the `node-drag` event). | [`RendererOptions`](#rendereroptions).[`onNodeDrag`](#property-onnodedrag-2) |
-| <a id="property-onspinsettle-1"></a> `onSpinSettle?` | (`planet`) => `void` | Called when a flicked orbit comes to rest, with the planet nearest the top. | [`RendererOptions`](#rendereroptions).[`onSpinSettle`](#property-onspinsettle-2) |
-| <a id="property-onviewmodechange-1"></a> `onViewModeChange?` | (`mode`) => `void` | - | [`RendererOptions`](#rendereroptions).[`onViewModeChange`](#property-onviewmodechange-2) |
-| <a id="property-orbitanimation-1"></a> `orbitAnimation?` | `boolean` | Keep the orbit turning slowly on its own. | [`RendererOptions`](#rendereroptions).[`orbitAnimation`](#property-orbitanimation-3) |
-| <a id="property-orbitspeed-1"></a> `orbitSpeed?` | `number` | Seconds per revolution of `orbitAnimation`. | [`RendererOptions`](#rendereroptions).[`orbitSpeed`](#property-orbitspeed-3) |
-| <a id="property-palette-1"></a> `palette?` | `string`[] | Node colors: the first for the root, then one per top-level branch (cycling). Default: the theme's. | [`RendererOptions`](#rendereroptions).[`palette`](#property-palette-4) |
-| <a id="property-showactionbuttons-1"></a> `showActionButtons?` | `boolean` | Buttons under the focused node for its note, media, link and actions. Default true. | [`RendererOptions`](#rendereroptions).[`showActionButtons`](#property-showactionbuttons-2) |
-| <a id="property-showcontrols-1"></a> `showControls?` | `boolean` | Breadcrumbs, the view switch, the list button and zoom buttons. Default true. | [`RendererOptions`](#rendereroptions).[`showControls`](#property-showcontrols-2) |
-| <a id="property-showdetailsheet-1"></a> `showDetailSheet?` | `boolean` | Open the built-in detail sheet for notes, embeds and the details of a node's type. Default true. | [`RendererOptions`](#rendereroptions).[`showDetailSheet`](#property-showdetailsheet-2) |
-| <a id="property-showrings-1"></a> `showRings?` | `boolean` | Draw the dashed orbit rings. Default true. | [`RendererOptions`](#rendereroptions).[`showRings`](#property-showrings-3) |
-| <a id="property-spin-1"></a> `spin?` | [`OrbitSpinOptions`](#orbitspinoptions) | How a flicked orbit spins. | [`RendererOptions`](#rendereroptions).[`spin`](#property-spin-2) |
-| <a id="property-statuses-1"></a> `statuses?` | `Record`\<`string`, [`OrbitStatusStyle`](#orbitstatusstyle)\> | Status words and how they look: a dot tone (`active`, `done`, `blocked`, `todo`, `neutral`) or any CSS color, as in `{ review: 'active', 'on hold': '#A855F7' }`. | [`RendererOptions`](#rendereroptions).[`statuses`](#property-statuses-3) |
-| <a id="property-strict-1"></a> `strict?` | `boolean` | Throw on the first problem in the source instead of working around it. | - |
-| <a id="property-strings-1"></a> `strings?` | `Partial`\<[`OrbitStrings`](#orbitstrings)\> | Words to change on this map only, over its language's: `{ zoomIn: 'Closer' }`. | [`RendererOptions`](#rendereroptions).[`strings`](#property-strings-4) |
-| <a id="property-theme-1"></a> `theme?` | \| [`OrbitThemePreset`](#orbitthemepreset) \| [`OrbitRendererTheme`](#orbitrenderertheme) \| `string` & `object` | A theme name (`'night'`, `'cosmos'`, or one registered with `registerTheme`) or a theme object. An object without a `preset` keeps the document's theme and changes the tokens it names. | [`RendererOptions`](#rendereroptions).[`theme`](#property-theme-5) |
-| <a id="property-transitionduration-1"></a> `transitionDuration?` | `number` \| `"auto"` | Navigation flight length in milliseconds, or `auto` to scale with the distance travelled. | [`RendererOptions`](#rendereroptions).[`transitionDuration`](#property-transitionduration-2) |
-| <a id="property-viewmode-1"></a> `viewMode?` | [`ViewMode`](#viewmode) | The first view: `focus` (default) or `all`, the overview. | [`RendererOptions`](#rendereroptions).[`viewMode`](#property-viewmode-5) |
-| <a id="property-zoom-1"></a> `zoom?` | [`OrbitZoomOptions`](#orbitzoomoptions) | How the wheel, trackpads and pinches zoom. | [`RendererOptions`](#rendereroptions).[`zoom`](#property-zoom-3) |
-
-***
-
-### MapToolResult
-
-What a tool call did, to send back to the model.
-
-#### Properties
-
-| Property | Type | Description |
-| ------ | ------ | ------ |
-| <a id="property-changed"></a> `changed` | `boolean` | Whether the map changed. |
-| <a id="property-ok"></a> `ok` | `boolean` | False when the call couldn't be carried out: nothing changed, and `text` says why and what to send instead. |
-| <a id="property-text"></a> `text` | `string` | What happened, for the model, with the ids to use next. |
-
-***
-
-### MapTools
-
-Map tools for one map (see `createMapTools`).
-
-#### Properties
-
-| Property | Modifier | Type | Description |
-| ------ | ------ | ------ | ------ |
-| <a id="property-definitions"></a> `definitions` | `readonly` | [`MapToolDefinition`](#maptooldefinition)[] | The tools: name, description, input as JSON Schema, and hints. The shape MCP takes, and the data for any other. |
-| <a id="property-document"></a> `document` | `readonly` | [`OrbitDocument`](#orbitdocument) \| `null` | The map as it is now. Edits change it in place. |
-| <a id="property-instructions"></a> `instructions` | `readonly` | `string` | How to use the tools, to add to the model's system prompt. |
-
-#### Methods
-
-##### for()
-
-```ts
-for<Provider>(provider): MapToolFormats[Provider];
-```
-
-The tools in the shape a provider's API takes: `anthropic`, `openai` (Responses), `openai-chat` (Chat Completions, and most other providers) or `gemini`.
-
-###### Type Parameters
-
-| Type Parameter |
-| ------ |
-| `Provider` *extends* keyof [`MapToolFormats`](#maptoolformats) |
-
-###### Parameters
-
-| Parameter | Type |
-| ------ | ------ |
-| `provider` | `Provider` |
-
-###### Returns
-
-[`MapToolFormats`](#maptoolformats)\[`Provider`\]
-
-##### run()
-
-```ts
-run(name, input?): MapToolResult;
-```
-
-Carries out a tool call: its name, and its input as an object or as
-the JSON text OpenAI sends. Never throws for a call a model gets wrong:
-the result says what went wrong instead.
-
-###### Parameters
-
-| Parameter | Type |
-| ------ | ------ |
-| `name` | `string` |
-| `input?` | `unknown` |
-
-###### Returns
-
-[`MapToolResult`](#maptoolresult)
-
-***
-
-### MapToolsOptions
-
-#### Properties
-
-| Property | Type | Description |
-| ------ | ------ | ------ |
-| <a id="property-readlimit"></a> `readLimit?` | `number` | The most nodes `read_map` shows at once; a bigger map is cut short, whole levels first. Default 250. |
-| <a id="property-readonly"></a> `readOnly?` | `boolean` | Offer only the tools that read the map, for an assistant that answers questions about it. Default false. |
-
-***
-
-### MaterialThemeOptions
-
-#### Properties
-
-| Property | Type | Description |
-| ------ | ------ | ------ |
-| <a id="property-dark"></a> `dark?` | `boolean` | Dark surfaces with light text, like `material-night`, instead of light ones. |
-
-***
-
 ### OrbitAction
 
 A button under the focused node and in its detail sheet.
@@ -947,7 +857,7 @@ A button under the focused node and in its detail sheet.
 
 | Property | Type | Description |
 | ------ | ------ | ------ |
-| <a id="property-icon"></a> `icon?` | `string` | The icon: an emoji or short symbol (`'✏️'`), SVG path data on a 24-unit grid (`'M4 20h4L20 8l-4-4L4 16z'`), or one of Orbit's icons (`'note'`, `'link'`, `'goto'`, `'image'`, `'video'`, `'list'`). Default: the label's first letter. |
+| <a id="property-icon"></a> `icon?` | `string` | The icon: an emoji or short symbol (`'✏️'`), SVG path data on a 24-unit grid (`'M4 20h4L20 8l-4-4L4 16z'`), or one of Orbit's icons (`'note'`, `'link'`, `'goto'`, `'image'`, `'video'`, `'audio'`, `'list'`). Default: the label's first letter. |
 | <a id="property-id"></a> `id` | `string` | Names the action in the `action` event: `event.action === 'assign'`. |
 | <a id="property-label"></a> `label` | `string` \| ((`node`) => `string`) | The button's name, read by screen readers, shown as its tooltip and in the detail sheet. |
 | <a id="property-run"></a> `run` | (`node`, `event`) => `void` | Runs when the button is pressed, unless an `action` listener prevents it. |
@@ -1004,6 +914,72 @@ A button pressed under the focused node or in its detail sheet.
 
 ***
 
+### OrbitAutoRenderOptions
+
+What `renderOrbitElement` and `hydrateOrbitBlocks` take: the renderer's options, over each block's own, and these.
+
+#### Extends
+
+- [`OrbitRendererOptions`](#orbitrendereroptions)
+
+#### Properties
+
+| Property | Type | Description | Inherited from |
+| ------ | ------ | ------ | ------ |
+| <a id="property-actions"></a> `actions?` | [`OrbitAction`](#orbitaction)[] | Your own buttons under the focused node and in its detail sheet, before the registered ones. | [`OrbitRendererOptions`](#orbitrendereroptions).[`actions`](#property-actions-3) |
+| <a id="property-animation"></a> `animation?` | `boolean` | Keep the orbit turning slowly on its own. | [`OrbitRendererOptions`](#orbitrendereroptions).[`animation`](#property-animation-3) |
+| <a id="property-arialabel"></a> `ariaLabel?` | `string` | The map's accessible name. Default: the document's `title`. | [`OrbitRendererOptions`](#orbitrendereroptions).[`ariaLabel`](#property-arialabel-2) |
+| <a id="property-baseurl"></a> `baseUrl?` | `string` | Resolves relative image, video, sound and link URLs: an http, https or file address, or a relative one, which the page's address completes. Joined to a base of any other kind, such as `javascript:`, they'd take its scheme, so they stay relative instead. | [`OrbitRendererOptions`](#orbitrendereroptions).[`baseUrl`](#property-baseurl-5) |
+| <a id="property-classname"></a> `className?` | `string` | Classes for each map's container, over its frontmatter's `className`. | - |
+| <a id="property-editable"></a> `editable?` | `boolean` | Build the map on the map: a + in the orbit adds an idea, typed right in its new planet, and a long press, a right click or F2 edits a node's text where it is. A node held still, by a long press or the mouse, lifts: drag it onto another node to move it there, or to a place in the orbit to put it there. Default false. | [`OrbitRendererOptions`](#orbitrendereroptions).[`editable`](#property-editable-2) |
+| <a id="property-editingkeys"></a> `editingKeys?` | `boolean` | Keys for building an editable map at speed, as in mind-map apps. On a node with keyboard focus, Tab (or Insert) adds an idea under it, Shift+Enter adds one beside it, and Delete removes it. While typing, Tab keeps what was typed and goes on a level down, under it; with nothing typed, it moves the field under the idea before. Shift+Tab goes on a level up, beside the parent. Tab then stays in the map; Shift+Tab from a node still leaves it. Default false. | [`OrbitRendererOptions`](#orbitrendereroptions).[`editingKeys`](#property-editingkeys-2) |
+| <a id="property-focus"></a> `focus?` | `string` | The node in focus when the map first draws, by id: to open a map where the reader left it. Default: the root. Later renders keep the reader's place. | [`OrbitRendererOptions`](#orbitrendereroptions).[`focus`](#property-focus-3) |
+| <a id="property-height"></a> `height?` | `number` | Each map's height, in px, over its frontmatter's. Default 420. | - |
+| <a id="property-insets"></a> `insets?` | [`OrbitInsets`](#orbitinsets) | The parts of the map the page covers with its own controls, such as a toolbar floating over its bottom edge, in px from each edge. Views are fitted into what's left, and the map still draws under the controls. Changing them moves a fitted view to its new place (see `insetsTransition`). | [`OrbitRendererOptions`](#orbitrendereroptions).[`insets`](#property-insets-2) |
+| <a id="property-insetstransition"></a> `insetsTransition?` | `"instant"` \| `"glide"` | How the insets a `setOptions` call brings take effect, for that call alone. By default (`'instant'`) a fitted view is kept within its new room at once, as it has to be while the keyboard slides or a sheet is dragged and the insets change every frame. `'glide'` glides it all the way from where it was, with the camera, for a change made once, such as a panel coming or going. | [`OrbitRendererOptions`](#orbitrendereroptions).[`insetsTransition`](#property-insetstransition-2) |
+| <a id="property-interactive"></a> `interactive?` | `boolean` | `false` draws a still picture: no clicks, drags, zoom or keyboard. Default true. | [`OrbitRendererOptions`](#orbitrendereroptions).[`interactive`](#property-interactive-3) |
+| <a id="property-language"></a> `language?` | `string` | The language of the map's controls, sheets and announcements: a BCP 47 tag such as `es` or `pt-BR`. Default: the language the map's element is in (the closest `lang` attribute), then English. Orbit speaks English and Spanish; `registerLanguage` adds others. | [`OrbitRendererOptions`](#orbitrendereroptions).[`language`](#property-language-3) |
+| <a id="property-longpressdelay"></a> `longPressDelay?` | `number` | How long (ms) a finger or pen holds still on a node before it counts as a long press (see `onNodeContext`). Default 500; apps can pass their platform's own, such as Android's 400. | [`OrbitRendererOptions`](#orbitrendereroptions).[`longPressDelay`](#property-longpressdelay-2) |
+| <a id="property-maxdepth"></a> `maxDepth?` | `number` | Levels below the root to render (1 = root + direct children). | [`OrbitRendererOptions`](#orbitrendereroptions).[`maxDepth`](#property-maxdepth-3) |
+| <a id="property-mediaviewer"></a> ~~`mediaViewer?`~~ | `boolean` | **Deprecated** Use `showMediaViewer`, named as `showRings` and the other switches are: this name goes in Orbit 1.0. | [`OrbitRendererOptions`](#orbitrendereroptions).[`mediaViewer`](#property-mediaviewer-2) |
+| <a id="property-nodetypefor"></a> `nodeTypeFor?` | (`node`) => `string` \| `undefined` | The type a node that names none is drawn as, for display only: as if it said `type: name`, with that type's look, content and actions. Orbit never writes it to the map, and asks again whenever it draws; return undefined to draw the node as it is. Called often: keep it quick. | [`OrbitRendererOptions`](#orbitrendereroptions).[`nodeTypeFor`](#property-nodetypefor-3) |
+| <a id="property-nodetypes"></a> `nodeTypes?` | `Record`\<`string`, [`OrbitNodeType`](#orbitnodetype)\> | Node types by name: what nodes with `type: name` look like, draw inside them, show in the detail sheet and offer as actions. They come before the ones registered with `registerNodeType`. | [`OrbitRendererOptions`](#orbitrendereroptions).[`nodeTypes`](#property-nodetypes-3) |
+| <a id="property-noterenderer"></a> `noteRenderer?` | (`note`, `context`) => `string` | Renders a note to HTML yourself. The HTML is used as-is: sanitize untrusted notes. | [`OrbitRendererOptions`](#orbitrendereroptions).[`noteRenderer`](#property-noterenderer-2) |
+| <a id="property-onaction"></a> `onAction?` | (`event`) => `false` \| `void` | A button was pressed. Return `false` to skip what it does (the detail sheet, the link, or your action's `run`). | [`OrbitRendererOptions`](#orbitrendereroptions).[`onAction`](#property-onaction-2) |
+| <a id="property-onedit"></a> `onEdit?` | (`edit`) => `void` | The map was edited with `addNode`, `updateNode`, `removeNode` or `moveNode`; save `renderer.toMarkdown()` to keep it. | [`OrbitRendererOptions`](#orbitrendereroptions).[`onEdit`](#property-onedit-2) |
+| <a id="property-oneditorclose"></a> `onEditorClose?` | (`event`) => `void` | The field for typing on the map closed. | [`OrbitRendererOptions`](#orbitrendereroptions).[`onEditorClose`](#property-oneditorclose-2) |
+| <a id="property-oneditoropen"></a> `onEditorOpen?` | (`event`) => `void` | The field for typing on the map opened. | [`OrbitRendererOptions`](#orbitrendereroptions).[`onEditorOpen`](#property-oneditoropen-2) |
+| <a id="property-onfocuschange"></a> `onFocusChange?` | (`node`, `path`) => `void` | A new node is in focus, with the `path` from the root to it, as `focus-change` has them. | [`OrbitRendererOptions`](#orbitrendereroptions).[`onFocusChange`](#property-onfocuschange-2) |
+| <a id="property-onmediaclose"></a> `onMediaClose?` | (`event`) => `void` | The media viewer closed. | [`OrbitRendererOptions`](#orbitrendereroptions).[`onMediaClose`](#property-onmediaclose-2) |
+| <a id="property-onmediaopen"></a> `onMediaOpen?` | (`event`) => `void` | The media viewer opened, or stepped to another picture, video or sound. | [`OrbitRendererOptions`](#orbitrendereroptions).[`onMediaOpen`](#property-onmediaopen-2) |
+| <a id="property-onmediastate"></a> `onMediaState?` | (`state`) => `void` | The video, sound or live photo's motion in the media viewer started, paused, moved on, ended or was muted; while it plays, its time a few times a second. | [`OrbitRendererOptions`](#orbitrendereroptions).[`onMediaState`](#property-onmediastate-2) |
+| <a id="property-onnodeclick"></a> `onNodeClick?` | (`node`) => `void` | A node was clicked or activated with the keyboard, before the map reacts. | [`OrbitRendererOptions`](#orbitrendereroptions).[`onNodeClick`](#property-onnodeclick-2) |
+| <a id="property-onnodecontext"></a> `onNodeContext?` | (`event`) => `void` | A node was long-pressed, right-clicked or chosen with the context menu key: show a menu of things to do with it at (`x`, `y`). With this callback or a `node-context` listener, the press is yours: it doesn't open the node, and the browser's own menu stays closed. | [`OrbitRendererOptions`](#orbitrendereroptions).[`onNodeContext`](#property-onnodecontext-2) |
+| <a id="property-onnodedrag"></a> `onNodeDrag?` | (`event`) => `void` | A node is dragged somewhere else (see `editable` and the `node-drag` event). | [`OrbitRendererOptions`](#orbitrendereroptions).[`onNodeDrag`](#property-onnodedrag-2) |
+| <a id="property-onspinsettle"></a> `onSpinSettle?` | (`node`) => `void` | Called when a flicked orbit comes to rest, with the planet nearest the top. | [`OrbitRendererOptions`](#orbitrendereroptions).[`onSpinSettle`](#property-onspinsettle-2) |
+| <a id="property-onviewmodechange"></a> `onViewModeChange?` | (`mode`) => `void` | - | [`OrbitRendererOptions`](#orbitrendereroptions).[`onViewModeChange`](#property-onviewmodechange-2) |
+| <a id="property-orbitanimation"></a> ~~`orbitAnimation?`~~ | `boolean` | **Deprecated** Use `animation`, as a document writes it: this name goes in Orbit 1.0. | [`OrbitRendererOptions`](#orbitrendereroptions).[`orbitAnimation`](#property-orbitanimation-3) |
+| <a id="property-orbitspeed"></a> ~~`orbitSpeed?`~~ | `number` | **Deprecated** Use `speed`, as a document writes it: this name goes in Orbit 1.0. | [`OrbitRendererOptions`](#orbitrendereroptions).[`orbitSpeed`](#property-orbitspeed-3) |
+| <a id="property-palette"></a> `palette?` | `string`[] | Node colors: the first for the root, then one per top-level branch (cycling). Default: the theme's. | [`OrbitRendererOptions`](#orbitrendereroptions).[`palette`](#property-palette-4) |
+| <a id="property-selector"></a> `selector?` | `string` | The blocks `hydrateOrbitBlocks` brings to life, as a CSS selector. Default: the marked extension's placeholders, `orbit` code blocks and `<orbit-map>` elements. | - |
+| <a id="property-showactionbuttons"></a> `showActionButtons?` | `boolean` | Buttons under the focused node for its note, media, link and actions. Default true. | [`OrbitRendererOptions`](#orbitrendereroptions).[`showActionButtons`](#property-showactionbuttons-2) |
+| <a id="property-showcontrols"></a> `showControls?` | `boolean` | Breadcrumbs, the view switch, the list button and zoom buttons. Default true. | [`OrbitRendererOptions`](#orbitrendereroptions).[`showControls`](#property-showcontrols-2) |
+| <a id="property-showdetailsheet"></a> `showDetailSheet?` | `boolean` | Open the built-in detail sheet for notes, embeds and the details of a node's type. Default true. | [`OrbitRendererOptions`](#orbitrendereroptions).[`showDetailSheet`](#property-showdetailsheet-2) |
+| <a id="property-showmediaviewer"></a> `showMediaViewer?` | `boolean` | Show pictures, videos and sounds in the media viewer, over the whole window: "View picture", "Play video" and "Play sound" open it, and so do the detail sheet's pictures and its videos' and sounds' Expand buttons. Default true. With `false`, those buttons open the detail sheet instead (unless `showDetailSheet` is `false` too), whose videos and sounds then have no Expand button. `openMedia` opens the viewer either way. | [`OrbitRendererOptions`](#orbitrendereroptions).[`showMediaViewer`](#property-showmediaviewer-2) |
+| <a id="property-showrings"></a> `showRings?` | `boolean` | Draw the dashed orbit rings. Default true. | [`OrbitRendererOptions`](#orbitrendereroptions).[`showRings`](#property-showrings-3) |
+| <a id="property-speed"></a> `speed?` | `number` | Seconds per turn of `animation`'s drift: bigger is slower. Default 90. | [`OrbitRendererOptions`](#orbitrendereroptions).[`speed`](#property-speed-3) |
+| <a id="property-spin"></a> `spin?` | [`OrbitSpinOptions`](#orbitspinoptions) | How a flicked orbit spins. | [`OrbitRendererOptions`](#orbitrendereroptions).[`spin`](#property-spin-2) |
+| <a id="property-statuses"></a> `statuses?` | `Record`\<`string`, [`OrbitStatusStyle`](#orbitstatusstyle)\> | Status words and how they look: a dot tone (`active`, `done`, `blocked`, `todo`, `neutral`) or any CSS color, as in `{ review: 'active', 'on hold': '#A855F7' }`. | [`OrbitRendererOptions`](#orbitrendereroptions).[`statuses`](#property-statuses-3) |
+| <a id="property-strict"></a> `strict?` | `boolean` | Show the error card on the first problem in a block's source instead of working around it. | - |
+| <a id="property-strings"></a> `strings?` | `Partial`\<[`OrbitStrings`](#orbitstrings)\> | Words to change on this map only, over its language's: `{ zoomIn: 'Closer' }`. | [`OrbitRendererOptions`](#orbitrendereroptions).[`strings`](#property-strings-3) |
+| <a id="property-theme"></a> `theme?` | \| [`OrbitThemePreset`](#orbitthemepreset) \| [`OrbitRendererTheme`](#orbitrenderertheme) \| `string` & `object` | A theme name (`'night'`, `'cosmos'`, or one registered with `registerTheme`) or a theme object. An object without a `preset` keeps the document's theme and changes the tokens it names. | [`OrbitRendererOptions`](#orbitrendereroptions).[`theme`](#property-theme-4) |
+| <a id="property-transitionduration"></a> `transitionDuration?` | `number` \| `"auto"` | Navigation flight length in milliseconds, or `auto` to scale with the distance travelled. | [`OrbitRendererOptions`](#orbitrendereroptions).[`transitionDuration`](#property-transitionduration-2) |
+| <a id="property-view"></a> `view?` | [`OrbitViewMode`](#orbitviewmode) | The first view: `focus` (default) or `all`, the overview. | [`OrbitRendererOptions`](#orbitrendereroptions).[`view`](#property-view-4) |
+| <a id="property-viewmode"></a> ~~`viewMode?`~~ | [`OrbitViewMode`](#orbitviewmode) | **Deprecated** Use `view`, as a document writes it: this name goes in Orbit 1.0. | [`OrbitRendererOptions`](#orbitrendereroptions).[`viewMode`](#property-viewmode-4) |
+| <a id="property-zoom"></a> `zoom?` | [`OrbitZoomOptions`](#orbitzoomoptions) | How the wheel, trackpads and pinches zoom. | [`OrbitRendererOptions`](#orbitrendereroptions).[`zoom`](#property-zoom-2) |
+
+***
+
 ### OrbitDiagnostic
 
 #### Properties
@@ -1025,7 +1001,7 @@ A parsed map: its tree, its options and the problems the parser worked around.
 
 | Property | Type | Description |
 | ------ | ------ | ------ |
-| <a id="property-diagnostics"></a> `diagnostics?` | [`OrbitDiagnostic`](#orbitdiagnostic)[] | The same problems with a code, line and severity. Always set on parse results. |
+| <a id="property-diagnostics"></a> `diagnostics?` | [`OrbitDiagnostic`](#orbitdiagnostic)[] | The same problems with a code, line and severity. Always set on parse results, and on a map's `getDocument()`. |
 | <a id="property-extra"></a> `extra?` | `Record`\<`string`, `unknown`\> | Frontmatter or top-level YAML keys Orbit doesn't read (another app's, or a newer Orbit's), as written. Both serializers write them back, so nothing a document says is lost by reading and saving it. |
 | <a id="property-options"></a> `options` | [`OrbitDocumentOptions`](#orbitdocumentoptions) | - |
 | <a id="property-root"></a> `root` | [`OrbitNode`](#orbitnode) | - |
@@ -1041,19 +1017,22 @@ Options a document sets in its frontmatter (markdown) or top-level keys (YAML).
 
 | Property | Type | Description |
 | ------ | ------ | ------ |
-| <a id="property-baseurl-2"></a> `baseUrl?` | `string` | - |
+| <a id="property-animation-1"></a> `animation?` | `boolean` | Keep the orbit turning slowly on its own. |
+| <a id="property-baseurl-1"></a> `baseUrl?` | `string` | Where the map's relative addresses resolve from: a web address (http or https) or a relative path; others are reported and ignored. |
 | <a id="property-classname-1"></a> `className?` | `string` | - |
 | <a id="property-height-1"></a> `height?` | `number` | Height in pixels, used by `<orbit-map>` elements and marked placeholders. |
-| <a id="property-interactive-2"></a> `interactive?` | `boolean` | - |
-| <a id="property-maxdepth-2"></a> `maxDepth?` | `number` | - |
-| <a id="property-orbitanimation-2"></a> `orbitAnimation?` | `boolean` | Written `animation:` in the document. |
-| <a id="property-orbitspeed-2"></a> `orbitSpeed?` | `number` | Written `speed:` in the document: seconds per turn of the orbit's drift. |
-| <a id="property-palette-2"></a> `palette?` | `string`[] | - |
+| <a id="property-interactive-1"></a> `interactive?` | `boolean` | - |
+| <a id="property-maxdepth-1"></a> `maxDepth?` | `number` | - |
+| <a id="property-orbitanimation-1"></a> ~~`orbitAnimation?`~~ | `boolean` | **Deprecated** Use `animation`, as the document writes it: this name goes in Orbit 1.0. |
+| <a id="property-orbitspeed-1"></a> ~~`orbitSpeed?`~~ | `number` | **Deprecated** Use `speed`, as the document writes it: this name goes in Orbit 1.0. |
+| <a id="property-palette-1"></a> `palette?` | `string`[] | - |
 | <a id="property-schemaversion"></a> `schemaVersion?` | `number` | The format version the document is written for. |
-| <a id="property-showrings-2"></a> `showRings?` | `boolean` | - |
-| <a id="property-theme-2"></a> `theme?` | `string` | A theme name, as written (unknown names are reported and ignored). |
+| <a id="property-showrings-1"></a> `showRings?` | `boolean` | - |
+| <a id="property-speed-1"></a> `speed?` | `number` | Seconds per turn of the orbit's drift. |
+| <a id="property-theme-1"></a> `theme?` | `string` | A theme name, as written (unknown names are reported and ignored). |
 | <a id="property-title"></a> `title?` | `string` | The map's accessible name and SVG title. |
-| <a id="property-viewmode-2"></a> `viewMode?` | [`ViewMode`](#viewmode) | Written `view:` in the document. |
+| <a id="property-view-1"></a> `view?` | [`OrbitViewMode`](#orbitviewmode) | The first view: `focus` or `all`, the overview. |
+| <a id="property-viewmode-1"></a> ~~`viewMode?`~~ | [`OrbitViewMode`](#orbitviewmode) | **Deprecated** Use `view`, as the document writes it: this name goes in Orbit 1.0. |
 
 ***
 
@@ -1102,16 +1081,17 @@ or for `orbit-<name>` DOM events, which bubble from the map's container
 | `focus-change.node` | [`OrbitNode`](#orbitnode) | - |
 | `focus-change.path` | [`OrbitNode`](#orbitnode)[] | - |
 | <a id="property-media-close"></a> `media-close` | [`OrbitMediaEvent`](#orbitmediaevent) | The media viewer closed. |
-| <a id="property-media-open"></a> `media-open` | [`OrbitMediaEvent`](#orbitmediaevent) | The media viewer opened, or stepped to another picture or video. |
-| <a id="property-media-state"></a> `media-state` | [`OrbitMediaState`](#orbitmediastate) | The video in the media viewer started, paused, moved on, ended or was muted; while it plays, its time a few times a second. |
+| <a id="property-media-open"></a> `media-open` | [`OrbitMediaEvent`](#orbitmediaevent) | The media viewer opened, or stepped to another picture, video or sound. |
+| <a id="property-media-state"></a> `media-state` | [`OrbitMediaState`](#orbitmediastate) | The video, sound or live photo's motion in the media viewer started, paused, moved on, ended or was muted; while it plays, its time a few times a second. |
 | <a id="property-node-click"></a> `node-click` | `object` | A node was clicked or activated with the keyboard, before the map reacts. |
 | `node-click.node` | [`OrbitNode`](#orbitnode) | - |
 | <a id="property-node-context"></a> `node-context` | [`OrbitNodeContextEvent`](#orbitnodecontextevent) | A node was long-pressed, right-clicked, or chosen with the context menu key: the place for a menu of things to do with it. A DOM listener calls `preventDefault()` to take the press (see `onNodeContext`). |
 | <a id="property-node-drag"></a> `node-drag` | [`OrbitNodeDragEvent`](#orbitnodedragevent) | A node is dragged somewhere else on an editable map: lifted, carried over a place, or let go (see `phase`). |
-| <a id="property-spin-settle"></a> `spin-settle` | `object` | A spun orbit came to rest, with this planet on top. |
-| `spin-settle.planet` | [`OrbitNode`](#orbitnode) | - |
+| <a id="property-spin-settle"></a> `spin-settle` | `object` | A spun orbit came to rest, with `node` on top. |
+| `spin-settle.node` | [`OrbitNode`](#orbitnode) | - |
+| `spin-settle.planet` | [`OrbitNode`](#orbitnode) | **Deprecated** Use `node`, as every other event names it: `planet` goes in Orbit 1.0. |
 | <a id="property-view-mode-change"></a> `view-mode-change` | `object` | The map switched between focus mode and the overview. |
-| `view-mode-change.mode` | [`ViewMode`](#viewmode) | - |
+| `view-mode-change.mode` | [`OrbitViewMode`](#orbitviewmode) | - |
 
 ***
 
@@ -1136,7 +1116,7 @@ One map read from another app's file.
 
 | Property | Type | Description |
 | ------ | ------ | ------ |
-| <a id="property-document-1"></a> `document` | [`OrbitDocument`](#orbitdocument) | - |
+| <a id="property-document"></a> `document` | [`OrbitDocument`](#orbitdocument) | - |
 | <a id="property-media"></a> `media` | `Record`\<`string`, `Uint8Array`\> | Pictures from inside the file, by the address the map gives them: `media/sunrise.png`. Save them next to the map. |
 | <a id="property-warnings-1"></a> `warnings` | [`OrbitImportWarning`](#orbitimportwarning)[] | What the other app had that Orbit keeps another way, or couldn't keep. |
 
@@ -1170,7 +1150,7 @@ Something the other app's map had that Orbit keeps another way, or can't keep.
 
 ### OrbitInsets
 
-Room the page's own controls take at the map's edges, in px (see `RendererOptions.insets`).
+Room the page's own controls take at the map's edges, in px (see `OrbitRendererOptions.insets`).
 
 #### Properties
 
@@ -1234,13 +1214,31 @@ Flies to a node by id, in focus mode. Returns false when the map has no such nod
 
 `boolean`
 
+##### hideChildren()
+
+```ts
+hideChildren(ids): boolean;
+```
+
+Hides the ideas under nodes, to show later (see `OrbitSVGRenderer.hideChildren`). Returns whether any were newly hidden.
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `ids` | `string` \| readonly `string`[] |
+
+###### Returns
+
+`boolean`
+
 ##### openMedia()
 
 ```ts
 openMedia(nodeId, options?): boolean;
 ```
 
-Shows a node's picture or video in the media viewer (see `OrbitSVGRenderer.openMedia`). Returns false when there's nothing to show.
+Shows a node's picture, video or sound in the media viewer (see `OrbitSVGRenderer.openMedia`). Returns false when there's nothing to show.
 
 ###### Parameters
 
@@ -1271,7 +1269,7 @@ Flies out to the overview of the whole map.
 pauseMedia(): boolean;
 ```
 
-Pauses the video in the media viewer. Returns false when it shows none it can pause.
+Pauses the video or sound in the media viewer. Returns false when it shows none it can pause.
 
 ###### Returns
 
@@ -1283,7 +1281,7 @@ Pauses the video in the media viewer. Returns false when it shows none it can pa
 playMedia(): boolean;
 ```
 
-Plays the video in the media viewer. Returns false when it shows none it can play.
+Plays the video or sound in the media viewer. Returns false when it shows none it can play.
 
 ###### Returns
 
@@ -1301,13 +1299,31 @@ Re-reads the source and redraws the map, keeping the reader's place when it can.
 
 `void`
 
+##### revealChildren()
+
+```ts
+revealChildren(ids?): boolean;
+```
+
+Shows ideas hidden under `ids`, or under every node (see `OrbitSVGRenderer.revealChildren`). Returns whether any were shown.
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `ids?` | `string` \| readonly `string`[] |
+
+###### Returns
+
+`boolean`
+
 ##### seekMedia()
 
 ```ts
 seekMedia(seconds): boolean;
 ```
 
-Moves the video in the media viewer to `seconds` from its start. Returns false when it shows none it can move.
+Moves the video or sound in the media viewer to `seconds` from its start. Returns false when it shows none it can move.
 
 ###### Parameters
 
@@ -1325,7 +1341,7 @@ Moves the video in the media viewer to `seconds` from its start. Returns false w
 unmuteMedia(): boolean;
 ```
 
-Turns on the sound of the video in the media viewer, from a press. Returns false when it shows none it can drive.
+Turns on the sound of the video or sound in the media viewer, from a press. Returns false when it shows none it can drive.
 
 ###### Returns
 
@@ -1333,18 +1349,177 @@ Turns on the sound of the video in the media viewer, from a press. Returns false
 
 ***
 
-### OrbitMediaEvent
+### OrbitMapOptions
 
-A node's picture or video in the media viewer.
+What `createOrbitMap` takes: the renderer's options, and `strict`.
+
+#### Extends
+
+- [`OrbitRendererOptions`](#orbitrendereroptions)
+
+#### Properties
+
+| Property | Type | Description | Inherited from |
+| ------ | ------ | ------ | ------ |
+| <a id="property-actions-1"></a> `actions?` | [`OrbitAction`](#orbitaction)[] | Your own buttons under the focused node and in its detail sheet, before the registered ones. | [`OrbitRendererOptions`](#orbitrendereroptions).[`actions`](#property-actions-3) |
+| <a id="property-animation-2"></a> `animation?` | `boolean` | Keep the orbit turning slowly on its own. | [`OrbitRendererOptions`](#orbitrendereroptions).[`animation`](#property-animation-3) |
+| <a id="property-arialabel-1"></a> `ariaLabel?` | `string` | The map's accessible name. Default: the document's `title`. | [`OrbitRendererOptions`](#orbitrendereroptions).[`ariaLabel`](#property-arialabel-2) |
+| <a id="property-baseurl-2"></a> `baseUrl?` | `string` | Resolves relative image, video, sound and link URLs: an http, https or file address, or a relative one, which the page's address completes. Joined to a base of any other kind, such as `javascript:`, they'd take its scheme, so they stay relative instead. | [`OrbitRendererOptions`](#orbitrendereroptions).[`baseUrl`](#property-baseurl-5) |
+| <a id="property-editable-1"></a> `editable?` | `boolean` | Build the map on the map: a + in the orbit adds an idea, typed right in its new planet, and a long press, a right click or F2 edits a node's text where it is. A node held still, by a long press or the mouse, lifts: drag it onto another node to move it there, or to a place in the orbit to put it there. Default false. | [`OrbitRendererOptions`](#orbitrendereroptions).[`editable`](#property-editable-2) |
+| <a id="property-editingkeys-1"></a> `editingKeys?` | `boolean` | Keys for building an editable map at speed, as in mind-map apps. On a node with keyboard focus, Tab (or Insert) adds an idea under it, Shift+Enter adds one beside it, and Delete removes it. While typing, Tab keeps what was typed and goes on a level down, under it; with nothing typed, it moves the field under the idea before. Shift+Tab goes on a level up, beside the parent. Tab then stays in the map; Shift+Tab from a node still leaves it. Default false. | [`OrbitRendererOptions`](#orbitrendereroptions).[`editingKeys`](#property-editingkeys-2) |
+| <a id="property-focus-1"></a> `focus?` | `string` | The node in focus when the map first draws, by id: to open a map where the reader left it. Default: the root. Later renders keep the reader's place. | [`OrbitRendererOptions`](#orbitrendereroptions).[`focus`](#property-focus-3) |
+| <a id="property-insets-1"></a> `insets?` | [`OrbitInsets`](#orbitinsets) | The parts of the map the page covers with its own controls, such as a toolbar floating over its bottom edge, in px from each edge. Views are fitted into what's left, and the map still draws under the controls. Changing them moves a fitted view to its new place (see `insetsTransition`). | [`OrbitRendererOptions`](#orbitrendereroptions).[`insets`](#property-insets-2) |
+| <a id="property-insetstransition-1"></a> `insetsTransition?` | `"instant"` \| `"glide"` | How the insets a `setOptions` call brings take effect, for that call alone. By default (`'instant'`) a fitted view is kept within its new room at once, as it has to be while the keyboard slides or a sheet is dragged and the insets change every frame. `'glide'` glides it all the way from where it was, with the camera, for a change made once, such as a panel coming or going. | [`OrbitRendererOptions`](#orbitrendereroptions).[`insetsTransition`](#property-insetstransition-2) |
+| <a id="property-interactive-2"></a> `interactive?` | `boolean` | `false` draws a still picture: no clicks, drags, zoom or keyboard. Default true. | [`OrbitRendererOptions`](#orbitrendereroptions).[`interactive`](#property-interactive-3) |
+| <a id="property-language-1"></a> `language?` | `string` | The language of the map's controls, sheets and announcements: a BCP 47 tag such as `es` or `pt-BR`. Default: the language the map's element is in (the closest `lang` attribute), then English. Orbit speaks English and Spanish; `registerLanguage` adds others. | [`OrbitRendererOptions`](#orbitrendereroptions).[`language`](#property-language-3) |
+| <a id="property-longpressdelay-1"></a> `longPressDelay?` | `number` | How long (ms) a finger or pen holds still on a node before it counts as a long press (see `onNodeContext`). Default 500; apps can pass their platform's own, such as Android's 400. | [`OrbitRendererOptions`](#orbitrendereroptions).[`longPressDelay`](#property-longpressdelay-2) |
+| <a id="property-maxdepth-2"></a> `maxDepth?` | `number` | Levels below the root to render (1 = root + direct children). | [`OrbitRendererOptions`](#orbitrendereroptions).[`maxDepth`](#property-maxdepth-3) |
+| <a id="property-mediaviewer-1"></a> ~~`mediaViewer?`~~ | `boolean` | **Deprecated** Use `showMediaViewer`, named as `showRings` and the other switches are: this name goes in Orbit 1.0. | [`OrbitRendererOptions`](#orbitrendereroptions).[`mediaViewer`](#property-mediaviewer-2) |
+| <a id="property-nodetypefor-1"></a> `nodeTypeFor?` | (`node`) => `string` \| `undefined` | The type a node that names none is drawn as, for display only: as if it said `type: name`, with that type's look, content and actions. Orbit never writes it to the map, and asks again whenever it draws; return undefined to draw the node as it is. Called often: keep it quick. | [`OrbitRendererOptions`](#orbitrendereroptions).[`nodeTypeFor`](#property-nodetypefor-3) |
+| <a id="property-nodetypes-1"></a> `nodeTypes?` | `Record`\<`string`, [`OrbitNodeType`](#orbitnodetype)\> | Node types by name: what nodes with `type: name` look like, draw inside them, show in the detail sheet and offer as actions. They come before the ones registered with `registerNodeType`. | [`OrbitRendererOptions`](#orbitrendereroptions).[`nodeTypes`](#property-nodetypes-3) |
+| <a id="property-noterenderer-1"></a> `noteRenderer?` | (`note`, `context`) => `string` | Renders a note to HTML yourself. The HTML is used as-is: sanitize untrusted notes. | [`OrbitRendererOptions`](#orbitrendereroptions).[`noteRenderer`](#property-noterenderer-2) |
+| <a id="property-onaction-1"></a> `onAction?` | (`event`) => `false` \| `void` | A button was pressed. Return `false` to skip what it does (the detail sheet, the link, or your action's `run`). | [`OrbitRendererOptions`](#orbitrendereroptions).[`onAction`](#property-onaction-2) |
+| <a id="property-onedit-1"></a> `onEdit?` | (`edit`) => `void` | The map was edited with `addNode`, `updateNode`, `removeNode` or `moveNode`; save `renderer.toMarkdown()` to keep it. | [`OrbitRendererOptions`](#orbitrendereroptions).[`onEdit`](#property-onedit-2) |
+| <a id="property-oneditorclose-1"></a> `onEditorClose?` | (`event`) => `void` | The field for typing on the map closed. | [`OrbitRendererOptions`](#orbitrendereroptions).[`onEditorClose`](#property-oneditorclose-2) |
+| <a id="property-oneditoropen-1"></a> `onEditorOpen?` | (`event`) => `void` | The field for typing on the map opened. | [`OrbitRendererOptions`](#orbitrendereroptions).[`onEditorOpen`](#property-oneditoropen-2) |
+| <a id="property-onfocuschange-1"></a> `onFocusChange?` | (`node`, `path`) => `void` | A new node is in focus, with the `path` from the root to it, as `focus-change` has them. | [`OrbitRendererOptions`](#orbitrendereroptions).[`onFocusChange`](#property-onfocuschange-2) |
+| <a id="property-onmediaclose-1"></a> `onMediaClose?` | (`event`) => `void` | The media viewer closed. | [`OrbitRendererOptions`](#orbitrendereroptions).[`onMediaClose`](#property-onmediaclose-2) |
+| <a id="property-onmediaopen-1"></a> `onMediaOpen?` | (`event`) => `void` | The media viewer opened, or stepped to another picture, video or sound. | [`OrbitRendererOptions`](#orbitrendereroptions).[`onMediaOpen`](#property-onmediaopen-2) |
+| <a id="property-onmediastate-1"></a> `onMediaState?` | (`state`) => `void` | The video, sound or live photo's motion in the media viewer started, paused, moved on, ended or was muted; while it plays, its time a few times a second. | [`OrbitRendererOptions`](#orbitrendereroptions).[`onMediaState`](#property-onmediastate-2) |
+| <a id="property-onnodeclick-1"></a> `onNodeClick?` | (`node`) => `void` | A node was clicked or activated with the keyboard, before the map reacts. | [`OrbitRendererOptions`](#orbitrendereroptions).[`onNodeClick`](#property-onnodeclick-2) |
+| <a id="property-onnodecontext-1"></a> `onNodeContext?` | (`event`) => `void` | A node was long-pressed, right-clicked or chosen with the context menu key: show a menu of things to do with it at (`x`, `y`). With this callback or a `node-context` listener, the press is yours: it doesn't open the node, and the browser's own menu stays closed. | [`OrbitRendererOptions`](#orbitrendereroptions).[`onNodeContext`](#property-onnodecontext-2) |
+| <a id="property-onnodedrag-1"></a> `onNodeDrag?` | (`event`) => `void` | A node is dragged somewhere else (see `editable` and the `node-drag` event). | [`OrbitRendererOptions`](#orbitrendereroptions).[`onNodeDrag`](#property-onnodedrag-2) |
+| <a id="property-onspinsettle-1"></a> `onSpinSettle?` | (`node`) => `void` | Called when a flicked orbit comes to rest, with the planet nearest the top. | [`OrbitRendererOptions`](#orbitrendereroptions).[`onSpinSettle`](#property-onspinsettle-2) |
+| <a id="property-onviewmodechange-1"></a> `onViewModeChange?` | (`mode`) => `void` | - | [`OrbitRendererOptions`](#orbitrendereroptions).[`onViewModeChange`](#property-onviewmodechange-2) |
+| <a id="property-orbitanimation-2"></a> ~~`orbitAnimation?`~~ | `boolean` | **Deprecated** Use `animation`, as a document writes it: this name goes in Orbit 1.0. | [`OrbitRendererOptions`](#orbitrendereroptions).[`orbitAnimation`](#property-orbitanimation-3) |
+| <a id="property-orbitspeed-2"></a> ~~`orbitSpeed?`~~ | `number` | **Deprecated** Use `speed`, as a document writes it: this name goes in Orbit 1.0. | [`OrbitRendererOptions`](#orbitrendereroptions).[`orbitSpeed`](#property-orbitspeed-3) |
+| <a id="property-palette-2"></a> `palette?` | `string`[] | Node colors: the first for the root, then one per top-level branch (cycling). Default: the theme's. | [`OrbitRendererOptions`](#orbitrendereroptions).[`palette`](#property-palette-4) |
+| <a id="property-showactionbuttons-1"></a> `showActionButtons?` | `boolean` | Buttons under the focused node for its note, media, link and actions. Default true. | [`OrbitRendererOptions`](#orbitrendereroptions).[`showActionButtons`](#property-showactionbuttons-2) |
+| <a id="property-showcontrols-1"></a> `showControls?` | `boolean` | Breadcrumbs, the view switch, the list button and zoom buttons. Default true. | [`OrbitRendererOptions`](#orbitrendereroptions).[`showControls`](#property-showcontrols-2) |
+| <a id="property-showdetailsheet-1"></a> `showDetailSheet?` | `boolean` | Open the built-in detail sheet for notes, embeds and the details of a node's type. Default true. | [`OrbitRendererOptions`](#orbitrendereroptions).[`showDetailSheet`](#property-showdetailsheet-2) |
+| <a id="property-showmediaviewer-1"></a> `showMediaViewer?` | `boolean` | Show pictures, videos and sounds in the media viewer, over the whole window: "View picture", "Play video" and "Play sound" open it, and so do the detail sheet's pictures and its videos' and sounds' Expand buttons. Default true. With `false`, those buttons open the detail sheet instead (unless `showDetailSheet` is `false` too), whose videos and sounds then have no Expand button. `openMedia` opens the viewer either way. | [`OrbitRendererOptions`](#orbitrendereroptions).[`showMediaViewer`](#property-showmediaviewer-2) |
+| <a id="property-showrings-2"></a> `showRings?` | `boolean` | Draw the dashed orbit rings. Default true. | [`OrbitRendererOptions`](#orbitrendereroptions).[`showRings`](#property-showrings-3) |
+| <a id="property-speed-2"></a> `speed?` | `number` | Seconds per turn of `animation`'s drift: bigger is slower. Default 90. | [`OrbitRendererOptions`](#orbitrendereroptions).[`speed`](#property-speed-3) |
+| <a id="property-spin-1"></a> `spin?` | [`OrbitSpinOptions`](#orbitspinoptions) | How a flicked orbit spins. | [`OrbitRendererOptions`](#orbitrendereroptions).[`spin`](#property-spin-2) |
+| <a id="property-statuses-1"></a> `statuses?` | `Record`\<`string`, [`OrbitStatusStyle`](#orbitstatusstyle)\> | Status words and how they look: a dot tone (`active`, `done`, `blocked`, `todo`, `neutral`) or any CSS color, as in `{ review: 'active', 'on hold': '#A855F7' }`. | [`OrbitRendererOptions`](#orbitrendereroptions).[`statuses`](#property-statuses-3) |
+| <a id="property-strict-1"></a> `strict?` | `boolean` | Throw on the first problem in the source instead of working around it. | - |
+| <a id="property-strings-1"></a> `strings?` | `Partial`\<[`OrbitStrings`](#orbitstrings)\> | Words to change on this map only, over its language's: `{ zoomIn: 'Closer' }`. | [`OrbitRendererOptions`](#orbitrendereroptions).[`strings`](#property-strings-3) |
+| <a id="property-theme-2"></a> `theme?` | \| [`OrbitThemePreset`](#orbitthemepreset) \| [`OrbitRendererTheme`](#orbitrenderertheme) \| `string` & `object` | A theme name (`'night'`, `'cosmos'`, or one registered with `registerTheme`) or a theme object. An object without a `preset` keeps the document's theme and changes the tokens it names. | [`OrbitRendererOptions`](#orbitrendereroptions).[`theme`](#property-theme-4) |
+| <a id="property-transitionduration-1"></a> `transitionDuration?` | `number` \| `"auto"` | Navigation flight length in milliseconds, or `auto` to scale with the distance travelled. | [`OrbitRendererOptions`](#orbitrendereroptions).[`transitionDuration`](#property-transitionduration-2) |
+| <a id="property-view-2"></a> `view?` | [`OrbitViewMode`](#orbitviewmode) | The first view: `focus` (default) or `all`, the overview. | [`OrbitRendererOptions`](#orbitrendereroptions).[`view`](#property-view-4) |
+| <a id="property-viewmode-2"></a> ~~`viewMode?`~~ | [`OrbitViewMode`](#orbitviewmode) | **Deprecated** Use `view`, as a document writes it: this name goes in Orbit 1.0. | [`OrbitRendererOptions`](#orbitrendereroptions).[`viewMode`](#property-viewmode-4) |
+| <a id="property-zoom-1"></a> `zoom?` | [`OrbitZoomOptions`](#orbitzoomoptions) | How the wheel, trackpads and pinches zoom. | [`OrbitRendererOptions`](#orbitrendereroptions).[`zoom`](#property-zoom-2) |
+
+***
+
+### OrbitMapToolResult
+
+What a tool call did, to send back to the model.
 
 #### Properties
 
 | Property | Type | Description |
 | ------ | ------ | ------ |
-| <a id="property-index"></a> `index` | `number` | Its place among the map's pictures and videos, in reading order, from 0. |
-| <a id="property-kind-1"></a> `kind` | `"video"` \| `"image"` | `image`, the node's picture, or `video`, its video. |
+| <a id="property-changed"></a> `changed` | `boolean` | Whether the map changed. |
+| <a id="property-ok"></a> `ok` | `boolean` | False when the call couldn't be carried out: nothing changed, and `text` says why and what to send instead. |
+| <a id="property-text"></a> `text` | `string` | What happened, for the model, with the ids to use next. |
+
+***
+
+### OrbitMapTools
+
+Map tools for one map (see `createMapTools`).
+
+#### Properties
+
+| Property | Modifier | Type | Description |
+| ------ | ------ | ------ | ------ |
+| <a id="property-definitions"></a> `definitions` | `readonly` | [`OrbitMapToolDefinition`](#orbitmaptooldefinition)[] | The tools: name, description, input as JSON Schema, and hints. The shape MCP takes, and the data for any other. |
+| <a id="property-document-1"></a> `document` | `readonly` | [`OrbitDocument`](#orbitdocument) \| `null` | The map as it is now. Edits change it in place. |
+| <a id="property-instructions"></a> `instructions` | `readonly` | `string` | How to use the tools, to add to the model's system prompt. |
+
+#### Methods
+
+##### for()
+
+```ts
+for<Provider>(provider): OrbitMapToolFormats[Provider];
+```
+
+The tools in the shape a provider's API takes: `anthropic`, `openai` (Responses), `openai-chat` (Chat Completions, and most other providers) or `gemini`.
+
+###### Type Parameters
+
+| Type Parameter |
+| ------ |
+| `Provider` *extends* keyof [`OrbitMapToolFormats`](#orbitmaptoolformats) |
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `provider` | `Provider` |
+
+###### Returns
+
+[`OrbitMapToolFormats`](#orbitmaptoolformats)\[`Provider`\]
+
+##### run()
+
+```ts
+run(name, input?): OrbitMapToolResult;
+```
+
+Carries out a tool call: its name, and its input as an object or as
+the JSON text OpenAI sends. Never throws for a call a model gets wrong:
+the result says what went wrong instead.
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `name` | `string` |
+| `input?` | `unknown` |
+
+###### Returns
+
+[`OrbitMapToolResult`](#orbitmaptoolresult)
+
+***
+
+### OrbitMapToolsOptions
+
+#### Properties
+
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="property-readlimit"></a> `readLimit?` | `number` | The most nodes `read_map` shows at once; a bigger map is cut short, whole levels first. Default 250. |
+| <a id="property-readonly"></a> `readOnly?` | `boolean` | Offer only the tools that read the map, for an assistant that answers questions about it. Default false. |
+
+***
+
+### OrbitMaterialThemeOptions
+
+#### Properties
+
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="property-dark"></a> `dark?` | `boolean` | Dark surfaces with light text, like `material-night`, instead of light ones. |
+
+***
+
+### OrbitMediaEvent
+
+A node's picture, video or sound in the media viewer.
+
+#### Properties
+
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="property-index"></a> `index` | `number` | Its place among the map's pictures, videos and sounds, in reading order, from 0. |
+| <a id="property-kind-1"></a> `kind` | `"video"` \| `"audio"` \| `"image"` | `image`, the node's picture, `video`, its video, or `audio`, its sound. |
 | <a id="property-node-4"></a> `node` | [`OrbitNode`](#orbitnode) | - |
-| <a id="property-total"></a> `total` | `number` | How many pictures and videos the viewer steps through. |
+| <a id="property-total"></a> `total` | `number` | How many pictures, videos and sounds the viewer steps through. |
 
 ***
 
@@ -1356,15 +1531,15 @@ What `openMedia` shows.
 
 | Property | Type | Description |
 | ------ | ------ | ------ |
-| <a id="property-autoplay"></a> `autoplay?` | `boolean` | Start a video playing as it opens. Default true. |
-| <a id="property-kind-2"></a> `kind?` | `"video"` \| `"image"` | For a node with a picture and a video: which to show. Default: the picture. |
-| <a id="property-startat"></a> `startAt?` | `number` | Start a video this many seconds in. YouTube and Vimeo start at the whole second. Default 0. |
+| <a id="property-autoplay"></a> `autoplay?` | `boolean` | Start a video or sound playing as it opens, and a live photo's motion once (never with reduced motion). Default true. |
+| <a id="property-kind-2"></a> `kind?` | `"video"` \| `"audio"` \| `"image"` | For a node with more than one: which to show. Default: the picture, then the video, then the sound. |
+| <a id="property-startat"></a> `startAt?` | `number` | Start a video or sound this many seconds in. YouTube and Vimeo start at the whole second. Default 0. |
 
 ***
 
 ### OrbitMediaState
 
-The video in the media viewer, as it plays (see the `media-state` event).
+The video, sound or live photo's motion in the media viewer, as it plays (see the `media-state` event).
 
 #### Properties
 
@@ -1372,10 +1547,27 @@ The video in the media viewer, as it plays (see the `media-state` event).
 | ------ | ------ | ------ |
 | <a id="property-duration"></a> `duration` | `number` \| `null` | How long it is, in seconds, once known. |
 | <a id="property-ended"></a> `ended` | `boolean` | It played to the end. |
+| <a id="property-kind-3"></a> `kind` | `"video"` \| `"audio"` \| `"image"` | What plays: the node's `video`, its sound (`audio`), or its live photo's motion over its picture (`image`). |
 | <a id="property-muted"></a> `muted` | `boolean` | Its sound is off. Browsers let a video start with sound only once the reader has interacted with the page; a video started before that plays muted. |
 | <a id="property-node-5"></a> `node` | [`OrbitNode`](#orbitnode) | - |
 | <a id="property-playing"></a> `playing` | `boolean` | Playing, rather than paused, not started yet, or ended. |
 | <a id="property-time"></a> `time` | `number` | Where it is, in seconds from the start. |
+
+***
+
+### OrbitMotion
+
+A live photo's motion: the few seconds of video a phone records around a
+picture. Written `motion: media/summit-motion.mp4` inside the picture's
+value, or `motion: { src, still }`. The node's picture is the still: the map
+and the detail sheet show it, and the media viewer plays the motion over it.
+
+#### Properties
+
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="property-src"></a> `src` | `string` | The video's address, such as an `.mp4`: relative ones resolve against `baseUrl`, as every media address does. |
+| <a id="property-still"></a> `still?` | `number` | Where in the video the picture was taken, in seconds, when the phone said so. |
 
 ***
 
@@ -1388,6 +1580,9 @@ One node of a map, as the parsers produce it.
 | Property | Type | Description |
 | ------ | ------ | ------ |
 | <a id="property-attrs"></a> `attrs?` | `Record`\<`string`, `unknown`\> | Attributes Orbit doesn't use itself, kept for your own code (`<!-- orbit owner: Ana -->`). |
+| <a id="property-audio"></a> `audio?` | `object` | A sound: a voice memo, music or a recording, played in the detail sheet and the media viewer. Its caption is only ever in its own value (`audio: { src: …, caption: … }`): a `caption` key beside it stays with the node's video, embed or picture, as older versions read it. |
+| `audio.caption?` | `string` | - |
+| `audio.src` | `string` | - |
 | <a id="property-children"></a> `children` | [`OrbitNode`](#orbitnode)[] | - |
 | <a id="property-collapsed"></a> `collapsed?` | `boolean` | Hide the node's children until it is opened. |
 | <a id="property-color"></a> `color?` | `string` | Any CSS color. Without one, the node takes its branch's color from the theme or `palette`. |
@@ -1396,9 +1591,10 @@ One node of a map, as the parsers produce it.
 | `embed.src` | `string` | - |
 | <a id="property-icon-1"></a> `icon?` | `string` | An emoji (or any short symbol) shown before the text. |
 | <a id="property-id-1"></a> `id` | `string` | Unique within the map: a slug of the text (`Product roadmap` becomes `product-roadmap`), or the `id` attribute. |
-| <a id="property-image"></a> `image?` | `object` | A picture shown inside the node and in the detail sheet. |
+| <a id="property-image"></a> `image?` | `object` | A picture shown inside the node and in the detail sheet. A live photo's picture carries its `motion`, the few seconds of video a phone records around it, which the media viewer plays (see `OrbitMotion`). |
 | `image.alt?` | `string` | - |
 | `image.caption?` | `string` | - |
+| `image.motion?` | [`OrbitMotion`](#orbitmotion) | - |
 | `image.src` | `string` | - |
 | <a id="property-level"></a> `level` | `number` | Depth in the tree: 0 for the root. |
 | <a id="property-link"></a> `link?` | `string` | A URL the node links to, offered as a button when the node is in focus. `#id` links to another node of the map: the button flies there. |
@@ -1451,7 +1647,7 @@ the `edit` that moved it, if it moved.
 | <a id="property-index-1"></a> `index` | `number` \| `null` | - |
 | <a id="property-node-7"></a> `node` | [`OrbitNode`](#orbitnode) | - |
 | <a id="property-parent-2"></a> `parent` | [`OrbitNode`](#orbitnode) \| `null` | Where it would go, or (on `end`) went: into `parent`, at `index` among its children (null: after the last). On `start`, where it was; null over no place, and on an `end` that put it back. |
-| <a id="property-phase"></a> `phase` | `"end"` \| `"start"` \| `"over"` | - |
+| <a id="property-phase"></a> `phase` | `"start"` \| `"end"` \| `"over"` | - |
 
 ***
 
@@ -1470,7 +1666,7 @@ How nodes of one type look and behave. Nodes pick a type with `type: name`.
 | <a id="property-label-1"></a> `label?` | `string` | The type's name for people, shown in the detail sheet and the tooltip: `'Milestone'`. |
 | <a id="property-render"></a> `render?` | (`node`, `element`) => `void` \| (() => `void`) | Draws inside the node, the way a picture does: `element` is a 100 × 100 px box clipped to the node's circle and scaled with it, and the label moves outside. Return a function to clean up when the node leaves the map. |
 | <a id="property-tokens"></a> `tokens?` | `Partial`\<`Record`\< \| `"sans-font"` \| `"serif-font"` \| `"mono-font"` \| `"font-family"` \| `"label-font"` \| `"display-font"` \| `"label-weight"` \| `"display-weight"` \| `"label-letter-spacing"` \| `"label-shadow"` \| `"surface"` \| `"surface-pattern"` \| `"text"` \| `"muted-text"` \| `"root-text"` \| `"node-text"` \| `"node-text-inverse"` \| `"color-root"` \| `"color-1"` \| `"color-2"` \| `"color-3"` \| `"color-4"` \| `"color-5"` \| `"color-6"` \| `"color-7"` \| `"shade-light"` \| `"shade-dark"` \| `"node-fill-opacity"` \| `"moon-opacity"` \| `"node-highlight"` \| `"node-terminator"` \| `"node-shading"` \| `"node-shade-circle"` \| `"node-stroke"` \| `"node-stroke-tint"` \| `"node-stroke-width"` \| `"badge-stroke"` \| `"node-shadow"` \| `"node-shadow-tint"` \| `"node-shadow-opacity"` \| `"node-shadow-offset"` \| `"node-shadow-size"` \| `"sun-shadow-opacity"` \| `"sun-shadow-size"` \| `"sun-halo"` \| `"sun-halo-tint"` \| `"sun-halo-opacity"` \| `"sun-halo-width"` \| `"sun-halo-dash"` \| `"sun-halo-size"` \| `"ring-stroke"` \| `"ring-tint"` \| `"ring-opacity"` \| `"ring-width"` \| `"ring-dash"` \| `"link-stroke"` \| `"link-tint"` \| `"link-opacity"` \| `"link-width"` \| `"link-dash"` \| `"focus-ring"` \| `"note-indicator"` \| `"control-background"` \| `"control-border"` \| `"control-text"` \| `"control-muted-text"` \| `"control-active-background"` \| `"control-active-text"` \| `"control-shadow"` \| `"control-blur"` \| `"tooltip-background"` \| `"tooltip-text"` \| `"action-background"` \| `"action-border"` \| `"action-text"` \| `"action-shadow"` \| `"sheet-background"` \| `"sheet-text"` \| `"sheet-muted-text"` \| `"sheet-border"` \| `"sheet-backdrop"` \| `"sheet-shadow"` \| `"sheet-blur"` \| `"chip-background"` \| `"chip-text"` \| `"link-text"` \| `"status-active"` \| `"status-done"` \| `"status-blocked"` \| `"status-todo"` \| `"status-neutral"` \| `"error-background"` \| `"error-border"` \| `"error-text"`, `string`\>\> | Theme tokens for these nodes only, without `--orbit-`: their rim, shadow, glow, label and status colors, such as `{ 'node-stroke': '#B45309', 'node-stroke-width': '3' }`. |
-| <a id="property-upgrade"></a> `upgrade?` | (`node`, `from`) => `void` | Brings a node written for an older version of the type up to date: renames or reshapes its attributes, in place. `from` is the version it was written for. Runs once per node when a map is drawn (or with `upgradeNodeTypes`), and the next save writes the node as upgraded. Nodes written for a newer version than this one are left as they are. |
+| <a id="property-upgrade"></a> `upgrade?` | (`node`, `from`) => `void` | Brings a node written for an older version of the type up to date: renames or reshapes its attributes, in place. `from` is the version it was written for. Runs once per node when a map is drawn (or with `upgradeNodeTypes`), and the next save writes the node as upgraded. Nodes written for a newer version than this one are left as they are, and drawn as plain ideas. |
 | <a id="property-version"></a> `version?` | `number` | The version of the fields these nodes keep in their attributes, once the type changes them: 1 at first. Nodes say which version they were written for (`type: task@2`; none means 1), and older ones are brought up to date with `upgrade` when a map is drawn. |
 
 ***
@@ -1493,6 +1689,17 @@ How nodes of one type look and behave. Nodes pick a type with `type: name`.
 | Property | Type | Description |
 | ------ | ------ | ------ |
 | <a id="property-title-1"></a> `title?` | `string` | The outline's title, in its head. Default: the map's `title`, or its root's text. |
+
+***
+
+### OrbitParseOptions
+
+#### Properties
+
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="property-strict-2"></a> `strict?` | `boolean` | Throw an `OrbitParseError` on the first problem instead of recording a diagnostic and carrying on. Off by default; `orbit validate` turns it on. |
+| <a id="property-untitled-1"></a> `untitled?` | `string` | The name of the root Orbit makes up for a document with no single top heading and no title, in the reader's language. Default "Untitled map". Its id is `untitled-map` whatever its name. |
 
 ***
 
@@ -1525,7 +1732,7 @@ language uses (see `Intl.PluralRules`), `other` for any it leaves out.
 | <a id="property-focus-2"></a> `focus?` | `string` | The node in the middle of the picture in focus mode, by id. Default: the root. |
 | <a id="property-idprefix"></a> `idPrefix?` | `string` | Prefix for the picture's SVG ids; give each layout in one page its own. Default: `orbit-print`. |
 | <a id="property-language-2"></a> `language?` | `string` | The language of the few words the layout has: a BCP 47 tag. Default: English. |
-| <a id="property-nodetypefor-2"></a> `nodeTypeFor?` | (`node`) => `string` \| `undefined` | The type a node that names none is laid out as (see `RendererOptions.nodeTypeFor`). |
+| <a id="property-nodetypefor-2"></a> `nodeTypeFor?` | (`node`) => `string` \| `undefined` | The type a node that names none is laid out as (see `OrbitRendererOptions.nodeTypeFor`). |
 | <a id="property-nodetypes-2"></a> `nodeTypes?` | `Record`\<`string`, [`OrbitNodeType`](#orbitnodetype)\> | Node types by name, before the registered ones: their icons, colors, labels and details. |
 | <a id="property-palette-3"></a> `palette?` | `string`[] | The map's colors: the root's, then one per top-level branch. Default: the document's, or the theme's. |
 | <a id="property-picture"></a> `picture?` | `boolean` | Whether the map's picture comes before the outline. Default: true. |
@@ -1533,7 +1740,73 @@ language uses (see `Intl.PluralRules`), `other` for any it leaves out.
 | <a id="property-strings-2"></a> `strings?` | `Partial`\<[`OrbitStrings`](#orbitstrings)\> | Words to change, over the language's. |
 | <a id="property-theme-3"></a> `theme?` | \| [`OrbitThemePreset`](#orbitthemepreset) \| [`OrbitRendererTheme`](#orbitrenderertheme) \| `string` & `object` | The map's theme: a theme name or `{ preset, tokens }`. Default: the document's. Paper is light, so a dark theme prints as its light counterpart (see `printTheme`), and nothing prints a background. |
 | <a id="property-title-2"></a> `title?` | `string` | The heading at the top. Default: the map's `title`, or its root's text. |
-| <a id="property-viewmode-3"></a> `viewMode?` | [`ViewMode`](#viewmode) | What the picture shows: `focus`, a node with its orbit, or `all`, the whole map. Default: the map's `view`, or `focus`. |
+| <a id="property-view-3"></a> `view?` | [`OrbitViewMode`](#orbitviewmode) | What the picture shows: `focus`, a node with its orbit, or `all`, the whole map. Default: the map's `view`, or `focus`. |
+| <a id="property-viewmode-3"></a> ~~`viewMode?`~~ | [`OrbitViewMode`](#orbitviewmode) | **Deprecated** Use `view`, as the renderer and a document name it: this name goes in Orbit 1.0. |
+
+***
+
+### OrbitRendererOptions
+
+How a map looks and behaves. Every option is optional; options passed to
+the renderer win over the document's frontmatter.
+
+#### Extended by
+
+- [`OrbitMindMapProps`](react.md#orbitmindmapprops)
+- [`OrbitMapOptions`](#orbitmapoptions)
+- [`OrbitAutoRenderOptions`](#orbitautorenderoptions)
+
+#### Properties
+
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="property-actions-3"></a> `actions?` | [`OrbitAction`](#orbitaction)[] | Your own buttons under the focused node and in its detail sheet, before the registered ones. |
+| <a id="property-animation-3"></a> `animation?` | `boolean` | Keep the orbit turning slowly on its own. |
+| <a id="property-arialabel-2"></a> `ariaLabel?` | `string` | The map's accessible name. Default: the document's `title`. |
+| <a id="property-baseurl-5"></a> `baseUrl?` | `string` | Resolves relative image, video, sound and link URLs: an http, https or file address, or a relative one, which the page's address completes. Joined to a base of any other kind, such as `javascript:`, they'd take its scheme, so they stay relative instead. |
+| <a id="property-editable-2"></a> `editable?` | `boolean` | Build the map on the map: a + in the orbit adds an idea, typed right in its new planet, and a long press, a right click or F2 edits a node's text where it is. A node held still, by a long press or the mouse, lifts: drag it onto another node to move it there, or to a place in the orbit to put it there. Default false. |
+| <a id="property-editingkeys-2"></a> `editingKeys?` | `boolean` | Keys for building an editable map at speed, as in mind-map apps. On a node with keyboard focus, Tab (or Insert) adds an idea under it, Shift+Enter adds one beside it, and Delete removes it. While typing, Tab keeps what was typed and goes on a level down, under it; with nothing typed, it moves the field under the idea before. Shift+Tab goes on a level up, beside the parent. Tab then stays in the map; Shift+Tab from a node still leaves it. Default false. |
+| <a id="property-focus-3"></a> `focus?` | `string` | The node in focus when the map first draws, by id: to open a map where the reader left it. Default: the root. Later renders keep the reader's place. |
+| <a id="property-insets-2"></a> `insets?` | [`OrbitInsets`](#orbitinsets) | The parts of the map the page covers with its own controls, such as a toolbar floating over its bottom edge, in px from each edge. Views are fitted into what's left, and the map still draws under the controls. Changing them moves a fitted view to its new place (see `insetsTransition`). |
+| <a id="property-insetstransition-2"></a> `insetsTransition?` | `"instant"` \| `"glide"` | How the insets a `setOptions` call brings take effect, for that call alone. By default (`'instant'`) a fitted view is kept within its new room at once, as it has to be while the keyboard slides or a sheet is dragged and the insets change every frame. `'glide'` glides it all the way from where it was, with the camera, for a change made once, such as a panel coming or going. |
+| <a id="property-interactive-3"></a> `interactive?` | `boolean` | `false` draws a still picture: no clicks, drags, zoom or keyboard. Default true. |
+| <a id="property-language-3"></a> `language?` | `string` | The language of the map's controls, sheets and announcements: a BCP 47 tag such as `es` or `pt-BR`. Default: the language the map's element is in (the closest `lang` attribute), then English. Orbit speaks English and Spanish; `registerLanguage` adds others. |
+| <a id="property-longpressdelay-2"></a> `longPressDelay?` | `number` | How long (ms) a finger or pen holds still on a node before it counts as a long press (see `onNodeContext`). Default 500; apps can pass their platform's own, such as Android's 400. |
+| <a id="property-maxdepth-3"></a> `maxDepth?` | `number` | Levels below the root to render (1 = root + direct children). |
+| <a id="property-mediaviewer-2"></a> ~~`mediaViewer?`~~ | `boolean` | **Deprecated** Use `showMediaViewer`, named as `showRings` and the other switches are: this name goes in Orbit 1.0. |
+| <a id="property-nodetypefor-3"></a> `nodeTypeFor?` | (`node`) => `string` \| `undefined` | The type a node that names none is drawn as, for display only: as if it said `type: name`, with that type's look, content and actions. Orbit never writes it to the map, and asks again whenever it draws; return undefined to draw the node as it is. Called often: keep it quick. |
+| <a id="property-nodetypes-3"></a> `nodeTypes?` | `Record`\<`string`, [`OrbitNodeType`](#orbitnodetype)\> | Node types by name: what nodes with `type: name` look like, draw inside them, show in the detail sheet and offer as actions. They come before the ones registered with `registerNodeType`. |
+| <a id="property-noterenderer-2"></a> `noteRenderer?` | (`note`, `context`) => `string` | Renders a note to HTML yourself. The HTML is used as-is: sanitize untrusted notes. |
+| <a id="property-onaction-2"></a> `onAction?` | (`event`) => `false` \| `void` | A button was pressed. Return `false` to skip what it does (the detail sheet, the link, or your action's `run`). |
+| <a id="property-onedit-2"></a> `onEdit?` | (`edit`) => `void` | The map was edited with `addNode`, `updateNode`, `removeNode` or `moveNode`; save `renderer.toMarkdown()` to keep it. |
+| <a id="property-oneditorclose-2"></a> `onEditorClose?` | (`event`) => `void` | The field for typing on the map closed. |
+| <a id="property-oneditoropen-2"></a> `onEditorOpen?` | (`event`) => `void` | The field for typing on the map opened. |
+| <a id="property-onfocuschange-2"></a> `onFocusChange?` | (`node`, `path`) => `void` | A new node is in focus, with the `path` from the root to it, as `focus-change` has them. |
+| <a id="property-onmediaclose-2"></a> `onMediaClose?` | (`event`) => `void` | The media viewer closed. |
+| <a id="property-onmediaopen-2"></a> `onMediaOpen?` | (`event`) => `void` | The media viewer opened, or stepped to another picture, video or sound. |
+| <a id="property-onmediastate-2"></a> `onMediaState?` | (`state`) => `void` | The video, sound or live photo's motion in the media viewer started, paused, moved on, ended or was muted; while it plays, its time a few times a second. |
+| <a id="property-onnodeclick-2"></a> `onNodeClick?` | (`node`) => `void` | A node was clicked or activated with the keyboard, before the map reacts. |
+| <a id="property-onnodecontext-2"></a> `onNodeContext?` | (`event`) => `void` | A node was long-pressed, right-clicked or chosen with the context menu key: show a menu of things to do with it at (`x`, `y`). With this callback or a `node-context` listener, the press is yours: it doesn't open the node, and the browser's own menu stays closed. |
+| <a id="property-onnodedrag-2"></a> `onNodeDrag?` | (`event`) => `void` | A node is dragged somewhere else (see `editable` and the `node-drag` event). |
+| <a id="property-onspinsettle-2"></a> `onSpinSettle?` | (`node`) => `void` | Called when a flicked orbit comes to rest, with the planet nearest the top. |
+| <a id="property-onviewmodechange-2"></a> `onViewModeChange?` | (`mode`) => `void` | - |
+| <a id="property-orbitanimation-3"></a> ~~`orbitAnimation?`~~ | `boolean` | **Deprecated** Use `animation`, as a document writes it: this name goes in Orbit 1.0. |
+| <a id="property-orbitspeed-3"></a> ~~`orbitSpeed?`~~ | `number` | **Deprecated** Use `speed`, as a document writes it: this name goes in Orbit 1.0. |
+| <a id="property-palette-4"></a> `palette?` | `string`[] | Node colors: the first for the root, then one per top-level branch (cycling). Default: the theme's. |
+| <a id="property-showactionbuttons-2"></a> `showActionButtons?` | `boolean` | Buttons under the focused node for its note, media, link and actions. Default true. |
+| <a id="property-showcontrols-2"></a> `showControls?` | `boolean` | Breadcrumbs, the view switch, the list button and zoom buttons. Default true. |
+| <a id="property-showdetailsheet-2"></a> `showDetailSheet?` | `boolean` | Open the built-in detail sheet for notes, embeds and the details of a node's type. Default true. |
+| <a id="property-showmediaviewer-2"></a> `showMediaViewer?` | `boolean` | Show pictures, videos and sounds in the media viewer, over the whole window: "View picture", "Play video" and "Play sound" open it, and so do the detail sheet's pictures and its videos' and sounds' Expand buttons. Default true. With `false`, those buttons open the detail sheet instead (unless `showDetailSheet` is `false` too), whose videos and sounds then have no Expand button. `openMedia` opens the viewer either way. |
+| <a id="property-showrings-3"></a> `showRings?` | `boolean` | Draw the dashed orbit rings. Default true. |
+| <a id="property-speed-3"></a> `speed?` | `number` | Seconds per turn of `animation`'s drift: bigger is slower. Default 90. |
+| <a id="property-spin-2"></a> `spin?` | [`OrbitSpinOptions`](#orbitspinoptions) | How a flicked orbit spins. |
+| <a id="property-statuses-3"></a> `statuses?` | `Record`\<`string`, [`OrbitStatusStyle`](#orbitstatusstyle)\> | Status words and how they look: a dot tone (`active`, `done`, `blocked`, `todo`, `neutral`) or any CSS color, as in `{ review: 'active', 'on hold': '#A855F7' }`. |
+| <a id="property-strings-3"></a> `strings?` | `Partial`\<[`OrbitStrings`](#orbitstrings)\> | Words to change on this map only, over its language's: `{ zoomIn: 'Closer' }`. |
+| <a id="property-theme-4"></a> `theme?` | \| [`OrbitThemePreset`](#orbitthemepreset) \| [`OrbitRendererTheme`](#orbitrenderertheme) \| `string` & `object` | A theme name (`'night'`, `'cosmos'`, or one registered with `registerTheme`) or a theme object. An object without a `preset` keeps the document's theme and changes the tokens it names. |
+| <a id="property-transitionduration-2"></a> `transitionDuration?` | `number` \| `"auto"` | Navigation flight length in milliseconds, or `auto` to scale with the distance travelled. |
+| <a id="property-view-4"></a> `view?` | [`OrbitViewMode`](#orbitviewmode) | The first view: `focus` (default) or `all`, the overview. |
+| <a id="property-viewmode-4"></a> ~~`viewMode?`~~ | [`OrbitViewMode`](#orbitviewmode) | **Deprecated** Use `view`, as a document writes it: this name goes in Orbit 1.0. |
+| <a id="property-zoom-2"></a> `zoom?` | [`OrbitZoomOptions`](#orbitzoomoptions) | How the wheel, trackpads and pinches zoom. |
 
 ***
 
@@ -1567,6 +1840,16 @@ so a value the page sets in its own CSS still wins.
 
 ***
 
+### OrbitSerializeOptions
+
+#### Properties
+
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="property-keepsource"></a> `keepSource?` | `boolean` | Keep the source's own lines for everything an edit didn't change (the default, for a document parsed from markdown): its formatting, and the text Orbit doesn't read, such as other HTML comments or frontmatter keys of other apps. `false` writes the whole map in Orbit's own form. |
+
+***
+
 ### OrbitSpinOptions
 
 How a flicked orbit spins in focus mode.
@@ -1594,6 +1877,8 @@ filled in as described on each; keep them in a translation, in any order.
 | <a id="property-added"></a> `added` | `string` | Announced when an idea is added: `{name}`. |
 | <a id="property-addideato"></a> `addIdeaTo` | `string` | The + in an orbit: `{name}` is the idea it adds to. |
 | <a id="property-anidea"></a> `anIdea` | `string` | `{name}` in those announcements when the idea has no text. |
+| <a id="property-audio-1"></a> `audio` | `string` | A sound's name in the viewer and the detail sheet when it has no caption. |
+| <a id="property-audiounavailable"></a> `audioUnavailable` | `string` | - |
 | <a id="property-back"></a> `back` | `string` | The back button, when the idea it goes back to has no name. |
 | <a id="property-backto"></a> `backTo` | `string` | The back button's label: `{name}` is the idea it goes back to. |
 | <a id="property-backtoparent"></a> `backToParent` | `string` | The back button's label when that idea has no text. |
@@ -1601,22 +1886,27 @@ filled in as described on each; keep them in a translation, in any order.
 | <a id="property-details-1"></a> `details` | `string` | The detail sheet's name when the idea has no text. |
 | <a id="property-emptymap"></a> `emptyMap` | `string` | The message on a map with nothing in it. |
 | <a id="property-emptymaphint"></a> `emptyMapHint` | `string` | The hint under it. |
-| <a id="property-expand"></a> `expand` | `string` | The button over a video in the detail sheet. |
-| <a id="property-expandvideo"></a> `expandVideo` | `string` | That button, for assistive technology. |
+| <a id="property-expand"></a> `expand` | `string` | The button over a video or a sound in the detail sheet, which moves it to the media viewer. |
+| <a id="property-expandaudio"></a> `expandAudio` | `string` | That button over a sound, for assistive technology. |
+| <a id="property-expandvideo"></a> `expandVideo` | `string` | That button over a video, for assistive technology. |
 | <a id="property-fitmap"></a> `fitMap` | `string` | The button that zooms to fit the view. |
 | <a id="property-fitpicture"></a> `fitPicture` | `string` | The viewer's button that zooms the picture to fit. |
-| <a id="property-focus-3"></a> `focus` | `string` | The button that shows the focused idea with the ideas around it. |
+| <a id="property-focus-4"></a> `focus` | `string` | The button that shows the focused idea with the ideas around it. |
 | <a id="property-goto"></a> `goTo` | `string` | A link to another idea of the map: `{name}` is that idea, or `theIdea` when it has no text. |
 | <a id="property-has"></a> `has` | `string` | Part of an idea's description: `{list}` lists what it has, from the words below. |
+| <a id="property-hasaudio"></a> `hasAudio` | `string` | - |
 | <a id="property-hasdetails"></a> `hasDetails` | `string` | - |
 | <a id="property-hasembed"></a> `hasEmbed` | `string` | - |
 | <a id="property-hasimage"></a> `hasImage` | `string` | - |
 | <a id="property-haslink"></a> `hasLink` | `string` | - |
 | <a id="property-hasnote"></a> `hasNote` | `string` | - |
 | <a id="property-hasvideo"></a> `hasVideo` | `string` | - |
+| <a id="property-hiddenideacount"></a> `hiddenIdeaCount` | [`OrbitPluralText`](#orbitpluraltext) | How many ideas are hidden under an idea (see `hideChildren`), as announced and in the outline: `{count}`. |
+| <a id="property-holdtoplay"></a> `holdToPlay` | `string` | The tooltip of a live photo's mark in the viewer, which screen readers read after its name. |
 | <a id="property-ideaactions"></a> `ideaActions` | `string` | The buttons under an idea: `{name}`. |
 | <a id="property-ideaactionsuntitled"></a> `ideaActionsUntitled` | `string` | The buttons under an idea with no text. |
 | <a id="property-ideacount"></a> `ideaCount` | [`OrbitPluralText`](#orbitpluraltext) | How many ideas an idea holds, as announced and in its description: `{count}`. |
+| <a id="property-live"></a> `live` | `string` | The mark on a live photo, a picture with the few seconds of video a phone records around it, in the viewer and the detail sheet: a word or two, as phones show it. |
 | <a id="property-mapnotdrawn"></a> `mapNotDrawn` | `string` | The title of the card shown where a map couldn't be drawn. |
 | <a id="property-mapnotdrawnreason"></a> `mapNotDrawnReason` | `string` | The card's message when the problem came with none of its own. |
 | <a id="property-mappath"></a> `mapPath` | `string` | The breadcrumbs, for assistive technology. |
@@ -1625,9 +1915,11 @@ filled in as described on each; keep them in a translation, in any order.
 | <a id="property-moved"></a> `moved` | `string` | Announced when an idea moves: `{name}` into `{parent}`. |
 | <a id="property-movedtotop"></a> `movedToTop` | `string` | Announced when an idea moves to a parent with no text: `{name}`. |
 | <a id="property-movehere"></a> `moveHere` | `string` | Where an idea being moved would land: `{name}` is that idea. |
+| <a id="property-mute"></a> `mute` | `string` | - |
 | <a id="property-newidea"></a> `newIdea` | `string` | The empty text field's placeholder for a new idea. |
 | <a id="property-newideafor"></a> `newIdeaFor` | `string` | The text field for a new idea: `{name}` is the idea it goes into. |
 | <a id="property-next"></a> `next` | `string` | - |
+| <a id="property-openaudioinnewtab"></a> `openAudioInNewTab` | `string` | - |
 | <a id="property-openembed"></a> `openEmbed` | `string` | - |
 | <a id="property-openlink"></a> `openLink` | `string` | - |
 | <a id="property-openpictureinnewtab"></a> `openPictureInNewTab` | `string` | - |
@@ -1635,8 +1927,13 @@ filled in as described on each; keep them in a translation, in any order.
 | <a id="property-outline"></a> `outline` | `string` | The map as a list, for assistive technology. |
 | <a id="property-overview"></a> `overview` | `string` | The button that shows the whole map at once. |
 | <a id="property-overviewannouncement"></a> `overviewAnnouncement` | `string` | Announced when the overview opens. |
+| <a id="property-pause"></a> `pause` | `string` | - |
 | <a id="property-picture-1"></a> `picture` | `string` | A picture's name in the viewer when it has no description or caption. |
 | <a id="property-pictureunavailable"></a> `pictureUnavailable` | `string` | - |
+| <a id="property-play"></a> `play` | `string` | A sound player's play button, while it's paused. |
+| <a id="property-playaudio"></a> `playAudio` | `string` | - |
+| <a id="property-playbackposition"></a> `playbackPosition` | `string` | The slider that moves a sound to another time. |
+| <a id="property-playlivephoto"></a> `playLivePhoto` | `string` | A live photo's mark in the viewer, the button that plays its motion, for assistive technology: keep the mark's words (`live`) in it. |
 | <a id="property-playvideo"></a> `playVideo` | `string` | - |
 | <a id="property-position"></a> `position` | `string` | Where the viewer is among the map's pictures and videos: `{index}` of `{total}`. |
 | <a id="property-present"></a> `present` | `string` | The button that presents a map shared as a web page, one idea at a time with its note as a caption. |
@@ -1645,27 +1942,65 @@ filled in as described on each; keep them in a translation, in any order.
 | <a id="property-problemonline"></a> `problemOnLine` | `string` | The card's message for a problem on a line of the map's source: `{line}` and `{message}`, which stays as Orbit wrote it. |
 | <a id="property-readnote"></a> `readNote` | `string` | - |
 | <a id="property-removed"></a> `removed` | `string` | Announced when an idea is deleted: `{name}`. |
+| <a id="property-revealed"></a> `revealed` | `string` | Announced when the ideas hidden under the idea in focus are shown: `{name}` is that idea, and `{list}` names them. |
 | <a id="property-scrolltozoom"></a> `scrollToZoom` | `string` | Shown when the wheel scrolls the page over a map: `{key}` is Ctrl, or ⌘ on Apple devices. |
 | <a id="property-seeidea"></a> `seeIdea` | `string` | The same link printed, where it can't be followed: `{name}` is that idea. |
 | <a id="property-showdetails"></a> `showDetails` | `string` | - |
 | <a id="property-showoutline"></a> `showOutline` | `string` | The button that shows the map as a list. |
-| <a id="property-status-1"></a> `status` | `string` | Part of an idea's description: `{status}` is its status word. |
+| <a id="property-skipback"></a> `skipBack` | [`OrbitPluralText`](#orbitpluraltext) | The player's buttons that go back and on: `{count}` seconds. |
+| <a id="property-skipforward"></a> `skipForward` | [`OrbitPluralText`](#orbitpluraltext) | - |
+| <a id="property-status-1"></a> `status` | `string` | Part of an idea's description: `{status}` is its status, as `statusName` says it. |
+| <a id="property-statusactive"></a> `statusActive` | `string` | A status written `active`. |
+| <a id="property-statusblocked"></a> `statusBlocked` | `string` | A status written `blocked`. |
+| <a id="property-statusdone"></a> `statusDone` | `string` | A status written `done`. |
 | <a id="property-statuslabel"></a> `statusLabel` | `string` | The status in the tooltip: `{status}`. |
+| <a id="property-statustodo"></a> `statusTodo` | `string` | A status a file writes as `todo`, as people read it. Other status words are said as written. |
 | <a id="property-textof"></a> `textOf` | `string` | The text field over an idea being renamed: `{name}`. |
 | <a id="property-theidea"></a> `theIdea` | `string` | `{name}` in `moveHere` when the idea has no text. |
 | <a id="property-thisidea"></a> `thisIdea` | `string` | `{name}` in the text fields and the + when the idea has no text. |
-| <a id="property-untitled-1"></a> `untitled` | `string` | An idea with no text, wherever its name shows. |
+| <a id="property-timeof"></a> `timeOf` | `string` | Where a sound is, for screen readers: `{time}` of `{duration}`. |
+| <a id="property-unmute"></a> `unmute` | `string` | - |
+| <a id="property-untitled-2"></a> `untitled` | `string` | An idea with no text, wherever its name shows. |
 | <a id="property-untitledmap"></a> `untitledMap` | `string` | The root Orbit makes up for a map that's just a list, or has several top headings, and no title. |
 | <a id="property-video-1"></a> `video` | `string` | A video's name in the viewer when it has no caption. |
 | <a id="property-videounavailable"></a> `videoUnavailable` | `string` | - |
 | <a id="property-videounavailablehere"></a> `videoUnavailableHere` | `string` | A video its site doesn't let other pages play. |
-| <a id="property-view"></a> `view` | `string` | The group of view buttons. |
+| <a id="property-view-5"></a> `view` | `string` | The group of view buttons. |
 | <a id="property-viewimage"></a> `viewImage` | `string` | - |
 | <a id="property-viewimageof"></a> `viewImageOf` | `string` | The picture in the detail sheet, which opens the viewer: `{description}` is its alternative text. |
+| <a id="property-viewlivephoto"></a> `viewLivePhoto` | `string` | A live photo in the detail sheet, which opens the viewer, when it has no alternative text. |
+| <a id="property-viewlivephotoof"></a> `viewLivePhotoOf` | `string` | A live photo in the detail sheet: `{description}` is its alternative text. |
 | <a id="property-watchon"></a> `watchOn` | `string` | A video's link to its site: `{provider}` is YouTube or Vimeo. |
-| <a id="property-zoom-2"></a> `zoom` | `string` | The group of zoom buttons. |
+| <a id="property-zoom-3"></a> `zoom` | `string` | The group of zoom buttons. |
 | <a id="property-zoomin"></a> `zoomIn` | `string` | - |
 | <a id="property-zoomout"></a> `zoomOut` | `string` | - |
+
+***
+
+### OrbitSVGOptions
+
+#### Properties
+
+| Property | Type | Description |
+| ------ | ------ | ------ |
+| <a id="property-baseurl-6"></a> `baseUrl?` | `string` | Resolves relative image URLs. |
+| <a id="property-focus-5"></a> `focus?` | `string` | The node at the center in focus mode, by id. Default: the root. |
+| <a id="property-height-2"></a> `height?` | `number` | Height of the drawing, in pixels: positive, at most `MAX_SVG_EXPORT_SIZE`. Default 600. |
+| <a id="property-idprefix-1"></a> `idPrefix?` | `string` | Prefix for the SVG's ids. Without one, they're made from the drawing, so SVGs of different maps can share a page, and the same drawing always gets the same ones. |
+| <a id="property-language-4"></a> `language?` | `string` | The language of the few words the drawing has (an untitled idea, the empty map): a BCP 47 tag. Default: English. |
+| <a id="property-maxdepth-4"></a> `maxDepth?` | `number` | - |
+| <a id="property-nodetypefor-4"></a> `nodeTypeFor?` | (`node`) => `string` \| `undefined` | The type a node that names none is drawn as, for display only (see `OrbitRendererOptions.nodeTypeFor`). |
+| <a id="property-nodetypes-4"></a> `nodeTypes?` | `Record`\<`string`, [`OrbitNodeType`](#orbitnodetype)\> | Node types by name, before the registered ones: their icons, colors and tokens. |
+| <a id="property-palette-5"></a> `palette?` | `string`[] | - |
+| <a id="property-responsive"></a> `responsive?` | `boolean` | Size the SVG to its container (100% wide and tall) instead of in pixels. |
+| <a id="property-showrings-4"></a> `showRings?` | `boolean` | - |
+| <a id="property-statuses-4"></a> `statuses?` | `Record`\<`string`, [`OrbitStatusStyle`](#orbitstatusstyle)\> | Status words and how they look, before the registered ones. |
+| <a id="property-strings-4"></a> `strings?` | `Partial`\<[`OrbitStrings`](#orbitstrings)\> | Words to change, over the language's. |
+| <a id="property-theme-5"></a> `theme?` | \| [`OrbitThemePreset`](#orbitthemepreset) \| [`OrbitRendererTheme`](#orbitrenderertheme) \| `string` & `object` | A theme name or an object of theme values. Default: the document's theme, or `paper`. |
+| <a id="property-title-3"></a> `title?` | `string` | The SVG's title and accessible name. Default: the document's title, or the root's text. |
+| <a id="property-view-6"></a> `view?` | [`OrbitViewMode`](#orbitviewmode) | `focus` (default) or `all` for the overview. |
+| <a id="property-viewmode-5"></a> ~~`viewMode?`~~ | [`OrbitViewMode`](#orbitviewmode) | **Deprecated** Use `view`, as the renderer and a document name it: this name goes in Orbit 1.0. |
+| <a id="property-width"></a> `width?` | `number` | Width of the drawing, in pixels: positive, at most `MAX_SVG_EXPORT_SIZE`. Default 800. |
 
 ***
 
@@ -1675,14 +2010,15 @@ filled in as described on each; keep them in a translation, in any order.
 
 | Property | Type | Description |
 | ------ | ------ | ------ |
-| <a id="property-focus-4"></a> `focus?` | `string` | The node in focus when the map opens, by id. Default: the root. |
-| <a id="property-language-3"></a> `language?` | `string` | The language of the page and the map's words: a tag like `es`. Default: English. |
-| <a id="property-media-1"></a> `media?` | `Record`\<`string`, `string`\> | Pictures to put inside the page, by the address the map gives them: `{ 'photos/summit.jpg': 'data:image/jpeg;base64,…' }`. A node's picture, a video's thumbnail and pictures in notes are swapped for them, so they show wherever the page goes. |
+| <a id="property-focus-6"></a> `focus?` | `string` | The node in focus when the map opens, by id. Default: the root. |
+| <a id="property-language-5"></a> `language?` | `string` | The language of the page and the map's words: a tag like `es`. Default: English. |
+| <a id="property-media-1"></a> `media?` | `Record`\<`string`, `string`\> | Pictures and sounds to put inside the page, by the address the map gives them: `{ 'photos/summit.jpg': 'data:image/jpeg;base64,…', 'memos/idea.m4a': 'data:audio/mp4;base64,…' }`. A node's picture and sound, a video's thumbnail and pictures in notes are swapped for them, so they show, and play, wherever the page goes. So is a live photo's motion (`'photos/summit.mp4': 'data:video/mp4;base64,…'`), a few seconds long. Videos stay out: they're too big to carry as text, and their thumbnails stand in for them. |
 | <a id="property-script"></a> `script` | `string` | Orbit's web page script, the file `@restless-dreams/orbit/web-page.js`, as text. It goes inside the page, so the page needs nothing else. |
-| <a id="property-strings-3"></a> `strings?` | `Partial`\<[`OrbitStrings`](#orbitstrings)\> | Single words to change: `{ present: 'Show' }`. |
-| <a id="property-theme-4"></a> `theme?` | `string` \| [`OrbitRendererTheme`](#orbitrenderertheme) | The map's theme, instead of its frontmatter's: a theme name or `{ preset, tokens }`. |
-| <a id="property-title-3"></a> `title?` | `string` | The page's title. Default: the map's `title`, or its root's text. |
-| <a id="property-viewmode-4"></a> `viewMode?` | [`ViewMode`](#viewmode) | How the map opens: `focus` (default) or `all`, the overview. |
+| <a id="property-strings-5"></a> `strings?` | `Partial`\<[`OrbitStrings`](#orbitstrings)\> | Single words to change: `{ present: 'Show' }`. |
+| <a id="property-theme-6"></a> `theme?` | `string` \| [`OrbitRendererTheme`](#orbitrenderertheme) | The map's theme, instead of its frontmatter's: a theme name or `{ preset, tokens }`. |
+| <a id="property-title-4"></a> `title?` | `string` | The page's title. Default: the map's `title`, or its root's text. |
+| <a id="property-view-7"></a> `view?` | [`OrbitViewMode`](#orbitviewmode) | How the map opens: `focus` (default) or `all`, the overview. |
+| <a id="property-viewmode-6"></a> ~~`viewMode?`~~ | [`OrbitViewMode`](#orbitviewmode) | **Deprecated** Use `view`, as the renderer and a document name it: this name goes in Orbit 1.0. |
 
 ***
 
@@ -1695,133 +2031,240 @@ How the map responds to the wheel, trackpads and pinches.
 | Property | Type | Description |
 | ------ | ------ | ------ |
 | <a id="property-maximum"></a> `maximum?` | `number` | Largest zoom, relative to the fitted view. Default 6. |
-| <a id="property-minimum"></a> `minimum?` | `number` | Smallest zoom, relative to the fitted view. Default 0.4. |
+| <a id="property-minimum"></a> `minimum?` | `number` | Smallest zoom in the overview, relative to the fitted view. Default 0.4. Focus mode stops at 0.6 whatever this says: zooming out there goes up a level, or from the root to the overview, before it gets that far. |
 | <a id="property-wheel"></a> `wheel?` | `false` \| `"auto"` \| `"always"` \| `"modifier"` | `auto` (default): the wheel zooms freely when the map is the whole page and needs Ctrl or ⌘ when the page scrolls; `always`; `modifier`; or `false` to ignore the wheel. |
-
-***
-
-### ParseOptions
-
-#### Properties
-
-| Property | Type | Description |
-| ------ | ------ | ------ |
-| <a id="property-strict-2"></a> `strict?` | `boolean` | Throw an `OrbitParseError` on the first problem instead of recording a diagnostic and carrying on. Off by default; `orbit validate` turns it on. |
-| <a id="property-untitled-2"></a> `untitled?` | `string` | The name of the root Orbit makes up for a document with no single top heading and no title, in the reader's language. Default "Untitled map". Its id is `untitled-map` whatever its name. |
-
-***
-
-### ParseYamlOptions
-
-#### Properties
-
-| Property | Type | Description |
-| ------ | ------ | ------ |
-| <a id="property-strict-3"></a> `strict?` | `boolean` | Throw on the first problem instead of recording a diagnostic. Off by default. |
-| <a id="property-untitled-3"></a> `untitled?` | `string` | The name of the root Orbit makes up for several top-level nodes and no title. Default "Untitled map"; its id is `untitled-map` whatever its name. |
-
-***
-
-### RendererOptions
-
-#### Extended by
-
-- [`OrbitMindMapProps`](react.md#orbitmindmapprops)
-- [`CreateOrbitMapOptions`](#createorbitmapoptions)
-- [`AutoRenderOptions`](#autorenderoptions)
-
-#### Properties
-
-| Property | Type | Description |
-| ------ | ------ | ------ |
-| <a id="property-actions-3"></a> `actions?` | [`OrbitAction`](#orbitaction)[] | Your own buttons under the focused node and in its detail sheet, before the registered ones. |
-| <a id="property-arialabel-2"></a> `ariaLabel?` | `string` | The map's accessible name. Default: the document's `title`. |
-| <a id="property-baseurl-5"></a> `baseUrl?` | `string` | Resolves relative image, video and link URLs. |
-| <a id="property-editable-2"></a> `editable?` | `boolean` | Build the map on the map: a + in the orbit adds an idea, typed right in its new planet, and a long press, a right click or F2 edits a node's text where it is. A node held still, by a long press or the mouse, lifts: drag it onto another node to move it there, or to a place in the orbit to put it there. Default false. |
-| <a id="property-editingkeys-2"></a> `editingKeys?` | `boolean` | Keys for building an editable map at speed, as in mind-map apps. On a node with keyboard focus, Tab (or Insert) adds an idea under it, Shift+Enter adds one beside it, and Delete removes it. While typing, Tab keeps what was typed and goes on a level down, under it; with nothing typed, it moves the field under the idea before. Shift+Tab goes on a level up, beside the parent. Tab then stays in the map; Shift+Tab from a node still leaves it. Default false. |
-| <a id="property-focus-5"></a> `focus?` | `string` | The node in focus when the map first draws, by id: to open a map where the reader left it. Default: the root. Later renders keep the reader's place. |
-| <a id="property-insets-2"></a> `insets?` | [`OrbitInsets`](#orbitinsets) | The parts of the map the page covers with its own controls, such as a toolbar floating over its bottom edge, in px from each edge. Views are fitted into what's left, and the map still draws under the controls. Changing them glides a fitted view to its new place. |
-| <a id="property-interactive-3"></a> `interactive?` | `boolean` | `false` draws a still picture: no clicks, drags, zoom or keyboard. Default true. |
-| <a id="property-language-4"></a> `language?` | `string` | The language of the map's controls, sheets and announcements: a BCP 47 tag such as `es` or `pt-BR`. Default: the language the map's element is in (the closest `lang` attribute), then English. Orbit speaks English and Spanish; `registerLanguage` adds others. |
-| <a id="property-longpressdelay-2"></a> `longPressDelay?` | `number` | How long (ms) a finger or pen holds still on a node before it counts as a long press (see `onNodeContext`). Default 500; apps can pass their platform's own, such as Android's 400. |
-| <a id="property-maxdepth-3"></a> `maxDepth?` | `number` | Levels below the root to render (1 = root + direct children). |
-| <a id="property-mediaviewer-2"></a> `mediaViewer?` | `boolean` | Show pictures and videos in the media viewer, over the whole window: "View image" and "Play video" open it, and so do the pictures and videos in the detail sheet. Default true. With `false`, those buttons open the detail sheet instead (unless `showDetailSheet` is `false` too). `openMedia` opens the viewer either way. |
-| <a id="property-nodetypefor-3"></a> `nodeTypeFor?` | (`node`) => `string` \| `undefined` | The type a node that names none is drawn as, for display only: as if it said `type: name`, with that type's look, content and actions. Orbit never writes it to the map, and asks again whenever it draws; return undefined to draw the node as it is. Called often: keep it quick. |
-| <a id="property-nodetypes-3"></a> `nodeTypes?` | `Record`\<`string`, [`OrbitNodeType`](#orbitnodetype)\> | Node types by name: what nodes with `type: name` look like, draw inside them, show in the detail sheet and offer as actions. They come before the ones registered with `registerNodeType`. |
-| <a id="property-noterenderer-2"></a> `noteRenderer?` | (`note`, `context`) => `string` | Renders a note to HTML yourself. The HTML is used as-is: sanitize untrusted notes. |
-| <a id="property-onaction-2"></a> `onAction?` | (`event`) => `false` \| `void` | A button was pressed. Return `false` to skip what it does (the detail sheet, the link, or your action's `run`). |
-| <a id="property-onedit-2"></a> `onEdit?` | (`edit`) => `void` | The map was edited with `addNode`, `updateNode`, `removeNode` or `moveNode`; save `renderer.toMarkdown()` to keep it. |
-| <a id="property-oneditorclose-2"></a> `onEditorClose?` | (`event`) => `void` | The field for typing on the map closed. |
-| <a id="property-oneditoropen-2"></a> `onEditorOpen?` | (`event`) => `void` | The field for typing on the map opened. |
-| <a id="property-onfocuschange-2"></a> `onFocusChange?` | (`node`) => `void` | A new node is in focus. |
-| <a id="property-onmediaclose-2"></a> `onMediaClose?` | (`event`) => `void` | The media viewer closed. |
-| <a id="property-onmediaopen-2"></a> `onMediaOpen?` | (`event`) => `void` | The media viewer opened, or stepped to another picture or video. |
-| <a id="property-onmediastate-2"></a> `onMediaState?` | (`state`) => `void` | The video in the media viewer started, paused, moved on, ended or was muted; while it plays, its time a few times a second. |
-| <a id="property-onnodeclick-2"></a> `onNodeClick?` | (`node`) => `void` | A node was clicked or activated with the keyboard, before the map reacts. |
-| <a id="property-onnodecontext-2"></a> `onNodeContext?` | (`event`) => `void` | A node was long-pressed, right-clicked or chosen with the context menu key: show a menu of things to do with it at (`x`, `y`). With this callback or a `node-context` listener, the press is yours: it doesn't open the node, and the browser's own menu stays closed. |
-| <a id="property-onnodedrag-2"></a> `onNodeDrag?` | (`event`) => `void` | A node is dragged somewhere else (see `editable` and the `node-drag` event). |
-| <a id="property-onspinsettle-2"></a> `onSpinSettle?` | (`planet`) => `void` | Called when a flicked orbit comes to rest, with the planet nearest the top. |
-| <a id="property-onviewmodechange-2"></a> `onViewModeChange?` | (`mode`) => `void` | - |
-| <a id="property-orbitanimation-3"></a> `orbitAnimation?` | `boolean` | Keep the orbit turning slowly on its own. |
-| <a id="property-orbitspeed-3"></a> `orbitSpeed?` | `number` | Seconds per revolution of `orbitAnimation`. |
-| <a id="property-palette-4"></a> `palette?` | `string`[] | Node colors: the first for the root, then one per top-level branch (cycling). Default: the theme's. |
-| <a id="property-showactionbuttons-2"></a> `showActionButtons?` | `boolean` | Buttons under the focused node for its note, media, link and actions. Default true. |
-| <a id="property-showcontrols-2"></a> `showControls?` | `boolean` | Breadcrumbs, the view switch, the list button and zoom buttons. Default true. |
-| <a id="property-showdetailsheet-2"></a> `showDetailSheet?` | `boolean` | Open the built-in detail sheet for notes, embeds and the details of a node's type. Default true. |
-| <a id="property-showrings-3"></a> `showRings?` | `boolean` | Draw the dashed orbit rings. Default true. |
-| <a id="property-spin-2"></a> `spin?` | [`OrbitSpinOptions`](#orbitspinoptions) | How a flicked orbit spins. |
-| <a id="property-statuses-3"></a> `statuses?` | `Record`\<`string`, [`OrbitStatusStyle`](#orbitstatusstyle)\> | Status words and how they look: a dot tone (`active`, `done`, `blocked`, `todo`, `neutral`) or any CSS color, as in `{ review: 'active', 'on hold': '#A855F7' }`. |
-| <a id="property-strings-4"></a> `strings?` | `Partial`\<[`OrbitStrings`](#orbitstrings)\> | Words to change on this map only, over its language's: `{ zoomIn: 'Closer' }`. |
-| <a id="property-theme-5"></a> `theme?` | \| [`OrbitThemePreset`](#orbitthemepreset) \| [`OrbitRendererTheme`](#orbitrenderertheme) \| `string` & `object` | A theme name (`'night'`, `'cosmos'`, or one registered with `registerTheme`) or a theme object. An object without a `preset` keeps the document's theme and changes the tokens it names. |
-| <a id="property-transitionduration-2"></a> `transitionDuration?` | `number` \| `"auto"` | Navigation flight length in milliseconds, or `auto` to scale with the distance travelled. |
-| <a id="property-viewmode-5"></a> `viewMode?` | [`ViewMode`](#viewmode) | The first view: `focus` (default) or `all`, the overview. |
-| <a id="property-zoom-3"></a> `zoom?` | [`OrbitZoomOptions`](#orbitzoomoptions) | How the wheel, trackpads and pinches zoom. |
-
-***
-
-### RenderToSVGOptions
-
-#### Properties
-
-| Property | Type | Description |
-| ------ | ------ | ------ |
-| <a id="property-baseurl-6"></a> `baseUrl?` | `string` | Resolves relative image URLs. |
-| <a id="property-focus-6"></a> `focus?` | `string` | The node at the center in focus mode, by id. Default: the root. |
-| <a id="property-height-2"></a> `height?` | `number` | Height of the drawing, in pixels: positive, at most `MAX_SVG_EXPORT_SIZE`. Default 600. |
-| <a id="property-idprefix-1"></a> `idPrefix?` | `string` | Prefix for the SVG's ids; give each SVG inlined in one page its own. |
-| <a id="property-language-5"></a> `language?` | `string` | The language of the few words the drawing has (an untitled idea, the empty map): a BCP 47 tag. Default: English. |
-| <a id="property-maxdepth-4"></a> `maxDepth?` | `number` | - |
-| <a id="property-nodetypefor-4"></a> `nodeTypeFor?` | (`node`) => `string` \| `undefined` | The type a node that names none is drawn as, for display only (see `RendererOptions.nodeTypeFor`). |
-| <a id="property-nodetypes-4"></a> `nodeTypes?` | `Record`\<`string`, [`OrbitNodeType`](#orbitnodetype)\> | Node types by name, before the registered ones: their icons, colors and tokens. |
-| <a id="property-palette-5"></a> `palette?` | `string`[] | - |
-| <a id="property-responsive"></a> `responsive?` | `boolean` | Size the SVG to its container (100% wide and tall) instead of in pixels. |
-| <a id="property-showrings-4"></a> `showRings?` | `boolean` | - |
-| <a id="property-statuses-4"></a> `statuses?` | `Record`\<`string`, [`OrbitStatusStyle`](#orbitstatusstyle)\> | Status words and how they look, before the registered ones. |
-| <a id="property-strings-5"></a> `strings?` | `Partial`\<[`OrbitStrings`](#orbitstrings)\> | Words to change, over the language's. |
-| <a id="property-theme-6"></a> `theme?` | \| [`OrbitThemePreset`](#orbitthemepreset) \| [`OrbitRendererTheme`](#orbitrenderertheme) \| `string` & `object` | A theme name or an object of theme values. Default: the document's theme, or `paper`. |
-| <a id="property-title-4"></a> `title?` | `string` | The SVG's title and accessible name. Default: the document's title, or the root's text. |
-| <a id="property-viewmode-6"></a> `viewMode?` | [`ViewMode`](#viewmode) | `focus` (default) or `all` for the overview. |
-| <a id="property-width"></a> `width?` | `number` | Width of the drawing, in pixels: positive, at most `MAX_SVG_EXPORT_SIZE`. Default 800. |
-
-***
-
-### SerializeOptions
-
-#### Properties
-
-| Property | Type | Description |
-| ------ | ------ | ------ |
-| <a id="property-keepsource"></a> `keepSource?` | `boolean` | Keep the source's own lines for everything an edit didn't change (the default, for a document parsed from markdown): its formatting, and the text Orbit doesn't read, such as other HTML comments or frontmatter keys of other apps. `false` writes the whole map in Orbit's own form. |
 
 ## Type Aliases
 
-### MapToolDefinition
+### ~~AutoRenderOptions~~
 
 ```ts
-type MapToolDefinition = object;
+type AutoRenderOptions = OrbitAutoRenderOptions;
 ```
 
-A tool as `MapTools.definitions` lists it: the shape MCP uses, and the data to build any other.
+#### Deprecated
+
+Use `OrbitAutoRenderOptions`: this name goes in Orbit 1.0.
+
+***
+
+### ~~CreateOrbitMapOptions~~
+
+```ts
+type CreateOrbitMapOptions = OrbitMapOptions;
+```
+
+#### Deprecated
+
+Use `OrbitMapOptions`: this name goes in Orbit 1.0.
+
+***
+
+### ~~MapToolDefinition~~
+
+```ts
+type MapToolDefinition = OrbitMapToolDefinition;
+```
+
+#### Deprecated
+
+Use `OrbitMapToolDefinition`: this name goes in Orbit 1.0.
+
+***
+
+### ~~MapToolFormats~~
+
+```ts
+type MapToolFormats = OrbitMapToolFormats;
+```
+
+#### Deprecated
+
+Use `OrbitMapToolFormats`: this name goes in Orbit 1.0.
+
+***
+
+### ~~MapToolName~~
+
+```ts
+type MapToolName = OrbitMapToolName;
+```
+
+#### Deprecated
+
+Use `OrbitMapToolName`: this name goes in Orbit 1.0.
+
+***
+
+### ~~MapToolProperty~~
+
+```ts
+type MapToolProperty = OrbitMapToolProperty;
+```
+
+#### Deprecated
+
+Use `OrbitMapToolProperty`: this name goes in Orbit 1.0.
+
+***
+
+### ~~MapToolProvider~~
+
+```ts
+type MapToolProvider = OrbitMapToolProvider;
+```
+
+#### Deprecated
+
+Use `OrbitMapToolProvider`: this name goes in Orbit 1.0.
+
+***
+
+### ~~MapToolResult~~
+
+```ts
+type MapToolResult = OrbitMapToolResult;
+```
+
+#### Deprecated
+
+Use `OrbitMapToolResult`: this name goes in Orbit 1.0.
+
+***
+
+### ~~MapTools~~
+
+```ts
+type MapTools = OrbitMapTools;
+```
+
+#### Deprecated
+
+Use `OrbitMapTools`: this name goes in Orbit 1.0.
+
+***
+
+### ~~MapToolSchema~~
+
+```ts
+type MapToolSchema = OrbitMapToolSchema;
+```
+
+#### Deprecated
+
+Use `OrbitMapToolSchema`: this name goes in Orbit 1.0.
+
+***
+
+### ~~MapToolsOptions~~
+
+```ts
+type MapToolsOptions = OrbitMapToolsOptions;
+```
+
+#### Deprecated
+
+Use `OrbitMapToolsOptions`: this name goes in Orbit 1.0.
+
+***
+
+### ~~MaterialThemeOptions~~
+
+```ts
+type MaterialThemeOptions = OrbitMaterialThemeOptions;
+```
+
+#### Deprecated
+
+Use `OrbitMaterialThemeOptions`: this name goes in Orbit 1.0.
+
+***
+
+### OrbitContentAction
+
+```ts
+type OrbitContentAction = "image" | "video" | "audio" | "embed" | "note" | "link" | "details";
+```
+
+Orbit's own buttons for a node: its picture, video, sound, embed, note, link, and its type's details.
+
+***
+
+### OrbitDiagnosticCode
+
+```ts
+type OrbitDiagnosticCode = typeof DIAGNOSTIC_CODES[number];
+```
+
+***
+
+### OrbitDiagnosticSeverity
+
+```ts
+type OrbitDiagnosticSeverity = "error" | "warning";
+```
+
+***
+
+### OrbitDOMEventMap
+
+```ts
+type OrbitDOMEventMap = { [Name in keyof OrbitEventMap as `orbit-${Name}`]: CustomEvent<OrbitEventMap[Name]> } & object;
+```
+
+The `orbit-*` DOM events a map dispatches on its element, where they
+bubble from: one for each of its events (`orbit-focus-change` for
+`focus-change`, and so on), with the same detail, and `orbit-error`.
+
+#### Type Declaration
+
+| Name | Type |
+| ------ | ------ |
+| `orbit-error` | `CustomEvent`\<[`OrbitRenderErrorDetail`](#orbitrendererrordetail)\> |
+
+***
+
+### OrbitEventName
+
+```ts
+type OrbitEventName = keyof OrbitEventMap;
+```
+
+***
+
+### OrbitImportErrorCode
+
+```ts
+type OrbitImportErrorCode = typeof IMPORT_ERROR_CODES[number];
+```
+
+***
+
+### OrbitImportFormat
+
+```ts
+type OrbitImportFormat = "opml" | "freemind" | "xmind";
+```
+
+The other apps' formats Orbit reads.
+
+***
+
+### OrbitImportWarningCode
+
+```ts
+type OrbitImportWarningCode = typeof IMPORT_WARNING_CODES[number];
+```
+
+***
+
+### OrbitMapToolDefinition
+
+```ts
+type OrbitMapToolDefinition = object;
+```
+
+A tool as `OrbitMapTools.definitions` lists it: the shape MCP uses, and the data to build any other.
 
 #### Properties
 
@@ -1854,7 +2297,7 @@ description: string;
 ##### inputSchema
 
 ```ts
-inputSchema: MapToolSchema;
+inputSchema: OrbitMapToolSchema;
 ```
 
 The tool's input, as JSON Schema.
@@ -1862,15 +2305,15 @@ The tool's input, as JSON Schema.
 ##### name
 
 ```ts
-name: MapToolName;
+name: OrbitMapToolName;
 ```
 
 ***
 
-### MapToolFormats
+### OrbitMapToolFormats
 
 ```ts
-type MapToolFormats = object;
+type OrbitMapToolFormats = object;
 ```
 
 The tools in the shape each provider's API takes them.
@@ -1894,7 +2337,7 @@ description: string;
 ###### input\_schema
 
 ```ts
-input_schema: MapToolSchema;
+input_schema: OrbitMapToolSchema;
 ```
 
 ###### name
@@ -1940,7 +2383,7 @@ name: string;
 ###### parameters
 
 ```ts
-parameters: MapToolSchema;
+parameters: OrbitMapToolSchema;
 ```
 
 ###### strict
@@ -1984,7 +2427,7 @@ name: string;
 ###### function.parameters
 
 ```ts
-parameters: MapToolSchema;
+parameters: OrbitMapToolSchema;
 ```
 
 ###### type
@@ -1995,10 +2438,10 @@ type: "function";
 
 ***
 
-### MapToolName
+### OrbitMapToolName
 
 ```ts
-type MapToolName = 
+type OrbitMapToolName = 
   | "read_map"
   | "find_nodes"
   | "read_node"
@@ -2012,10 +2455,10 @@ type MapToolName =
 
 ***
 
-### MapToolProperty
+### OrbitMapToolProperty
 
 ```ts
-type MapToolProperty = object;
+type OrbitMapToolProperty = object;
 ```
 
 A property of a tool's input, as JSON Schema.
@@ -2055,7 +2498,7 @@ optional minimum?: number;
 ##### properties?
 
 ```ts
-optional properties?: Record<string, MapToolProperty>;
+optional properties?: Record<string, OrbitMapToolProperty>;
 ```
 
 ##### required?
@@ -2072,18 +2515,18 @@ type: "string" | "integer" | "number" | "boolean" | "array" | "object";
 
 ***
 
-### MapToolProvider
+### OrbitMapToolProvider
 
 ```ts
-type MapToolProvider = keyof MapToolFormats;
+type OrbitMapToolProvider = keyof OrbitMapToolFormats;
 ```
 
 ***
 
-### MapToolSchema
+### OrbitMapToolSchema
 
 ```ts
-type MapToolSchema = object;
+type OrbitMapToolSchema = object;
 ```
 
 A tool's input, as JSON Schema: an object with the tool's fields.
@@ -2093,7 +2536,7 @@ A tool's input, as JSON Schema: an object with the tool's fields.
 ##### properties
 
 ```ts
-properties: Record<string, MapToolProperty>;
+properties: Record<string, OrbitMapToolProperty>;
 ```
 
 ##### required?
@@ -2106,66 +2549,6 @@ optional required?: string[];
 
 ```ts
 type: "object";
-```
-
-***
-
-### OrbitContentAction
-
-```ts
-type OrbitContentAction = "image" | "video" | "embed" | "note" | "link" | "details";
-```
-
-Orbit's own buttons for a node: its picture, video, embed, note, link, and its type's details.
-
-***
-
-### OrbitDiagnosticCode
-
-```ts
-type OrbitDiagnosticCode = typeof DIAGNOSTIC_CODES[number];
-```
-
-***
-
-### OrbitDiagnosticSeverity
-
-```ts
-type OrbitDiagnosticSeverity = "error" | "warning";
-```
-
-***
-
-### OrbitEventName
-
-```ts
-type OrbitEventName = keyof OrbitEventMap;
-```
-
-***
-
-### OrbitImportErrorCode
-
-```ts
-type OrbitImportErrorCode = typeof IMPORT_ERROR_CODES[number];
-```
-
-***
-
-### OrbitImportFormat
-
-```ts
-type OrbitImportFormat = "opml" | "freemind" | "xmind";
-```
-
-The other apps' formats Orbit reads.
-
-***
-
-### OrbitImportWarningCode
-
-```ts
-type OrbitImportWarningCode = typeof IMPORT_WARNING_CODES[number];
 ```
 
 ***
@@ -2197,20 +2580,47 @@ type OrbitNodeInput = Partial<Pick<OrbitNode,
   | "paletteColor"
   | "status"
   | "priority"
-  | "tags"
   | "collapsed"
   | "link"
   | "note"
   | "noteFormat"
-  | "image"
-  | "video"
-  | "embed"
   | "type"
   | "typeVersion"
-| "attrs">>;
+  | "attrs">> & object;
 ```
 
-What `addNode` and `updateNode` take: a node's text and attributes.
+What `addNode` and `updateNode` take: a node's text and attributes, read
+as a file's are. The format's shorthands work here too: a picture, video,
+sound or embed as its address (`{ image: 'summit.jpg' }`), a live photo's
+motion as its own, tags as `'web, mobile'` and a type as `'task@2'`. A
+value Orbit can't read throws a `TypeError` that says what it takes, and
+the map stays as it was.
+
+#### Type Declaration
+
+| Name | Type |
+| ------ | ------ |
+| `audio?` | `string` \| [`OrbitNode`](#orbitnode)\[`"audio"`\] |
+| `embed?` | `string` \| [`OrbitNode`](#orbitnode)\[`"embed"`\] |
+| `image?` | \| `string` \| `Omit`\<`NonNullable`\<[`OrbitNode`](#orbitnode)\[`"image"`\]\>, `"motion"`\> & `object` |
+| `tags?` | `string`[] \| `string` |
+| `video?` | `string` \| [`OrbitNode`](#orbitnode)\[`"video"`\] |
+
+***
+
+### OrbitParsedDocument
+
+```ts
+type OrbitParsedDocument = OrbitDocument & object;
+```
+
+A document as the parsers return it, with its diagnostics always set.
+
+#### Type Declaration
+
+| Name | Type |
+| ------ | ------ |
+| `diagnostics` | [`OrbitDiagnostic`](#orbitdiagnostic)[] |
 
 ***
 
@@ -2282,29 +2692,97 @@ type OrbitThemeTokens = Record<OrbitThemeToken, string>;
 
 ***
 
-### ParsedOrbitDocument
+### OrbitViewMode
 
 ```ts
-type ParsedOrbitDocument = OrbitDocument & object;
-```
-
-A document as the parsers return it, with its diagnostics always set.
-
-#### Type Declaration
-
-| Name | Type |
-| ------ | ------ |
-| `diagnostics` | [`OrbitDiagnostic`](#orbitdiagnostic)[] |
-
-***
-
-### ViewMode
-
-```ts
-type ViewMode = "focus" | "all";
+type OrbitViewMode = "focus" | "all";
 ```
 
 `focus`: one node at the center with its children around it. `all`: the overview of the whole tree.
+
+***
+
+### ~~ParsedOrbitDocument~~
+
+```ts
+type ParsedOrbitDocument = OrbitParsedDocument;
+```
+
+#### Deprecated
+
+Use `OrbitParsedDocument`: this name goes in Orbit 1.0.
+
+***
+
+### ~~ParseOptions~~
+
+```ts
+type ParseOptions = OrbitParseOptions;
+```
+
+#### Deprecated
+
+Use `OrbitParseOptions`: this name goes in Orbit 1.0.
+
+***
+
+### ~~ParseYamlOptions~~
+
+```ts
+type ParseYamlOptions = OrbitParseOptions;
+```
+
+#### Deprecated
+
+Use `OrbitParseOptions`, which `parseOrbitYAML` takes as the other parsers do: this name goes in Orbit 1.0.
+
+***
+
+### ~~RendererOptions~~
+
+```ts
+type RendererOptions = OrbitRendererOptions;
+```
+
+#### Deprecated
+
+Use `OrbitRendererOptions`: this name goes in Orbit 1.0.
+
+***
+
+### ~~RenderToSVGOptions~~
+
+```ts
+type RenderToSVGOptions = OrbitSVGOptions;
+```
+
+#### Deprecated
+
+Use `OrbitSVGOptions`: this name goes in Orbit 1.0.
+
+***
+
+### ~~SerializeOptions~~
+
+```ts
+type SerializeOptions = OrbitSerializeOptions;
+```
+
+#### Deprecated
+
+Use `OrbitSerializeOptions`: this name goes in Orbit 1.0.
+
+***
+
+### ~~ViewMode~~
+
+```ts
+type ViewMode = OrbitViewMode;
+```
+
+#### Deprecated
+
+Use `OrbitViewMode`: this name goes in Orbit 1.0.
 
 ## Variables
 
@@ -2391,7 +2869,7 @@ internally every token resolves as `var(--orbit-<token>, <preset value>)`.
 ### createMapTools()
 
 ```ts
-function createMapTools(map, options?): MapTools;
+function createMapTools(map, options?): OrbitMapTools;
 ```
 
 Tools a language model calls to read and edit a map: on screen (an
@@ -2403,12 +2881,12 @@ Tools a language model calls to read and edit a map: on screen (an
 
 | Parameter | Type |
 | ------ | ------ |
-| `map` | \| `string` \| [`OrbitDocument`](#orbitdocument) \| [`OrbitSVGRenderer`](#orbitsvgrenderer) |
-| `options` | [`MapToolsOptions`](#maptoolsoptions) |
+| `map` | \| `string` \| [`OrbitDocument`](#orbitdocument) \| [`OrbitNode`](#orbitnode) \| [`OrbitSVGRenderer`](#orbitsvgrenderer) |
+| `options` | [`OrbitMapToolsOptions`](#orbitmaptoolsoptions) |
 
 #### Returns
 
-[`MapTools`](#maptools)
+[`OrbitMapTools`](#orbitmaptools)
 
 ***
 
@@ -2435,7 +2913,7 @@ The map fills `target`, so give it a height.
 | ------ | ------ |
 | `target` | `HTMLElement` |
 | `source` | `string` \| [`OrbitDocument`](#orbitdocument) \| [`OrbitNode`](#orbitnode) |
-| `options` | [`CreateOrbitMapOptions`](#createorbitmapoptions) |
+| `options` | [`OrbitMapOptions`](#orbitmapoptions) |
 
 #### Returns
 
@@ -2517,7 +2995,7 @@ its zips, are null too: read those with `parseOrbit`.
 ### documentToRendererOptions()
 
 ```ts
-function documentToRendererOptions(options): RendererOptions;
+function documentToRendererOptions(given): OrbitRendererOptions;
 ```
 
 The renderer options a document asks for in its frontmatter (or YAML
@@ -2528,11 +3006,11 @@ concerns (`height`, `className`) are left to the caller.
 
 | Parameter | Type |
 | ------ | ------ |
-| `options` | [`OrbitDocumentOptions`](#orbitdocumentoptions) |
+| `given` | [`OrbitDocumentOptions`](#orbitdocumentoptions) |
 
 #### Returns
 
-[`RendererOptions`](#rendereroptions)
+[`OrbitRendererOptions`](#orbitrendereroptions)
 
 ***
 
@@ -2546,14 +3024,14 @@ A map as OPML: the root is the one top outline, each node an outline
 with its icon and text, its note in `_note`, its link as `type="link"`
 with a `url`, its status in `_status` (`checked`, `unchecked` and
 `indeterminate` for done, todo and active; any other word as it is) and
-`_complete`, and its tags as `category`. Pictures, videos, colors and
-priorities have no place in OPML: a zip or the map's own file keeps them.
+`_complete`, and its tags as `category`. Pictures, videos, sounds, colors
+and priorities have no place in OPML: a zip or the map's own file keeps them.
 
 #### Parameters
 
 | Parameter | Type |
 | ------ | ------ |
-| `input` | `string` \| [`OrbitDocument`](#orbitdocument) |
+| `input` | `string` \| [`OrbitDocument`](#orbitdocument) \| [`OrbitNode`](#orbitnode) |
 | `options` | [`OrbitOPMLOptions`](#orbitopmloptions) |
 
 #### Returns
@@ -2565,7 +3043,7 @@ priorities have no place in OPML: a zip or the map's own file keeps them.
 ### exportWebPage()
 
 ```ts
-function exportWebPage(input, options): string;
+function exportWebPage(input, given): string;
 ```
 
 The map as one HTML page, with Orbit inside (`options.script`): open it in
@@ -2583,8 +3061,8 @@ const html = exportWebPage(markdown, { script, theme: 'night' });
 
 | Parameter | Type |
 | ------ | ------ |
-| `input` | `string` \| [`OrbitDocument`](#orbitdocument) |
-| `options` | [`OrbitWebPageOptions`](#orbitwebpageoptions) |
+| `input` | `string` \| [`OrbitDocument`](#orbitdocument) \| [`OrbitNode`](#orbitnode) |
+| `given` | [`OrbitWebPageOptions`](#orbitwebpageoptions) |
 
 #### Returns
 
@@ -2645,6 +3123,32 @@ function getNodePath(root, id): OrbitNode[];
 #### Returns
 
 [`OrbitNode`](#orbitnode)[]
+
+***
+
+### hydrateOrbitBlocks()
+
+```ts
+function hydrateOrbitBlocks(root?, options?): OrbitSVGRenderer[];
+```
+
+Brings every orbit block under `root` (default: the whole document) to
+life as a map: the placeholders the marked extension writes, `orbit` code
+blocks in rendered markdown, and `<orbit-map>` elements (`selector`
+changes which). Call it after inserting rendered HTML. Each block is
+independent: one that fails shows its error card and the rest still
+render.
+
+#### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `root?` | `ParentNode` |
+| `options?` | [`OrbitAutoRenderOptions`](#orbitautorenderoptions) |
+
+#### Returns
+
+[`OrbitSVGRenderer`](#orbitsvgrenderer)[]
 
 ***
 
@@ -2743,13 +3247,11 @@ as text, which reads without pictures.
 
 ***
 
-### isOrbitThemePreset()
+### ~~isOrbitThemePreset()~~
 
 ```ts
 function isOrbitThemePreset(value): value is OrbitThemePreset;
 ```
-
-Whether `value` names a built-in theme: one of the presets or `auto`.
 
 #### Parameters
 
@@ -2760,6 +3262,10 @@ Whether `value` names a built-in theme: one of the presets or `auto`.
 #### Returns
 
 `value is OrbitThemePreset`
+
+#### Deprecated
+
+Use `isThemePreset`, the same function, named as the other theme functions are: this name goes in Orbit 1.0.
 
 ***
 
@@ -2780,6 +3286,26 @@ Whether `value` names a theme: a built-in one, `auto`, or a registered one.
 #### Returns
 
 `value is string`
+
+***
+
+### isThemePreset()
+
+```ts
+function isThemePreset(value): value is OrbitThemePreset;
+```
+
+Whether `value` names a built-in theme: one of the presets or `auto`.
+
+#### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `value` | `unknown` |
+
+#### Returns
+
+`value is OrbitThemePreset`
 
 ***
 
@@ -2804,15 +3330,15 @@ function materialTheme(seed, options?): OrbitRendererTheme;
 ```
 
 A Material 3 theme built from `seed`, any CSS color Orbit reads (hex,
-`rgb()`, `oklch()`…). Use it as the `theme` option, or name it for every
-map: `registerTheme('brand', materialTheme('#0B57D0'))`.
+`rgb()`, `oklch()`, a name such as `tomato`…). Use it as the `theme`
+option, or name it for every map: `registerTheme('brand', materialTheme('#0B57D0'))`.
 
 #### Parameters
 
 | Parameter | Type |
 | ------ | ------ |
 | `seed` | `string` |
-| `options` | [`MaterialThemeOptions`](#materialthemeoptions) |
+| `options` | [`OrbitMaterialThemeOptions`](#orbitmaterialthemeoptions) |
 
 #### Returns
 
@@ -2823,7 +3349,7 @@ map: `registerTheme('brand', materialTheme('#0B57D0'))`.
 ### parseOrbit()
 
 ```ts
-function parseOrbit(input, options?): ParsedOrbitDocument;
+function parseOrbit(input, options?): OrbitParsedDocument;
 ```
 
 Parses an orbit document in either flavor. Markdown is the default; a
@@ -2840,11 +3366,11 @@ a `code`, `line`, `severity` and a message that says how to fix it); pass
 | Parameter | Type |
 | ------ | ------ |
 | `input` | `string` |
-| `options` | [`ParseOptions`](#parseoptions) |
+| `options` | [`OrbitParseOptions`](#orbitparseoptions) |
 
 #### Returns
 
-[`ParsedOrbitDocument`](#parsedorbitdocument)
+[`OrbitParsedDocument`](#orbitparseddocument)
 
 #### Example
 
@@ -2860,7 +3386,7 @@ for (const problem of diagnostics ?? []) console.warn(`line ${problem.line}: ${p
 ### parseOrbitMarkdown()
 
 ```ts
-function parseOrbitMarkdown(input, options?): ParsedOrbitDocument;
+function parseOrbitMarkdown(input, options?): OrbitParsedDocument;
 ```
 
 #### Parameters
@@ -2868,18 +3394,18 @@ function parseOrbitMarkdown(input, options?): ParsedOrbitDocument;
 | Parameter | Type |
 | ------ | ------ |
 | `input` | `string` |
-| `options` | [`ParseOptions`](#parseoptions) |
+| `options` | [`OrbitParseOptions`](#orbitparseoptions) |
 
 #### Returns
 
-[`ParsedOrbitDocument`](#parsedorbitdocument)
+[`OrbitParsedDocument`](#orbitparseddocument)
 
 ***
 
 ### parseOrbitYAML()
 
 ```ts
-function parseOrbitYAML(input, options?): ParsedOrbitDocument;
+function parseOrbitYAML(input, options?): OrbitParsedDocument;
 ```
 
 #### Parameters
@@ -2887,11 +3413,11 @@ function parseOrbitYAML(input, options?): ParsedOrbitDocument;
 | Parameter | Type |
 | ------ | ------ |
 | `input` | `string` |
-| `options` | [`ParseYamlOptions`](#parseyamloptions) |
+| `options` | [`OrbitParseOptions`](#orbitparseoptions) |
 
 #### Returns
 
-[`ParsedOrbitDocument`](#parsedorbitdocument)
+[`OrbitParsedDocument`](#orbitparseddocument)
 
 ***
 
@@ -2930,6 +3456,41 @@ Adds an action to every map. Returns a function that removes it again.
 | Parameter | Type |
 | ------ | ------ |
 | `action` | [`OrbitAction`](#orbitaction) |
+
+#### Returns
+
+() => `void`
+
+***
+
+### registerHyphenation()
+
+```ts
+function registerHyphenation(
+   language, 
+   patterns, 
+   options?
+): () => void;
+```
+
+Adds a language's hyphenation `patterns`, and words its patterns would
+break wrongly with their hyphens where they go (`exceptions`), both
+separated by white space, as the hyph-utf8 package's `.pat.txt` and
+`.hyp.txt` files have them, with the fewest letters a break leaves before
+and after its hyphen (`left` and `right`, 2 and 3 unless given). They
+replace the language's own, built in or added before. Returns a function
+that takes them out again.
+
+#### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `language` | `string` |
+| `patterns` | `string` |
+| `options` | \{ `exceptions?`: `string`; `left?`: `number`; `right?`: `number`; \} |
+| `options.exceptions?` | `string` |
+| `options.left?` | `number` |
+| `options.right?` | `number` |
 
 #### Returns
 
@@ -3070,7 +3631,7 @@ ResizeObserver. The `<orbit-map>` web component does this automatically.
 | Parameter | Type |
 | ------ | ------ |
 | `element` | `Element` |
-| `options` | [`AutoRenderOptions`](#autorenderoptions) |
+| `options` | [`OrbitAutoRenderOptions`](#orbitautorenderoptions) |
 
 #### Returns
 
@@ -3078,26 +3639,26 @@ ResizeObserver. The `<orbit-map>` web component does this automatically.
 
 ***
 
-### renderOrbitMarkdownBlocks()
+### ~~renderOrbitMarkdownBlocks()~~
 
 ```ts
 function renderOrbitMarkdownBlocks(root?, options?): OrbitSVGRenderer[];
 ```
-
-Renders every orbit block under `root` (default: the whole document). Each
-block is independent: one that fails shows its error card and the rest
-still render.
 
 #### Parameters
 
 | Parameter | Type |
 | ------ | ------ |
 | `root?` | `ParentNode` |
-| `options?` | [`AutoRenderOptions`](#autorenderoptions) |
+| `options?` | [`OrbitAutoRenderOptions`](#orbitautorenderoptions) |
 
 #### Returns
 
 [`OrbitSVGRenderer`](#orbitsvgrenderer)[]
+
+#### Deprecated
+
+Use `hydrateOrbitBlocks`, the same function: this name goes in Orbit 1.0.
 
 ***
 
@@ -3107,7 +3668,7 @@ still render.
 function renderPrintLayout(
    container, 
    input, 
-   options?
+   given?
 ): HTMLElement;
 ```
 
@@ -3126,8 +3687,8 @@ print, as Orbit's web pages do.
 | Parameter | Type |
 | ------ | ------ |
 | `container` | `HTMLElement` |
-| `input` | `string` \| [`OrbitDocument`](#orbitdocument) |
-| `options` | [`OrbitPrintOptions`](#orbitprintoptions) |
+| `input` | `string` \| [`OrbitDocument`](#orbitdocument) \| [`OrbitNode`](#orbitnode) |
+| `given` | [`OrbitPrintOptions`](#orbitprintoptions) |
 
 #### Returns
 
@@ -3138,7 +3699,7 @@ print, as Orbit's web pages do.
 ```ts
 import { renderPrintLayout } from '@restless-dreams/orbit';
 
-renderPrintLayout(document.querySelector('#print'), markdown, { viewMode: 'all' });
+renderPrintLayout(document.querySelector('#print'), markdown, { view: 'all' });
 // #print { display: none } @media print { #print { display: block } #app { display: none } }
 ```
 
@@ -3147,20 +3708,23 @@ renderPrintLayout(document.querySelector('#print'), markdown, { viewMode: 'all' 
 ### renderToSVGString()
 
 ```ts
-function renderToSVGString(input, options?): string;
+function renderToSVGString(input, given?): string;
 ```
 
 Renders a map to a standalone SVG string, without a browser: for files,
 the command line, static sites and server rendering. It draws what the
 renderer shows at rest, with the theme's colors resolved to plain values
-and the labels as SVG text.
+and the labels as SVG text. It draws the map itself, with none of a
+renderer's view state, so every idea shows, ideas a renderer hides with
+`hideChildren` included; a renderer's `toSVGString()` exports its view as
+it is.
 
 #### Parameters
 
 | Parameter | Type |
 | ------ | ------ |
 | `input` | `string` \| [`OrbitDocument`](#orbitdocument) \| [`OrbitNode`](#orbitnode) |
-| `options` | [`RenderToSVGOptions`](#rendertosvgoptions) |
+| `given` | [`OrbitSVGOptions`](#orbitsvgoptions) |
 
 #### Returns
 
@@ -3193,7 +3757,7 @@ own form: headings for the root and its children, lists below them.
 | Parameter | Type |
 | ------ | ------ |
 | `doc` | [`OrbitDocument`](#orbitdocument) |
-| `options` | [`SerializeOptions`](#serializeoptions) |
+| `options` | [`OrbitSerializeOptions`](#orbitserializeoptions) |
 
 #### Returns
 
@@ -3206,6 +3770,12 @@ own form: headings for the root and its children, lists below them.
 ```ts
 function serializeOrbitYAML(doc): string;
 ```
+
+A map as Orbit's YAML. One read from YAML written for a newer version of
+the format comes back as it was written, with only what edits changed
+written again, so everything this version can't read of it is kept; a
+change that would replace some of that throws, and nothing is written.
+Other documents are written in Orbit's own form.
 
 #### Parameters
 

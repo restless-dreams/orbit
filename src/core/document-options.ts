@@ -1,6 +1,8 @@
-import type { OrbitDocumentOptions, RendererOptions } from './types.js';
+import type { OrbitDocumentOptions, OrbitRendererOptions } from './types.js';
+import { withNewNames, withOldNames } from './deprecated.js';
 import { isThemeName, themeNames } from './themes.js';
 import { didYouMean } from './suggest.js';
+import { isWebBase } from './url-guard.js';
 
 /** Document-level options accepted in markdown frontmatter and as YAML top-level keys. */
 export const DOCUMENT_OPTION_KEYS = new Set([
@@ -8,6 +10,22 @@ export const DOCUMENT_OPTION_KEYS = new Set([
   'animation', 'speed', 'palette', 'height', 'maxDepth',
   'className', 'baseUrl', 'schemaVersion', 'flavor',
 ]);
+
+/** The document options' names before 0.4.0, by the name each has now, which the document writes (docs/compatibility.md). */
+const RENAMED_DOCUMENT_OPTIONS = { viewMode: 'view', orbitAnimation: 'animation', orbitSpeed: 'speed' } as const;
+
+/**
+ * A document's `options` under the names Orbit reads: options made by hand
+ * with an old name (`viewMode`, `orbitAnimation`, `orbitSpeed`) are read as
+ * the new one, with a warning. Everything that reads a document's options
+ * from a caller reads them through this.
+ */
+export const currentDocumentOptions = (options: OrbitDocumentOptions): OrbitDocumentOptions =>
+  withNewNames(options, RENAMED_DOCUMENT_OPTIONS, 'The document option');
+
+/** Lets a parsed document's `options` answer to their old names until 1.0, with a warning, as code written for 0.3 reads them. */
+export const withOldOptionNames = (options: OrbitDocumentOptions): OrbitDocumentOptions =>
+  withOldNames(options, RENAMED_DOCUMENT_OPTIONS, 'The document option');
 
 /** Keys people (and agents) reach for instead of a document option's name. */
 const OPTION_SYNONYMS: Record<string, string> = {
@@ -106,7 +124,7 @@ export const applyDocumentOption = (
   switch (key) {
     case 'view':
       if (value === 'focus' || value === 'all') {
-        options.viewMode = value;
+        options.view = value;
       } else {
         report(`view must be "focus" or "all" (the overview), got "${String(value)}".${didYouMean(String(value), ['focus', 'all'], { overview: 'all', tree: 'all', full: 'all' })}`);
       }
@@ -133,7 +151,7 @@ export const applyDocumentOption = (
       }
 
       if (key === 'animation') {
-        options.orbitAnimation = flag;
+        options.animation = flag;
       } else if (key === 'interactive') {
         options.interactive = flag;
       } else {
@@ -148,7 +166,7 @@ export const applyDocumentOption = (
       const number = positiveNumber(Number.MIN_VALUE);
 
       if (number !== undefined) {
-        options[key === 'speed' ? 'orbitSpeed' : key] = number;
+        options[key] = number;
       }
 
       return;
@@ -172,9 +190,22 @@ export const applyDocumentOption = (
       return;
     case 'title':
     case 'className':
-    case 'baseUrl':
       if (value !== null && value !== undefined) {
         options[key] = String(value);
+      }
+
+      return;
+    case 'baseUrl':
+      if (value === null || value === undefined) {
+        return;
+      }
+
+      // The map's relative addresses are joined to it, and take its scheme: joined to `javascript://x/`,
+      // a link or an embed would run as a script. So a map names only a web address or a relative path.
+      if (isWebBase(String(value))) {
+        options.baseUrl = String(value);
+      } else {
+        report(`baseUrl must be a web address (http or https) or a relative path, got "${String(value)}".`);
       }
 
       return;
@@ -195,11 +226,12 @@ export const applyDocumentOption = (
  * top-level keys). `title` becomes the map's accessible label. Container
  * concerns (`height`, `className`) are left to the caller.
  */
-export const documentToRendererOptions = (options: OrbitDocumentOptions): RendererOptions => {
-  const result: RendererOptions = {};
+export const documentToRendererOptions = (given: OrbitDocumentOptions): OrbitRendererOptions => {
+  const options = currentDocumentOptions(given);
+  const result: OrbitRendererOptions = {};
 
-  if (options.viewMode) {
-    result.viewMode = options.viewMode;
+  if (options.view) {
+    result.view = options.view;
   }
 
   if (options.showRings !== undefined) {
@@ -210,12 +242,12 @@ export const documentToRendererOptions = (options: OrbitDocumentOptions): Render
     result.interactive = options.interactive;
   }
 
-  if (options.orbitAnimation !== undefined) {
-    result.orbitAnimation = options.orbitAnimation;
+  if (options.animation !== undefined) {
+    result.animation = options.animation;
   }
 
-  if (Number.isFinite(options.orbitSpeed)) {
-    result.orbitSpeed = options.orbitSpeed;
+  if (Number.isFinite(options.speed)) {
+    result.speed = options.speed;
   }
 
   if (Number.isFinite(options.maxDepth)) {

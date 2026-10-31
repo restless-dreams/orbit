@@ -504,7 +504,9 @@ export class LabelFonts implements LabelMeasures {
       this.read();
     }
 
-    const type = node ? this.extensions()?.typeName(node) ?? node.type : undefined;
+    // The type the node is drawn as, which a node written for a newer version of its type has none of.
+    const extensions = this.extensions();
+    const type = node ? (extensions ? extensions.typeName(node) : node.type) : undefined;
 
     if (!node || !type) {
       if (role === 'sun') {

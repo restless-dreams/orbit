@@ -15,7 +15,13 @@ ESM-only; Node 20.19+ and 22.12+ can also `require()` it.
 - Create the `restless-dreams` organization on npmjs.com (free for public
   packages), so the `@restless-dreams` scope is yours, with the account you
   publish from as a member (with two-factor authentication on).
-- Configure private vulnerability reporting or publish a security contact.
+- Turn on private vulnerability reporting (the repository's Settings, "Code
+  security", "Private vulnerability reporting"): `SECURITY.md` sends reporters
+  there, with diana@hyuchia.com for those who can't use it.
+- After the first few CI runs on GitHub, set the desktop budgets (`BUDGETS` in
+  `scripts/bench-animations.mjs`) from the measured values the budgets step
+  printed, at about three times the slowest of them. Then take
+  `continue-on-error` off that step in `.github/workflows/ci.yml`, so it blocks.
 
 ## Choosing the version
 
@@ -23,6 +29,10 @@ Versions follow semantic versioning, starting at 0.1.0. While Orbit is 0.x
 and still changing, a patch fixes and a minor adds or changes, even
 something maps, options or code relied on. From 1.0.0 on, a patch fixes, a
 minor adds, and a major breaks something people relied on.
+
+Orbit 0.3.0 was made but never published: npm and GitHub go from 0.2.0 to
+0.4.0. The maps it wrote stay in `tests/fixtures/releases/0.3.0/`, as every
+version's do.
 
 ## Cutting a release
 
@@ -51,9 +61,6 @@ The release reaches people's maps only once the copies of Orbit that draw
 them are updated. After a minor, or any change to the format (see "Changing
 the format" in `docs/format.md`), update each one from the release:
 
-- **The Restless Dreams platform** takes `@restless-dreams/orbit` from npm. A
-  range like `^0.1.0` takes only 0.1.x, so a new minor needs its range bumped
-  there, and the platform's checks run against it.
 - **Orbit for Android** builds its map pages from a checkout of the release's
   GitHub commit (`web/`, and `app/src/main/assets/map/orbit.json` records it).
   Rebuild them with that commit, as its CONTRIBUTING.md says.
@@ -73,6 +80,7 @@ opens read-only.
 bun install --frozen-lockfile
 bun run verify          # lint, typecheck, tests, build, publint, Are the Types Wrong
 bun run test:browser    # spin, zoom, navigation and screenshots in the Playwright container
+bun run bench -- --budgets && bun run bench -- --profile=phone --budgets   # Orbit's own script time against its budgets, on a quiet machine
 bun run pack:lib
 tar -tzf restless-dreams-orbit-*.tgz # dist/**, skills/**, llms.txt, llms-full.txt, README.md, LICENSE, package.json
 ```

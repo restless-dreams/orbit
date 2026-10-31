@@ -101,11 +101,11 @@ Starts when [Research](#research) is done.
 ## Research
 ```
 
-The id is the node's text in lowercase with dashes (see [Node ids](#node-ids)); `#Research` and GitHub-style `#-research` find it too. A link to a node the map doesn't have is reported.
+The id is the node's text in lowercase with dashes (see [Node ids](#node-ids)); `#Research` and GitHub-style `#-research` find it too. A link to a node the map doesn't have is reported. Link-like text in code or an HTML comment isn't a link, as the note doesn't show it as one: a note can show how to write a link, `` `[Research](#research)` ``.
 
 ### Media
 
-A node shows its image (or its video's thumbnail) inside it. Its image and video open over the whole window, in the media viewer ([Pictures and videos](media.md)), and its embed in the detail sheet. Put each on a line of its own under the heading, or indented under the list item:
+A node shows its image (or its video's thumbnail) inside it. Its image, video and sound open over the whole window, in the media viewer ([Pictures, videos and sounds](media.md)), and its embed in the detail sheet. Put pictures and videos each on a line of its own under the heading, or indented under the list item:
 
 | Line | Becomes |
 | --- | --- |
@@ -113,6 +113,7 @@ A node shows its image (or its video's thumbnail) inside it. Its image and video
 | `[Trailer](https://www.youtube.com/watch?v=…)` | the video: YouTube, Vimeo, or a `.mp4`, `.webm` or `.mov` file |
 | `[![Alt text](thumbnail.jpg)](https://vimeo.com/…)` | the video, with that thumbnail |
 | `[Any other link](https://…)` | note text |
+| `<!-- orbit image: { src: photo.jpg, motion: photo.mp4 } -->` | a live photo: the picture and its motion, only ever written as an attribute |
 
 A node has at most one image, one video and one embed; extra media lines stay in the note. Embeds (a page shown in a frame) are set with the `embed` attribute. To read a media line differently, follow it with `<!-- orbit contentType: image -->` (or `video`, `embed`, or `none` to keep it as note text), and caption it the same way, with `<!-- orbit caption: The summit at dawn -->` right under it. Relative URLs resolve against `baseUrl`.
 
@@ -125,6 +126,44 @@ A node has at most one image, one video and one embed; extra media lines stay in
 ```
 
 Attributes set media too: `<!-- orbit image: images/photo.jpg -->`.
+
+A live photo is a picture with its motion, the few seconds of video a phone records around it. The motion goes in the picture's own value: its address, or `{ src, still }`, with where in it the picture was taken, in seconds, when the phone says so:
+
+```markdown
+# Trip
+- Summit
+  <!-- orbit
+  image:
+    src: media/summit.jpg
+    motion: media/summit-motion.mp4
+  -->
+- Lake
+  <!-- orbit
+  image:
+    src: media/lake.jpg
+    motion:
+      src: media/lake-motion.mp4
+      still: 1.5
+    alt: Mist on the lake at dawn
+  -->
+```
+
+The map and the detail sheet show the picture still, and the media viewer plays the motion over it ([Live photos](media.md#live-photos)). A picture with a motion is always written as an attribute, never as a `![]()` line. A `motion` that isn't an address or `{ src }`, or a `still` that isn't a number of seconds, is kept as written and not used. Versions from before live photos read these maps as they read any picture with fields they don't use: they show the still, keep `motion`, and write it back as it was (see [Changing the format](#changing-the-format)).
+
+A sound (a voice memo, music, a recording) is only ever an attribute, with its caption in its own value:
+
+```markdown
+# Trip
+- Kickoff <!-- orbit audio: memos/kickoff.m4a -->
+- Interview
+  <!-- orbit
+  audio:
+    src: https://example.com/interview.mp3
+    caption: The first interview
+  -->
+```
+
+Sounds have no line of their own: a link to an `.mp3` on its own line stays note text, as it always has, and a `caption` beside `audio` stays with the node's video, embed or picture. So versions from before sounds read every map exactly as they did: they keep `audio` as a custom attribute, write it back as it was, and play nothing (see [Changing the format](#changing-the-format)).
 
 ### Attributes
 
@@ -163,10 +202,11 @@ tags: [frontend, sprint-3]
 | `link` | URL, or `#id` | `https://example.com` | Offered as a button when the node is in focus. Same as a link in the title. `#id` goes to another node (see [Links between nodes](#links-between-nodes)). |
 | `note` | text | `Ships in May.` | The node's note. Same as a paragraph or blockquote. |
 | `noteFormat` | `markdown` / `plain` | `plain` | How the note is shown. Default `markdown`. |
-| `image` | URL, or `{ src, alt, caption }` | `images/photo.jpg` | The node's image. |
+| `image` | URL, or `{ src, alt, caption, motion }` | `images/photo.jpg` | The node's image. With `motion`, a URL or `{ src, still }`, it's a live photo: the picture is the still, and `motion` the video around it (see [Media](#media)). |
 | `video` | URL, or `{ src, provider, thumbnail, caption }` | `https://youtu.be/…` | The node's video. `provider`: `youtube`, `vimeo` or `native`. |
+| `audio` | URL, or `{ src, caption }` | `memos/kickoff.m4a` | The node's sound: a voice memo, music or a recording, played in the detail sheet and the media viewer. Its caption goes in its own value. |
 | `embed` | URL, or `{ src, caption }` | `https://example.com/demo` | A page shown in a frame in the detail sheet. |
-| `caption` | text | `The summit at dawn.` | Caption for the media line just above it, or for the one image, video or embed set next to it. Anywhere else, for the node's video, embed or image (in that order). |
+| `caption` | text | `The summit at dawn.` | Caption for the media line just above it, or for the one image, video or embed set next to it. Anywhere else, for the node's video, embed or image (in that order). Never a sound's: that goes in its `audio` value. |
 | `id` | text | `launch` | The node's id, instead of one made from its text (see [Node ids](#node-ids)). |
 | `type` | text | `milestone` | The node's type. A type your code defines sets its look, content and actions (see [Extending](extending.md#node-types)). Any case. |
 | `contentType` | `image` / `video` / `embed` / `none` | `embed` | Markdown only: how to read the media line just above. |
@@ -214,7 +254,7 @@ Set in the frontmatter (markdown) or as top-level keys (YAML). Options passed in
 | `animation` | `true` / `false` | `false` | Let the orbit drift slowly on its own. |
 | `speed` | seconds | `90` | Seconds per turn of that drift. |
 | `height` | pixels | `420` | Height of `<orbit-map>` elements and marked placeholders. |
-| `baseUrl` | URL | | Resolves relative image, video and link URLs. |
+| `baseUrl` | URL | | Resolves relative image, video and link URLs: a web address (`http` or `https`) or a relative path. Any other is reported and ignored. |
 | `className` | text | | Class names added to the map's element. |
 | `schemaVersion` | number | | The version of the format the document is written for: `1`. See [Versions](#versions). |
 | `flavor` | `markdown` or `yaml` | | Forces the flavor (see [Which flavor a document is](#which-flavor-a-document-is)). |
@@ -263,28 +303,30 @@ nodes:
 Orbit never drops what a document says, even what it doesn't read:
 
 - **Saving keeps the file as it was written.** `serializeOrbitMarkdown` (and a map's `toMarkdown()`) write a document parsed from markdown back line for line, and only the ideas an edit changed are written again: a renamed idea gets a new title line, a checked-off item a new checkbox, a moved idea takes its lines along. So a note written by hand or by another app keeps its formatting, its frontmatter keys, its HTML comments and rules, and its link definitions at the end. `{ keepSource: false }` writes the whole map in Orbit's own form instead; so does `orbit convert`.
-- **Keys and values Orbit doesn't read are kept.** Frontmatter and top-level YAML keys it doesn't know are on `document.extra`, and both serializers write them back, with any changes an app makes to them: an app can keep a setting of its own there. A document without `extra` changes none of them, so no key another app wrote is lost; an `extra` object, even `{}`, changes or removes them. An attribute Orbit doesn't know is a custom attribute on `node.attrs`; a value it can't read for one of its own (a list for `status`, a word for `priority`) is reported and kept there under its own name. A picture or video keeps fields Orbit doesn't use (`width`, a `provider` it doesn't know).
+- **Keys and values Orbit doesn't read are kept.** Frontmatter and top-level YAML keys it doesn't know are on `document.extra`, and both serializers write them back, with any changes an app makes to them: an app can keep a setting of its own there. A document without `extra` changes none of them, so no key another app wrote is lost; an `extra` object, even `{}`, changes or removes them. An attribute Orbit doesn't know is a custom attribute on `node.attrs`; a value it can't read for one of its own (a list for `status`, a word for `priority`) is reported and kept there under its own name. A picture, video, sound or embed keeps fields Orbit doesn't use (`width`, a `provider` it doesn't know), and so does a live photo's motion: also when `updateNode` or `addNode` is given a new value for the same file (`src`), as an app does to change a caption.
 - **A file that isn't a map yet** (only paragraphs) is a root with the text as its note: adding the first idea gives it a heading and keeps the text.
+- **What's kept stays with the objects Orbit read,** so documents stay plain data: the file as it was written, and the fields of pictures, videos, sounds and embeds that Orbit doesn't use. Edits change the tree in place and keep them, and so does a copy of the document object (`{ ...document, options }`), which shares its tree. A copy of the tree doesn't: one made with `structuredClone` or JSON, sent with `postMessage` (to a worker, a frame or a WebView), or made by a state store that copies the nodes it changes. Saved, it's written in Orbit's own form, as with `keepSource: false`: every idea, everything Orbit reads and `extra`, but none of the file's own comments and formatting, and a picture, video, sound or embed copied with it loses the fields Orbit doesn't use. To copy a map or send it somewhere, use its text: `parseOrbitMarkdown(serializeOrbitMarkdown(document))` is a copy that saves as the original does.
 
 ## Versions
 
 A document says which version of the format it's written for with `schemaVersion`; none means `1`, the current one.
 
 - **Older documents are upgraded as they're read.** When the format changes, Orbit brings documents written for the version before up to date as it reads them (a `format-upgraded` note says so), and the next save writes them as the new version, changing only what the upgrade changed.
-- **Newer documents are read as well as they can be,** and reported with `unsupported-schema-version`, an error: apps should open them without letting them be edited. Nothing in them is lost by saving, but what this version doesn't know of them isn't understood either.
+- **Newer documents are read as well as they can be,** and reported with `unsupported-schema-version`, an error: apps should open them without letting them be edited. Nothing in them is lost by saving, in either flavor: they're written back as they were, and an edit writes again only the ideas and options it changes. An edit that would replace what this version can't read is refused instead, with an error, so an idea can't be added under one whose ideas are written in a newer version's form. What this version doesn't know of them isn't understood, though. A map on screen has the report in `getDocument().diagnostics`, and isn't edited on the map even when it's `editable` (a console warning says why). Its editing methods still work, for an app that knows what it's changing, and [map tools](map-tools.md) refuse to change it.
 - **Node types have versions of their own,** for the fields their nodes keep in attributes: `type: task@2` says a node was written for version 2 of `task`, and none means 1. A type that changes its fields says so with `version` and brings older nodes up to date with `upgrade` (see [Extending Orbit](extending.md#versions)); a node written for a newer version of its type is left as it is.
 
 ### Changing the format
 
 Maps outlive the version of Orbit that wrote them. Older and newer versions read them, and so do apps that bundle a copy of their own. So each change to the format is one of three kinds:
 
-- **Something older versions can do without:** a new attribute (like `paletteColor`) or a new document option. An older version keeps the attribute as a custom one, and the option as an unknown frontmatter key, which it reports. It writes both back unchanged and draws the map as it did before. No new version of the format is needed.
+- **Something older versions can do without:** a new attribute (like `paletteColor`, or `audio`, for which a sound has no media line of its own) or a new document option. An older version keeps the attribute as a custom one, and the option as an unknown frontmatter key, which it reports. It writes both back unchanged and draws the map as it did before. No new version of the format is needed.
+  - The same goes for a new field in a picture, video, sound or embed (like a picture's `motion`, which makes it a live photo): every version keeps the fields it doesn't read in those, says nothing about them, and writes them back with the value, as an attribute. It writes them right after `src` in markdown, and first in YAML, so Orbit writes a new field there too, and a map reads back the same in every version. Orbit 0.3.0, and every Orbit that Orbit for Android has bundled, read a map with live photos without a word, show their stills, and write each motion back byte for byte: as it is, after they rename or color the live photo and change other ideas, and through their YAML. Up to 0.3.0, though, an edit to the value itself (a new caption through `updateNode`) drops the fields a version doesn't read, a live photo's motion included; later versions keep them.
 - **Something an older version would misread:**
   - a new kind of value for an attribute it already reads: Orbit 0.1.0 takes `color: 3` for a color and draws it wrong, without a word;
   - new syntax in titles or notes: it shows `==First==` as text;
   - an attribute renamed, removed, or given a new meaning.
 
-  These raise `schemaVersion`, with a step in `FORMAT_UPGRADES` (`src/core/format-upgrades.ts`) that brings documents written for the version before up to date. Older versions then report `unsupported-schema-version`, and apps open those maps read-only.
+  These raise `schemaVersion`, with a step in `FORMAT_UPGRADES` (`src/core/format-upgrades.ts`) that brings documents written for the version before up to date. From then on, every map Orbit writes says the version it's written for: a map upgraded as it's read, and a map made in code, in both flavors. So a map written by the new version never reads back as an older one, to be upgraded again. Older versions report `unsupported-schema-version`, and open those maps without editing them.
 - **A change to a node type's own fields:** the type gets a new `version` and an `upgrade` (see [Extending Orbit](extending.md#versions)), not a new version of the format.
 
 `tests/fixtures/releases/` holds maps as each released version wrote them. Every version must read each one without errors, write it back exactly, and understand it the same way, after its upgrades.
@@ -318,7 +360,7 @@ npx @restless-dreams/orbit validate --tree map.md   # the map as Orbit reads it,
 | `format-upgraded` | The document was written for an older version of the format and read as the current one; saving writes it in the current one. |
 | `invalid-attributes` | An attribute block isn't valid YAML, or a value has the wrong type: kept as written, but not used. |
 | `unknown-attribute` | A key that looks like a misspelled attribute, kept as a custom one. |
-| `media-missing-source` | An `image`, `video` or `embed` without a URL. |
+| `media-missing-source` | An `image`, `video` or `embed` without a URL: kept as written, as a custom attribute, but not shown. |
 | `unknown-content-type` | `contentType` isn't `image`, `video`, `embed` or `none`. |
 | `caption-without-media` | A `caption` on a node with no image, video or embed. |
 | `unknown-link-target` | A `#id` link points at no node of the map; the message suggests the id you probably meant. |

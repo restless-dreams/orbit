@@ -7,12 +7,14 @@ import { assignKey } from './yaml-mini.js';
 type ImageMedia = NonNullable<OrbitNode['image']>;
 type VideoMedia = NonNullable<OrbitNode['video']>;
 type EmbedMedia = NonNullable<OrbitNode['embed']>;
+type AudioMedia = NonNullable<OrbitNode['audio']>;
+type MotionMedia = NonNullable<ImageMedia['motion']>;
 
 const VIDEO_PROVIDERS = new Set(['youtube', 'vimeo', 'native']);
 const TRUE_VALUES = new Set(['true', 'yes', 'on', '1']);
 const FALSE_VALUES = new Set(['false', 'no', 'off', '0']);
 
-/** Fields of a picture, video or embed that Orbit doesn't read, kept to be written back. */
+/** Fields of a picture, video, sound, embed or live photo's motion that Orbit doesn't read, kept to be written back. */
 const MEDIA_EXTRAS = new WeakMap<object, Record<string, unknown>>();
 
 /**
@@ -24,13 +26,73 @@ export const mediaExtras = (media: object | undefined): Record<string, unknown> 
   return media ? MEDIA_EXTRAS.get(media) : undefined;
 };
 
-/** A copy of a picture, video or embed, with the fields Orbit doesn't read. */
+/** A copy of a picture, video or embed, with the fields Orbit doesn't read: its own, and its motion's. */
 export const copyMedia = <Media extends object>(media: Media): Media => {
   const copy = JSON.parse(JSON.stringify(media)) as Media;
-  const extras = MEDIA_EXTRAS.get(media);
+
+  const keepFrom = (original: object, copied: object): void => {
+    const extras = MEDIA_EXTRAS.get(original);
+
+    if (extras) {
+      MEDIA_EXTRAS.set(copied, JSON.parse(JSON.stringify(extras)) as Record<string, unknown>);
+    }
+  };
+
+  keepFrom(media, copy);
+  const motion = (media as { motion?: unknown }).motion;
+
+  if (motion && typeof motion === 'object') {
+    keepFrom(motion, (copy as { motion: object }).motion);
+  }
+
+  return copy;
+};
+
+/** Whether two media values are the same file: both have the same `src`. */
+const sameFile = (a: unknown, b: unknown): boolean => {
+  const src = (value: unknown): unknown => (value && typeof value === 'object' ? (value as { src?: unknown }).src : undefined);
+  return typeof src(a) === 'string' && src(a) === src(b);
+};
+
+/** Gives `copied` the fields Orbit doesn't read of `original`, unless it has its own. */
+const keepExtrasOf = (original: unknown, copied: unknown): void => {
+  if (!original || typeof original !== 'object' || !copied || typeof copied !== 'object' || MEDIA_EXTRAS.has(copied)) {
+    return;
+  }
+
+  const extras = MEDIA_EXTRAS.get(original);
 
   if (extras) {
-    MEDIA_EXTRAS.set(copy, JSON.parse(JSON.stringify(extras)) as Record<string, unknown>);
+    MEDIA_EXTRAS.set(copied, JSON.parse(JSON.stringify(extras)) as Record<string, unknown>);
+  }
+};
+
+/**
+ * A picture, video, sound or embed to set on a node: a copy of `value` that
+ * keeps the fields Orbit doesn't read. A value read from a file, or a copy of
+ * one, keeps its own. Any other value for the same file as the node's
+ * `current` one keeps `current`'s, as when an app rebuilds a picture from the
+ * fields it knows to change its caption. A live photo's motion keeps its
+ * fields the same way, and one given as its address alone is read as
+ * `{ src }`, as the parsers read it.
+ */
+export const mediaWithExtras = <Media extends object>(value: Media, current: unknown): Media => {
+  const copy = copyMedia(value);
+  const given = (copy as { motion?: unknown }).motion;
+
+  if (typeof given === 'string') {
+    (copy as { motion?: unknown }).motion = { src: given.trim() };
+  }
+
+  if (sameFile(copy, current)) {
+    keepExtrasOf(current, copy);
+  }
+
+  const motion = (copy as { motion?: unknown }).motion;
+  const currentMotion = current && typeof current === 'object' ? (current as { motion?: unknown }).motion : undefined;
+
+  if (sameFile(motion, currentMotion)) {
+    keepExtrasOf(currentMotion, motion);
   }
 
   return copy;
@@ -65,6 +127,44 @@ const optionalString = (value: unknown): string | undefined => {
   return typeof value === 'string' || typeof value === 'number' ? String(value) : undefined;
 };
 
+/**
+ * A live photo's motion: a URL, or `{ src, still }`. `still` is read when
+ * it's a time, in seconds; anything else under it is kept as written, and so
+ * are fields Orbit doesn't read.
+ */
+export const readMotion = (value: unknown): MotionMedia | undefined => {
+  const record = mediaRecord(value);
+
+  if (!record) {
+    return undefined;
+  }
+
+  const motion: MotionMedia = { src: String(record.src) };
+  const still = typeof record.still === 'number' && Number.isFinite(record.still) && record.still >= 0;
+
+  if (still) {
+    motion.still = record.still as number;
+  }
+
+  keepExtras(motion, record, still ? ['src', 'still'] : ['src']);
+  return motion;
+};
+
+/**
+ * A live photo's motion as the writers write it: its address alone when
+ * that's all it has, else its fields, with the ones Orbit doesn't read after
+ * its own.
+ */
+export const motionValue = (motion: MotionMedia): string | Record<string, unknown> => {
+  const extras = mediaExtras(motion);
+
+  if (motion.still === undefined && extras === undefined) {
+    return motion.src;
+  }
+
+  return { src: motion.src, ...(motion.still === undefined ? {} : { still: motion.still }), ...extras };
+};
+
 export const readImage = (value: unknown): ImageMedia | undefined => {
   const record = mediaRecord(value);
 
@@ -73,8 +173,14 @@ export const readImage = (value: unknown): ImageMedia | undefined => {
   }
 
   const image: ImageMedia = { src: String(record.src) };
+  // A motion that isn't a URL or `{ src }` stays with the picture's other fields, as written: older versions keep it so too.
+  const motion = record.motion === undefined ? undefined : readMotion(record.motion);
   const alt = optionalString(record.alt);
   const caption = optionalString(record.caption);
+
+  if (motion) {
+    image.motion = motion;
+  }
 
   if (alt !== undefined) {
     image.alt = alt;
@@ -84,7 +190,7 @@ export const readImage = (value: unknown): ImageMedia | undefined => {
     image.caption = caption;
   }
 
-  keepExtras(image, record, ['src', 'alt', 'caption']);
+  keepExtras(image, record, motion ? ['src', 'motion', 'alt', 'caption'] : ['src', 'alt', 'caption']);
   return image;
 };
 
@@ -118,6 +224,25 @@ export const readVideo = (value: unknown): VideoMedia | undefined => {
   return video;
 };
 
+/** A sound: a URL, or `{ src, caption }`. */
+export const readAudio = (value: unknown): AudioMedia | undefined => {
+  const record = mediaRecord(value);
+
+  if (!record) {
+    return undefined;
+  }
+
+  const audio: AudioMedia = { src: String(record.src) };
+  const caption = optionalString(record.caption);
+
+  if (caption !== undefined) {
+    audio.caption = caption;
+  }
+
+  keepExtras(audio, record, ['src', 'caption']);
+  return audio;
+};
+
 export const readEmbed = (value: unknown): EmbedMedia | undefined => {
   const record = mediaRecord(value);
 
@@ -139,8 +264,17 @@ export const readEmbed = (value: unknown): EmbedMedia | undefined => {
 /** The attributes every node takes, in `<!-- orbit … -->` blocks and in YAML. */
 export const NODE_ATTRIBUTE_KEYS = [
   'color', 'paletteColor', 'icon', 'status', 'priority', 'tags', 'collapsed', 'link',
-  'note', 'noteFormat', 'image', 'video', 'embed', 'caption', 'id', 'type',
+  'note', 'noteFormat', 'image', 'video', 'audio', 'embed', 'caption', 'id', 'type',
 ] as const;
+
+/**
+ * Orbit's own attributes whose values a node's file wrote in a form Orbit
+ * couldn't read, so they're kept in its `attrs` as written (a list for
+ * `status`): a new value for one of them would replace what's there.
+ */
+export const unreadAttributes = (attrs: Record<string, unknown> | undefined): string[] => {
+  return Object.keys(attrs ?? {}).filter((key) => key !== 'caption' && (NODE_ATTRIBUTE_KEYS as readonly string[]).includes(key));
+};
 
 /** Words people (and agents) reach for instead of an attribute's name. */
 const ATTRIBUTE_SYNONYMS: Record<string, string> = {
@@ -155,6 +289,9 @@ const ATTRIBUTE_SYNONYMS: Record<string, string> = {
   picture: 'image',
   photo: 'image',
   youtube: 'video',
+  sound: 'audio',
+  voice: 'audio',
+  recording: 'audio',
   iframe: 'embed',
   notes: 'note',
   description: 'note',
@@ -183,6 +320,18 @@ const scalar = (value: unknown): string | undefined => {
  */
 const keepUnread = (node: OrbitNode, key: string, value: unknown, diagnostics: DiagnosticCollector, line: number | undefined, expected: string): void => {
   diagnostics.recover('invalid-attributes', `${key} must be ${expected}; kept as written, but not used`, line);
+  node.attrs ??= {};
+  assignKey(node.attrs, key, value);
+};
+
+/**
+ * A picture, video or embed without an address Orbit can read: reported, and
+ * kept in `attrs` as written, as `keepUnread` keeps other values, so an edit
+ * of its node doesn't lose it. A later format may write one Orbit can't read
+ * yet, such as a picture with several sources.
+ */
+const keepWithoutSource = (node: OrbitNode, key: string, value: unknown, diagnostics: DiagnosticCollector, line: number | undefined): void => {
+  diagnostics.recover('media-missing-source', `${key} needs a URL (or an object with a src); kept as written, but not shown`, line);
   node.attrs ??= {};
   assignKey(node.attrs, key, value);
 };
@@ -323,7 +472,7 @@ export const assignNodeAttribute = (
       if (image) {
         node.image = image;
       } else {
-        diagnostics.recover('media-missing-source', 'image needs a URL (or an object with a src)', line);
+        keepWithoutSource(node, key, value, diagnostics, line);
       }
 
       return;
@@ -334,7 +483,19 @@ export const assignNodeAttribute = (
       if (video) {
         node.video = video;
       } else {
-        diagnostics.recover('media-missing-source', 'video needs a URL (or an object with a src)', line);
+        keepWithoutSource(node, key, value, diagnostics, line);
+      }
+
+      return;
+    }
+    case 'audio': {
+      const audio = readAudio(value);
+
+      // A value that isn't a sound is kept as written: before Orbit read `audio`, it was any app's own attribute.
+      if (audio) {
+        node.audio = audio;
+      } else {
+        keepUnread(node, key, value, diagnostics, line, 'a URL, or an object with a src');
       }
 
       return;
@@ -345,12 +506,13 @@ export const assignNodeAttribute = (
       if (embed) {
         node.embed = embed;
       } else {
-        diagnostics.recover('media-missing-source', 'embed needs a URL (or an object with a src)', line);
+        keepWithoutSource(node, key, value, diagnostics, line);
       }
 
       return;
     }
     case 'caption': {
+      // Never a sound's: its caption is in its own value, so older versions, which keep `audio` as a custom attribute, read a caption as this does.
       const target = node.video ?? node.embed ?? node.image;
 
       if (target) {

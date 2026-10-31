@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
-import type { OrbitNode, ViewMode } from '../src/core/types';
+import type { OrbitNode, OrbitViewMode } from '../src/core/types';
 import { click, internals, manualClock, mount, node, onScreen, useMapSize, type ManualClock } from './helpers/renderer';
 
 useMapSize(600, 400);
@@ -53,8 +53,8 @@ describe('navigating', () => {
   });
 
   test('a click on a node in the overview flies into focus mode on it', () => {
-    const onViewModeChange = mock<(argument: ViewMode) => void>(() => undefined);
-    const { host, renderer } = mount(MAP, { viewMode: 'all', onViewModeChange });
+    const onViewModeChange = mock<(argument: OrbitViewMode) => void>(() => undefined);
+    const { host, renderer } = mount(MAP, { view: 'all', onViewModeChange });
     click(node(host, 'beta-one'));
     expect(renderer.getViewMode()).toBe('focus');
     expect(renderer.getFocusPath()).toEqual(['root', 'beta', 'beta-one']);
@@ -62,13 +62,13 @@ describe('navigating', () => {
   });
 
   test('setViewMode reports the change; setOptions switches quietly', () => {
-    const onViewModeChange = mock<(argument: ViewMode) => void>(() => undefined);
+    const onViewModeChange = mock<(argument: OrbitViewMode) => void>(() => undefined);
     const { host, renderer } = mount(MAP, { onViewModeChange });
     renderer.setViewMode('all');
     expect(renderer.getViewMode()).toBe('all');
     expect(host.querySelector('.orbit')?.getAttribute('data-orbit-view')).toBe('all');
     expect(onViewModeChange.mock.calls).toEqual([['all']]);
-    renderer.setOptions({ viewMode: 'focus' });
+    renderer.setOptions({ view: 'focus' });
     expect(renderer.getViewMode()).toBe('focus');
     expect(onViewModeChange).toHaveBeenCalledTimes(1);
   });
@@ -82,7 +82,7 @@ describe('navigating', () => {
   });
 
   test('in the overview, focusNode moves the camera to the node and keeps the overview', () => {
-    const { renderer } = mount(MAP, { viewMode: 'all' });
+    const { renderer } = mount(MAP, { view: 'all' });
     expect(renderer.focusNode('gamma')).toBe(true);
     expect(renderer.getViewMode()).toBe('all');
     const gamma = internals(renderer).scene!.nodes.get('gamma')!;
@@ -327,7 +327,7 @@ describe('keyboard', () => {
   });
 
   test('in the overview, arrows follow the tree', () => {
-    const { host } = mount(MAP, { viewMode: 'all' });
+    const { host } = mount(MAP, { view: 'all' });
     node(host, 'root').focus();
     key(node(host, 'root'), 'ArrowDown');
     expect(document.activeElement?.getAttribute('data-orbit-node-id')).toBe('alpha');

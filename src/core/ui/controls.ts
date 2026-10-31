@@ -4,21 +4,24 @@
  * parent's name (switched by a container query in the stylesheet).
  */
 
-import type { OrbitNode, ViewMode } from '../types.js';
+import type { OrbitNode, OrbitViewMode } from '../types.js';
 import type { OrbitWords } from '../languages.js';
-import { pointsCoarsely } from '../browser.js';
+import { focusedElement, pointsCoarsely } from '../browser.js';
 import { createIcon, type IconName } from './icons.js';
 
 export interface ControlsCallbacks {
   onNavigate(nodeId: string): void;
-  onViewMode(mode: ViewMode): void;
+  onViewMode(mode: OrbitViewMode): void;
   onZoom(direction: 1 | -1): void;
   onFit(): void;
   onToggleOutline(): void;
+
+  /** Puts keyboard focus on the map, when the button that had it goes away. */
+  returnFocus?(): void;
 }
 
 export interface ControlsState {
-  viewMode: ViewMode;
+  viewMode: OrbitViewMode;
 
   /** From the root to the focused node. */
   path: OrbitNode[];
@@ -65,6 +68,10 @@ export class Controls {
   private readonly hint: HTMLDivElement;
   private hintTimer: ReturnType<typeof setTimeout> | null = null;
   private parentId: string | null = null;
+
+  /** The idea each of the path's buttons goes to. */
+  private crumbIds = new Map<HTMLButtonElement, string>();
+
   private words: OrbitWords;
   private state: ControlsState | null = null;
 
@@ -136,6 +143,10 @@ export class Controls {
   }
 
   update(state: ControlsState): void {
+    // The path is written again, and the back button can hide: the button with focus would take it to <body>.
+    const active = focusedElement(this.element);
+    const focusedCrumb = active instanceof HTMLButtonElement ? this.crumbIds.get(active) : undefined;
+    const focusedBack = active === this.back;
     this.state = state;
     this.focusButton.setAttribute('aria-pressed', String(state.viewMode === 'focus'));
     this.overviewButton.setAttribute('aria-pressed', String(state.viewMode === 'all'));
@@ -148,7 +159,21 @@ export class Controls {
     this.backLabel.textContent = parent ? parent.text || this.words.text('back') : '';
     this.back.setAttribute('aria-label', parent?.text ? this.words.text('backTo', { name: parent.text }) : parent ? this.words.text('backToParent') : this.words.text('back'));
     this.breadcrumbPanel.hidden = !showPath;
+    this.crumbIds.clear();
     this.breadcrumbs.replaceChildren(...(showPath ? this.crumbs(state.path) : []));
+
+    // Focus stays on the crumb of the same idea, or else goes to the map: going up, to the idea it came from.
+    if (focusedCrumb !== undefined) {
+      const crumb = [...this.crumbIds].find(([button, id]) => id === focusedCrumb && !button.disabled)?.[0];
+
+      if (crumb) {
+        crumb.focus({ preventScroll: true });
+      } else {
+        this.callbacks.returnFocus?.();
+      }
+    } else if (focusedBack && this.back.hidden) {
+      this.callbacks.returnFocus?.();
+    }
   }
 
   /**
@@ -231,6 +256,7 @@ export class Controls {
         crumb.addEventListener('click', () => this.callbacks.onNavigate(node.id));
       }
 
+      this.crumbIds.set(crumb, node.id);
       items.push(crumb);
     });
 

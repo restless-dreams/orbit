@@ -6,16 +6,16 @@ Security fixes are accepted for the latest released version of Orbit (`@restless
 
 ## Reporting a vulnerability
 
-Do not open a public issue for a suspected vulnerability.
-
-Use the repository host's private vulnerability reporting or security advisory
-feature when available. If no private channel has been configured yet, contact
-the maintainer listed in the package metadata and include:
+Do not open a public issue for a suspected vulnerability. Report it privately
+instead, with **Report a vulnerability** under the **Security** tab of
+[github.com/restless-dreams/orbit](https://github.com/restless-dreams/orbit/security),
+or, if you can't use that, by email to
+[diana@hyuchia.com](mailto:diana@hyuchia.com). Include:
 
 - Affected version or commit.
 - Steps to reproduce.
 - Impact and any known workaround.
 - Whether the issue is already public.
 
-Maintainers should acknowledge valid reports promptly, keep reporters informed
-while a fix is prepared, and credit reporters when they want credit.
+Reports are acknowledged promptly, reporters hear how the fix is going until
+it's released, and they're credited if they'd like to be.

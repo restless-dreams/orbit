@@ -2,12 +2,16 @@ import { OrbitSVGRenderer } from './svg-renderer.js';
 import { parseOrbit } from './dispatch.js';
 import { reportParseDiagnostics } from './diagnostics.js';
 import { wordsFor } from './languages.js';
-import type { OrbitDocument, OrbitNode, RendererOptions } from './types.js';
+import type { OrbitDocument, OrbitNode, OrbitRendererOptions } from './types.js';
 
-export interface CreateOrbitMapOptions extends RendererOptions {
+/** What `createOrbitMap` takes: the renderer's options, and `strict`. */
+export interface OrbitMapOptions extends OrbitRendererOptions {
   /** Throw on the first problem in the source instead of working around it. */
   strict?: boolean;
 }
+
+/** @deprecated Use `OrbitMapOptions`: this name goes in Orbit 1.0. */
+export type CreateOrbitMapOptions = OrbitMapOptions;
 
 /**
  * Draws a map into `target` in one call: markdown or YAML source, a parsed
@@ -28,18 +32,21 @@ export interface CreateOrbitMapOptions extends RendererOptions {
 export const createOrbitMap = (
   target: HTMLElement,
   source: string | OrbitDocument | OrbitNode,
-  options: CreateOrbitMapOptions = {},
+  options: OrbitMapOptions = {},
 ): OrbitSVGRenderer => {
   const { strict, ...rendererOptions } = options;
-  const renderer = new OrbitSVGRenderer(target, rendererOptions);
+  let input: OrbitDocument | OrbitNode;
 
+  // Source is read before anything is drawn: when strict reading throws, `target` is left as it was, a map in it too.
   if (typeof source === 'string') {
     const doc = parseOrbit(source, { strict, untitled: wordsFor(rendererOptions.language, target, rendererOptions.strings).text('untitledMap') });
     reportParseDiagnostics(doc);
-    renderer.render(doc);
+    input = doc;
   } else {
-    renderer.render(source);
+    input = source;
   }
 
+  const renderer = new OrbitSVGRenderer(target, rendererOptions);
+  renderer.render(input);
   return renderer;
 };

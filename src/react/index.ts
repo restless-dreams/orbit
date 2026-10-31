@@ -10,9 +10,10 @@ import { reportParseDiagnostics } from '../core/diagnostics.js';
 import { OrbitWords } from '../core/languages.js';
 import { renderToSVGString } from '../core/render-to-svg.js';
 import type { OrbitAction, OrbitNodeType } from '../core/extensions.js';
-import type { OrbitDocument, OrbitNode, RendererOptions, ViewMode } from '../core/types.js';
+import type { OrbitDocument, OrbitNode, OrbitRendererOptions, OrbitViewMode } from '../core/types.js';
 
-export interface OrbitMindMapProps extends RendererOptions, Omit<HTMLAttributes<HTMLDivElement>, 'children'> {
+/** What `<OrbitMindMap>` takes: the map, the renderer's options as props, and a `<div>`'s own attributes. */
+export interface OrbitMindMapProps extends OrbitRendererOptions, Omit<HTMLAttributes<HTMLDivElement>, 'children'> {
   /** Markdown or YAML source, parsed with `parseOrbit`. Its frontmatter options apply unless a prop overrides them. */
   source?: string;
 
@@ -45,18 +46,24 @@ export interface OrbitMindMapRef {
   /** Flies out to the overview of the whole map. */
   overview(): void;
 
-  getViewMode(): ViewMode | null;
-  setViewMode(mode: ViewMode): void;
+  getViewMode(): OrbitViewMode | null;
+  setViewMode(mode: OrbitViewMode): void;
 
   /** Zooms by `factor` around the middle of the map (above 1 zooms in). */
   zoomBy(factor: number): void;
 
   /** Returns the camera to the fitted view. */
   fit(): void;
+
+  /** Hides the ideas under nodes, to show later (see `OrbitSVGRenderer.hideChildren`). Returns whether any were newly hidden. */
+  hideChildren(ids: string | readonly string[]): boolean;
+
+  /** Shows ideas hidden under `ids`, or under every node (see `OrbitSVGRenderer.revealChildren`). Returns whether any were shown. */
+  revealChildren(ids?: string | readonly string[]): boolean;
 }
 
 type Callbacks = Pick<
-  RendererOptions,
+  OrbitRendererOptions,
   | 'onNodeClick' | 'onViewModeChange' | 'onAction' | 'onFocusChange' | 'onSpinSettle' | 'onNodeContext' | 'onEdit' | 'onEditorOpen' | 'onEditorClose' | 'onNodeDrag'
   | 'onMediaOpen' | 'onMediaClose' | 'onMediaState' | 'noteRenderer' | 'nodeTypeFor'
 >;
@@ -129,10 +136,13 @@ export const OrbitMindMap = forwardRef<OrbitMindMapRef, OrbitMindMapProps>(
     source,
     document: orbitDocument,
     data,
+    view,
     viewMode,
     showRings,
     interactive,
+    animation,
     orbitAnimation,
+    speed,
     orbitSpeed,
     maxDepth,
     palette,
@@ -143,11 +153,13 @@ export const OrbitMindMap = forwardRef<OrbitMindMapRef, OrbitMindMapProps>(
     showControls,
     showActionButtons,
     showDetailSheet,
+    showMediaViewer,
     mediaViewer,
     baseUrl,
     spin,
     zoom,
     insets,
+    insetsTransition,
     transitionDuration,
     onNodeClick,
     onViewModeChange,
@@ -193,6 +205,8 @@ export const OrbitMindMap = forwardRef<OrbitMindMapRef, OrbitMindMapProps>(
       setViewMode: (mode) => rendererRef.current?.setViewMode(mode),
       zoomBy: (factor) => rendererRef.current?.zoomBy(factor),
       fit: () => rendererRef.current?.fit(),
+      hideChildren: (ids) => rendererRef.current?.hideChildren(ids) ?? false,
+      revealChildren: (ids) => rendererRef.current?.revealChildren(ids) ?? false,
     }), []);
 
     // The renderer holds stable wrappers that call the latest props, so new
@@ -213,8 +227,8 @@ export const OrbitMindMap = forwardRef<OrbitMindMapRef, OrbitMindMapProps>(
       onNodeClick: (node) => callbacksRef.current.onNodeClick?.(node),
       onViewModeChange: (mode) => callbacksRef.current.onViewModeChange?.(mode),
       onAction: (event) => callbacksRef.current.onAction?.(event),
-      onFocusChange: (node) => callbacksRef.current.onFocusChange?.(node),
-      onSpinSettle: (planet) => callbacksRef.current.onSpinSettle?.(planet),
+      onFocusChange: (node, path) => callbacksRef.current.onFocusChange?.(node, path),
+      onSpinSettle: (node) => callbacksRef.current.onSpinSettle?.(node),
       onEdit: (edit) => callbacksRef.current.onEdit?.(edit),
       onEditorOpen: (event) => callbacksRef.current.onEditorOpen?.(event),
       onEditorClose: (event) => callbacksRef.current.onEditorClose?.(event),
@@ -263,11 +277,15 @@ export const OrbitMindMap = forwardRef<OrbitMindMapRef, OrbitMindMapProps>(
     const stableZoom = useMemo(() => (zoomKey === undefined ? undefined : JSON.parse(zoomKey)), [zoomKey]);
     const stableInsets = useMemo(() => (insetsKey === undefined ? undefined : JSON.parse(insetsKey)), [insetsKey]);
 
-    const options = useMemo<RendererOptions>(() => ({
+    // The old names (`viewMode` and the rest) go along as they came: the renderer reads them as the new ones, and warns.
+    const options = useMemo<OrbitRendererOptions>(() => ({
+      view,
       viewMode,
       showRings,
       interactive,
+      animation,
       orbitAnimation,
+      speed,
       orbitSpeed,
       maxDepth,
       palette: stablePalette,
@@ -278,6 +296,7 @@ export const OrbitMindMap = forwardRef<OrbitMindMapRef, OrbitMindMapProps>(
       showControls,
       showActionButtons,
       showDetailSheet,
+      showMediaViewer,
       mediaViewer,
       editable,
       editingKeys,
@@ -286,15 +305,16 @@ export const OrbitMindMap = forwardRef<OrbitMindMapRef, OrbitMindMapProps>(
       spin: stableSpin,
       zoom: stableZoom,
       insets: stableInsets,
+      insetsTransition,
       transitionDuration,
       nodeTypes: stableNodeTypes,
       actions: stableActions,
       statuses: stableStatuses,
       ...callbacks,
     }), [
-      viewMode, showRings, interactive, orbitAnimation, orbitSpeed, maxDepth, stablePalette, stableTheme,
-      ariaLabel, language, stableStrings, showControls, showActionButtons, showDetailSheet, mediaViewer, editable, editingKeys, longPressDelay, baseUrl,
-      stableSpin, stableZoom, stableInsets, transitionDuration, stableNodeTypes, stableActions, stableStatuses, callbacks,
+      view, viewMode, showRings, interactive, animation, orbitAnimation, speed, orbitSpeed, maxDepth, stablePalette, stableTheme,
+      ariaLabel, language, stableStrings, showControls, showActionButtons, showDetailSheet, showMediaViewer, mediaViewer, editable, editingKeys, longPressDelay, baseUrl,
+      stableSpin, stableZoom, stableInsets, insetsTransition, transitionDuration, stableNodeTypes, stableActions, stableStatuses, callbacks,
     ]);
 
     const input = useMemo<OrbitDocument | OrbitNode | undefined>(() => {
@@ -372,7 +392,7 @@ export const OrbitMindMap = forwardRef<OrbitMindMapRef, OrbitMindMapProps>(
       return renderToSVGString(input, {
         responsive: true,
         idPrefix: `orbit-static-${staticId.replace(/[^a-zA-Z0-9_-]/g, '')}`,
-        viewMode,
+        view: view ?? viewMode,
         focus: focusedId ?? focus,
         theme: stableTheme,
         palette: stablePalette,
@@ -386,7 +406,7 @@ export const OrbitMindMap = forwardRef<OrbitMindMapRef, OrbitMindMapProps>(
         statuses: stableStatuses,
       });
     }, [
-      staticFallback, mounted, input, staticId, viewMode, focusedId, focus, stableTheme, stablePalette, maxDepth, showRings, ariaLabel, language, stableStrings,
+      staticFallback, mounted, input, staticId, view, viewMode, focusedId, focus, stableTheme, stablePalette, maxDepth, showRings, ariaLabel, language, stableStrings,
       baseUrl, stableNodeTypes, stableStatuses,
     ]);
 

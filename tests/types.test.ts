@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { ORBIT_THEME_PRESETS } from '../src/core';
-import type { OrbitNode, OrbitActionEvent, OrbitDocumentOptions, OrbitThemePreset, RendererOptions } from '../src/core/types';
+import type { OrbitNode, OrbitActionEvent, OrbitDocumentOptions, OrbitThemePreset, OrbitRendererOptions } from '../src/core/types';
+import type { OrbitMapElement } from '../src/core/auto-render';
 
 describe('public types', () => {
   it('OrbitNode accepts media + caption + noteFormat', () => {
@@ -34,9 +35,9 @@ describe('public types', () => {
     expect(opts.schemaVersion).toBe(1);
   });
 
-  it('RendererOptions accepts action, detail sheet, note and theme options', () => {
+  it('OrbitRendererOptions accepts action, detail sheet, note and theme options', () => {
     const preset: OrbitThemePreset = 'cosmos';
-    const opts: RendererOptions = {
+    const opts: OrbitRendererOptions = {
       onAction: () => false,
       onFocusChange: () => undefined,
       showActionButtons: true,
@@ -55,4 +56,22 @@ describe('public types', () => {
     expect(ORBIT_THEME_PRESETS.paper.surface).toBe('transparent');
     expect(ORBIT_THEME_PRESETS.night['color-root']).toMatch(/^#/);
   });
+
+  it('TypeScript knows <orbit-map> and the details of its orbit-* events', () => {
+    // These lines type-check only with the declarations auto-render.ts adds to the DOM's types.
+    const element: OrbitMapElement | null = document.querySelector('orbit-map');
+    const heard: string[] = [];
+
+    const listen = (target: HTMLElement): void => {
+      target.addEventListener('orbit-focus-change', (event) => heard.push(event.detail.node.id));
+      target.addEventListener('orbit-media-state', (event) => heard.push(event.detail.node.id));
+      target.addEventListener('orbit-error', (event) => heard.push(event.detail.message));
+    };
+
+    listen(document.body);
+    document.body.dispatchEvent(new CustomEvent('orbit-error', { detail: { message: 'No map', error: null, diagnostics: [] } }));
+    expect(element).toBeNull();
+    expect(heard).toEqual(['No map']);
+  });
 });
+

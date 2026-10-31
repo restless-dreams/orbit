@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { useMapSize } from './helpers/renderer';
-import { OrbitParseError, parseOrbit, parseOrbitMarkdown, parseOrbitYAML, renderOrbitMarkdownBlocks } from '../src/index';
+import { OrbitParseError, hydrateOrbitBlocks, parseOrbit, parseOrbitMarkdown, parseOrbitYAML } from '../src/index';
 import type { OrbitRenderErrorDetail } from '../src/index';
 import { OrbitSVGRenderer } from '../src/core/svg-renderer';
 
@@ -54,13 +54,13 @@ describe('forgiving by default, strict on request', () => {
 describe('source normalization', () => {
   it('applies frontmatter with Windows line endings', () => {
     const doc = parseOrbit('---\r\nview: all\r\n---\r\n# A\r\n## B\r\n## C');
-    expect(doc.options.viewMode).toBe('all');
+    expect(doc.options.view).toBe('all');
     expect(doc.root.children.map((child) => child.text)).toEqual(['B', 'C']);
   });
 
   it('applies frontmatter after a leading blank line or a byte-order mark', () => {
-    expect(parseOrbit('\n\n---\nview: all\n---\n# A').options.viewMode).toBe('all');
-    expect(parseOrbit('\uFEFF---\nview: all\n---\n# A').options.viewMode).toBe('all');
+    expect(parseOrbit('\n\n---\nview: all\n---\n# A').options.view).toBe('all');
+    expect(parseOrbit('\uFEFF---\nview: all\n---\n# A').options.view).toBe('all');
   });
 
   it('parses markdown indented inside a template literal or HTML', () => {
@@ -88,16 +88,18 @@ describe('source normalization', () => {
 });
 
 describe('invalid content is reported instead of crashing', () => {
-  it('skips a media attribute without a source', () => {
+  it('shows no media attribute without a source, and keeps it as written', () => {
     const doc = parseOrbit('# A\n<!-- orbit\nimage:\n  alt: Missing src\n-->\n## B');
     expect(doc.root.image).toBeUndefined();
+    expect(doc.root.attrs?.image).toEqual({ alt: 'Missing src' });
     expect(doc.diagnostics?.[0]).toMatchObject({ code: 'media-missing-source', line: 2 });
     expect(() => parseOrbit('# A\n<!-- orbit\nimage:\n  alt: x\n-->', { strict: true })).toThrow(OrbitParseError);
   });
 
-  it('skips media without a source in YAML documents', () => {
+  it('keeps media without a source in YAML documents as written', () => {
     const doc = parseOrbitYAML('nodes:\n  - text: A\n    video:\n      caption: no src');
     expect(doc.root.video).toBeUndefined();
+    expect(doc.root.attrs?.video).toEqual({ caption: 'no src' });
     expect(doc.diagnostics?.[0].code).toBe('media-missing-source');
   });
 
@@ -158,7 +160,7 @@ describe('rendering never breaks the page', () => {
       errors.push((event as CustomEvent<OrbitRenderErrorDetail>).detail);
     });
 
-    const renderers = renderOrbitMarkdownBlocks(container);
+    const renderers = hydrateOrbitBlocks(container);
 
     expect(renderers).toHaveLength(2);
     const [first, second, third] = Array.from(container.children);
@@ -217,7 +219,7 @@ describe('problems say how to fix them', () => {
       ['invalid-option-value', 4, 'height must be a number above 0, got "tall".'],
       ['invalid-option-value', 5, 'showRings must be true or false, got "maybe".'],
     ]);
-    expect(doc.options.viewMode).toBeUndefined();
+    expect(doc.options.view).toBeUndefined();
     expect(doc.options.height).toBeUndefined();
     expect(() => parseOrbit('---\ntheme: dark\n---\n# A', { strict: true })).toThrow(OrbitParseError);
     expect(messages('---\nflavor: xml\n---\n# A')).toEqual(['invalid-option-value: flavor must be "markdown" or "yaml", got "xml".']);
@@ -225,7 +227,7 @@ describe('problems say how to fix them', () => {
 
   it('reads flags and palettes the way people write them', () => {
     const { options } = parseOrbit('---\nshowRings: no\nanimation: yes\npalette: "#111, #222"\n---\n# A');
-    expect(options).toMatchObject({ showRings: false, orbitAnimation: true, palette: ['#111', '#222'] });
+    expect(options).toMatchObject({ showRings: false, animation: true, palette: ['#111', '#222'] });
   });
 
   it('notes an attribute that looks misspelled, and keeps it as a custom attribute', () => {

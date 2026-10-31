@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { labelOrder, labelSides, outsideLabelBox, planLabels, type Box, type Point } from '../src/core/engine/labels';
 import { labelPlacement } from '../src/core/engine/views';
 import { worldToScreen, type Viewport } from '../src/core/engine/camera';
-import { breakUnits } from '../src/core/text-layout';
+import { breakUnits, wrapText } from '../src/core/text-layout';
 import type { Display, DisplayNode } from '../src/core/engine/display';
 import type { OrbitNode } from '../src/core/types';
 
@@ -116,14 +116,100 @@ describe('label planning', () => {
     expect(sunset?.direction.x).toBe(0);
   });
 
+  test('a planet whose name has no room inside shows its pill over its moons when nothing else is free', () => {
+    const map = display(
+      entry('sun', 'sun', 0, 0, 40, 'Sun'),
+      entry('members', 'planet', 0, 120, 18, 'contact_tec_mail_address_key', 'sun'),
+      // Moons all around it.
+      ...[0, 60, 120, 180, 240, 300].map((angle, index) => entry(`moon${index}`, 'moon', 30 * Math.cos((angle * Math.PI) / 180), 120 + 30 * Math.sin((angle * Math.PI) / 180), 5, 'm', 'members')),
+    );
+    const plan = planLabels(map, labelOrder(map.nodes.values()), { viewport, hasImage: () => false }).find((item) => item.entry.id === 'members');
+    expect(plan?.placement).toBe('outside');
+  });
+
+  test('a planet whose name has no room inside shows it on a free pill, or none', () => {
+    const map = display(entry('sun', 'sun', 0, 0, 40, 'Sun'), entry('members', 'planet', 0, 120, 18, 'contact_tec_mail_address_key', 'sun'));
+    const plan = (shown: Display) => planLabels(shown, labelOrder(shown.nodes.values()), { viewport, hasImage: () => false })
+      .find((item) => item.entry.id === 'members');
+    // Too long to show enough of inside it: its name goes on a pill, under it.
+    expect(plan(map)?.placement).toBe('outside');
+    expect(plan(map)?.direction).toEqual({ x: 0, y: 1 });
+    // Boxed in by its neighbors on every side, it covers none of them: no pill, as before.
+    const boxedIn = display(
+      ...map.nodes.values(),
+      entry('below', 'planet', 0, 160, 18, 'B', 'sun'),
+      entry('above', 'planet', 0, 80, 18, 'A', 'sun'),
+      entry('left', 'planet', -45, 120, 18, 'L', 'sun'),
+      entry('right', 'planet', 45, 120, 18, 'R', 'sun'),
+    );
+    expect(plan(boxedIn)).toBeUndefined();
+  });
+
+  test('the sun with no free side for its pill covers the fewest planets it can', () => {
+    // Planets crowd below the sun, one sits above it.
+    const map = display(
+      entry('sun', 'sun', 0, 0, 40, 'A sun with a long name'),
+      entry('left', 'planet', -30, 60, 16, 'L', 'sun'),
+      entry('middle', 'planet', 0, 62, 16, 'M', 'sun'),
+      entry('right', 'planet', 30, 60, 16, 'R', 'sun'),
+      entry('above', 'planet', 0, -62, 16, 'A', 'sun'),
+    );
+    // Its picture puts its name on a pill.
+    const sun = planLabels(map, labelOrder(map.nodes.values()), { viewport, hasImage: picture('sun') }).find((item) => item.entry.id === 'sun');
+    // Below would cover three planets, above one: it goes above.
+    expect(sun?.direction).toEqual({ x: 0, y: -1 });
+  });
+
   test('a pill keeps clear of the + in the orbit', () => {
     const map = display(entry('sun', 'sun', 0, 0, 40, 'Sun'), entry('planet', 'planet', 0, 120, 12, 'A planet with a long name', 'sun'));
     const side = (shown: Display) => planLabels(shown, labelOrder(shown.nodes.values()), { viewport, hasImage: picture('planet') })
       .find((plan) => plan.entry.id === 'planet')?.direction;
-    // Toward the sun is free…
-    expect(side(map)).toEqual({ x: 0, y: -1 });
+    // Under the planet, as a picture's caption, is free…
+    expect(side(map)).toEqual({ x: 0, y: 1 });
     // …until the + sits there.
-    expect(side({ ...map, addSlot: { parentId: 'sun', index: 1, x: 0, y: 92, radius: 10, opacity: 1 } })).toEqual({ x: 0, y: 1 });
+    expect(side({ ...map, addSlot: { parentId: 'sun', index: 1, x: 0, y: 148, radius: 10, opacity: 1 } })).toEqual({ x: 0, y: -1 });
+  });
+
+  test('pills keep clear of the field a new idea is typed in, and the sun shows none rather than one under it', () => {
+    const map = display(entry('sun', 'sun', 0, 0, 40, 'A sun with a long name'), entry('planet', 'planet', 0, 120, 16, 'P', 'sun'));
+    const sun = (keepClear?: Box[]) => planLabels(map, labelOrder(map.nodes.values()), { viewport, hasImage: picture('sun'), keepClear })
+      .find((plan) => plan.entry.id === 'sun');
+    expect(sun()?.direction).toEqual({ x: 0, y: 1 });
+    // The field floats where the pill would go, under the sun (at the viewport's center): the pill goes elsewhere…
+    const field: Box = { left: 140, right: 260, top: 236, bottom: 284 };
+    expect(sun([field])?.direction).not.toEqual({ x: 0, y: 1 });
+    // …and with nowhere else on the map, the field stays in full view.
+    expect(sun([{ left: 0, right: 400, top: 0, bottom: 400 }])).toBeUndefined();
+  });
+
+  test('ideas in a run going up name themselves beside it, where the ideas before and after leave room', () => {
+    // An overview's run of ideas, each the only one under the one before, straight up from its root: ideas a gap apart,
+    // too small for their names, with the next idea above and the one before below.
+    const ids = ['root', 'flights', 'compare', 'book', 'check-in', 'print'];
+    const texts = ['Trip', 'Flights', 'Compare fares', 'Book seats', 'Check in online', 'Print passes'];
+
+    // The root's radius, then each idea's and a 14 px gap, upward, as the overview lays a run out.
+    const ys = [150, 150 - (30 + 12 + 14), ...[2, 3, 4, 5].map((index) => 150 - (30 + 12 + 14) - (index - 1) * (12 + 12 + 14))];
+    const run = ids.map((id, index) => entry(id, 'node', 0, ys[index], index === 0 ? 30 : 12, texts[index], index === 0 ? undefined : ids[index - 1], index < ids.length - 1 ? [ids[index + 1]] : []));
+
+    const map = display(...run);
+    const planned = planLabels(map, labelOrder(map.nodes.values()), { viewport, hasImage: () => false });
+    const named = new Map(planned.map((plan) => [plan.entry.id, plan]));
+
+    // Every idea has its name, and the ones between others have it beside them, to the right.
+    expect(ids.filter((id) => !named.has(id))).toEqual([]);
+
+    // (Adding 0 makes a -0 from the arithmetic a 0.)
+    const side = ({ x, y }: Point) => ({ x: x + 0, y: y + 0 });
+
+    for (const id of ['compare', 'book', 'check-in']) {
+      expect(named.get(id)!.placement).toBe('outside');
+      expect(side(named.get(id)!.direction)).toEqual({ x: 1, y: 0 });
+    }
+
+    // Sideways is the last resort: an idea with room below or above keeps its name there.
+    expect(labelSides(map.nodes.get('compare')!, map).slice(-2).map(side)).toEqual([{ x: 1, y: 0 }, { x: -1, y: 0 }]);
+    expect(side(named.get('print')!.direction).x).toBe(0);
   });
 
   test('moons put their label away from their planet', () => {
@@ -157,7 +243,7 @@ describe('label planning', () => {
     });
     const summit = planned.find((plan) => plan.entry.id === 'summit')!;
     const trail = planned.find((plan) => plan.entry.id === 'trail')!;
-    expect(summit.text).toBe('⛰️ Summit');
+    expect(summit.text).toBe('⛰️\u00a0Summit');
     expect(trail.text).toBe('Trail');
     // The pill is planned as wide as what it says.
     const withoutIcon = outsideLabelBox('Summit', { x: 200, y: 80 }, 22, summit.direction, 160);
@@ -165,6 +251,20 @@ describe('label planning', () => {
     // A name inside its node says only the name: the icon shows above it there.
     const inside = planLabels(map, labelOrder(map.nodes.values()), { viewport, hasImage: () => false, pillIcon: () => '⛰️' });
     expect(inside.find((plan) => plan.entry.id === 'sun')?.text).toBe('Sun');
+  });
+
+  test('a pill on two lines keeps its icon with the start of the name, never alone on the first line', () => {
+    const map = display(entry('sun', 'sun', 0, 0, 40, 'Sun'), entry('calvin', 'planet', 0, 120, 22, 'Calvin cycle', 'sun'));
+    const plan = planLabels(map, labelOrder(map.nodes.values()), { viewport, hasImage: picture('calvin'), pillIcon: () => '🔄' })
+      .find((item) => item.entry.id === 'calvin')!;
+    expect(plan.text).toBe('🔄\u00a0Calvin cycle');
+
+    // However narrow the pill, the first line holds the icon and the name's first letters.
+    for (const width of [50, 60, 70]) {
+      const { lines } = wrapText(plan.text, width, 11.5, 2);
+      expect(lines[0]).toMatch(/^🔄\u00a0\p{L}/u);
+      expect(lines).toHaveLength(2);
+    }
   });
 
   test('pills stay hidden while nodes are in flight', () => {
@@ -306,13 +406,14 @@ const plainPlan = (map: Display, viewport: Viewport, previous: Map<string, Point
     const free = (box: Box) => onMap(box) && !taken.some((other) => overlap(box, other)) && covered(box) === 0;
     const spots = sides.map((side) => spotFor(side, 1));
     const wrapped = breakUnits(item.node.text).length > 1 ? sides.map((side) => spotFor(side, 2)) : [];
+    // Sorting keeps the order of spots that cover as much: the first of them wins.
+    const cheapest = (allowed: (box: Box) => boolean = () => true) => [...spots, ...wrapped]
+      .filter((candidate) => onMap(candidate.box) && !taken.some((other) => overlap(candidate.box, other)) && allowed(candidate.box))
+      .sort((first, second) => covered(first.box) - covered(second.box))[0];
+    const overMoonsOnly = (box: Box) => !discs.some((disc) => disc.id !== item.id && disc.radius > 2 && disc.cost > COVER_COST.moon && touches(disc, box));
     const spot = [...spots, ...wrapped].find((candidate) => free(candidate.box))
-      ?? (item.role === 'sun' ? spots.find((candidate) => onMap(candidate.box)) ?? spots[0] : undefined)
-      ?? (item.role === 'planet'
-        ? [...spots, ...wrapped]
-          .filter((candidate) => onMap(candidate.box) && !taken.some((other) => overlap(candidate.box, other)))
-          .sort((first, second) => covered(first.box) - covered(second.box))[0]
-        : undefined);
+      ?? (item.role === 'sun' ? cheapest() ?? spots[0] : undefined)
+      ?? (item.role === 'planet' ? (pictures.has(item.id) ? cheapest() : cheapest(overMoonsOnly)) : undefined);
 
     if (!spot) {
       continue;

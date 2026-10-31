@@ -175,6 +175,30 @@ describe('mounting', () => {
     expect(centered).toBe(1);
   });
 
+  test('a planet named with joined emoji (ZWJ) shows the whole emoji and its name, inside it or on its pill', () => {
+    const tables = (count: number) => Array.from({ length: count }, (_, index) => `- Table ${index + 1}`).join('\n');
+    const label = (host: HTMLElement, id: string) => host.querySelector<HTMLElement>(`.orbit-label[data-orbit-for="${id}"]`)!;
+    // People holding hands, a family and the rainbow flag are each one emoji, joined from several.
+    const { host: roomy } = mount(`# Club\n\n## 🧑‍🤝‍🧑 Members\n${tables(3)}\n\n## 👨‍👩‍👧 Families\n${tables(3)}\n\n## 🏳️‍🌈 Pride\n${tables(3)}`);
+
+    for (const [id, icon, name] of [['members', '🧑‍🤝‍🧑', 'Members'], ['families', '👨‍👩‍👧', 'Families'], ['pride', '🏳️‍🌈', 'Pride']]) {
+      const shown = label(roomy, id);
+      expect(shown.style.display).not.toBe('none');
+      expect(shown.classList.contains('orbit-label--outside')).toBe(false);
+      expect(shown.classList.contains('orbit-label--no-icon')).toBe(false);
+      expect(shown.querySelector('.orbit-label__icon')?.textContent).toBe(icon);
+      expect(shown.querySelector('.orbit-label__text')?.textContent).toBe(name);
+    }
+
+    // A name with no room in its planet goes on a pill, and takes the whole emoji with it.
+    const areas = ['📚 Catalog', '🔁 Loans & Returns', '🏛️ Branches', '🗓️ Events', '💳 Fees & Payments', '📦 Acquisitions', '🧾 Reports', '🔐 Staff & Access', '📨 Notices', '🌐 Digital Lending', '🧰 Maintenance', '🧑‍🤝‍🧑 Volunteer_coordinators'];
+    const { host: crowded } = mount(`# Library\n\n${areas.map((area) => `## ${area}\n${tables(2)}`).join('\n\n')}`);
+    const pill = label(crowded, 'volunteer_coordinators');
+    expect(pill.style.display).not.toBe('none');
+    expect(pill.classList.contains('orbit-label--outside')).toBe(true);
+    expect(pill.querySelector('.orbit-label__text')?.textContent).toBe('🧑‍🤝‍🧑\u00a0Volunteer_coordinators');
+  });
+
   test('says what to check when there is no element to draw in', () => {
     expect(() => new OrbitSVGRenderer(null as unknown as HTMLElement)).toThrow(/needs an element to draw the map in, but got null/);
   });
@@ -227,7 +251,7 @@ describe('mounting', () => {
 
 describe('options', () => {
   test('undefined options keep the defaults', () => {
-    const { host, renderer } = mount(ROADMAP, { viewMode: undefined, interactive: undefined, showControls: undefined });
+    const { host, renderer } = mount(ROADMAP, { view: undefined, interactive: undefined, showControls: undefined });
     expect(renderer.getViewMode()).toBe('focus');
     expect(host.querySelector('.orbit--static')).toBeNull();
     expect(host.querySelector<HTMLElement>('.orbit-controls')?.hidden).toBe(false);
@@ -251,6 +275,15 @@ describe('options', () => {
     expect(markdown).not.toContain('night');
     expect(markdown).not.toContain('Doc');
     expect(markdown).toContain('# X');
+  });
+
+  test('a bare tree equal to the document drawn leaves its frontmatter behind too', () => {
+    const { host, renderer } = mount('---\ntheme: night\ntitle: Doc\nowner: Ana\n---\n# A\n## B');
+    // The same nodes, as a tree without a document around it.
+    renderer.render(parseOrbit('# A\n## B').root);
+    expect(host.querySelector('.orbit')?.getAttribute('data-orbit-theme')).toBe('paper');
+    expect(renderer.getDocument()!.options).toEqual({});
+    expect(renderer.toMarkdown()).toBe('# A\n## B');
   });
 
   test('a theme name sets the theme attribute; an unknown one falls back to paper', () => {
@@ -318,7 +351,7 @@ describe('options', () => {
   });
 
   test('maxDepth limits what is drawn', () => {
-    const { host, renderer } = mount(ROADMAP, { maxDepth: 1, viewMode: 'all' });
+    const { host, renderer } = mount(ROADMAP, { maxDepth: 1, view: 'all' });
     expect(host.querySelector('[data-orbit-node-id="interviews"]')).toBeNull();
     expect(host.querySelector('[data-orbit-node-id="research"]')).not.toBeNull();
     renderer.setViewMode('focus');
@@ -337,9 +370,9 @@ describe('options', () => {
 });
 
 describe('drift', () => {
-  const angleAfterOneSecond = (orbitSpeed: number): number => {
+  const angleAfterOneSecond = (speed: number): number => {
     const clock = manualClock();
-    const { renderer } = mount(ROADMAP, { orbitAnimation: true, orbitSpeed });
+    const { renderer } = mount(ROADMAP, { animation: true, speed });
     const spin = (renderer as unknown as { spinPhysics: { angle: number } }).spinPhysics;
     const start = spin.angle;
     clock.advance(1000);
@@ -347,7 +380,7 @@ describe('drift', () => {
     return spin.angle - start;
   };
 
-  test('the orbit turns once every orbitSpeed seconds', () => {
+  test('the orbit turns once every speed seconds', () => {
     expect(angleAfterOneSecond(60)).toBeCloseTo(6, 0);
   });
 
@@ -360,7 +393,7 @@ describe('drift', () => {
     const clock = manualClock();
 
     try {
-      const { renderer } = mount(ROADMAP, { orbitAnimation: true, orbitSpeed: 240 });
+      const { renderer } = mount(ROADMAP, { animation: true, speed: 240 });
       let paints = 0;
       const paint = (renderer as unknown as { paint: () => void }).paint.bind(renderer);
 
@@ -381,7 +414,7 @@ describe('drift', () => {
     const clock = manualClock();
 
     try {
-      const { renderer } = mount(ROADMAP, { orbitAnimation: true, orbitSpeed: 60, transitionDuration: 400 });
+      const { renderer } = mount(ROADMAP, { animation: true, speed: 60, transitionDuration: 400 });
       const spin = (renderer as unknown as { spinPhysics: { angle: number } }).spinPhysics;
       clock.advance(100);
       renderer.zoomBy(1.6);
@@ -400,7 +433,7 @@ describe('drift', () => {
     const clock = manualClock();
 
     try {
-      const { renderer } = mount(ROADMAP, { orbitAnimation: true, orbitSpeed: 60 });
+      const { renderer } = mount(ROADMAP, { animation: true, speed: 60 });
       const running = () => (renderer as unknown as { clock: { isRunning: boolean } }).clock.isRunning;
       // A moon with nothing under it: nothing in the view turns with the orbit.
       renderer.focusNode('interviews');
@@ -431,7 +464,7 @@ describe('drift', () => {
     const clock = manualClock();
 
     try {
-      const { renderer } = mount(ROADMAP, { orbitAnimation: true, orbitSpeed: 60 });
+      const { renderer } = mount(ROADMAP, { animation: true, speed: 60 });
       const spin = (renderer as unknown as { spinPhysics: { angle: number } }).spinPhysics;
       const scrolled = (inView: boolean) => callbacks.at(-1)!([{ isIntersecting: inView } as IntersectionObserverEntry], {} as IntersectionObserver);
       scrolled(false);
@@ -479,7 +512,7 @@ describe('framing', () => {
   }
 
   test('the overview keeps the root at the center of a lopsided tree', () => {
-    const { renderer } = mount('# Root\n\n## A\n- A1\n- A2\n- A3\n- A4\n## B', { viewMode: 'all' });
+    const { renderer } = mount('# Root\n\n## A\n- A1\n- A2\n- A3\n- A4\n## B', { view: 'all' });
     const root = internals(renderer).scene?.nodes.get('root');
     const point = onScreen(renderer, root!);
     expect(point.x).toBeCloseTo(300, 5);
@@ -508,7 +541,7 @@ describe('framing', () => {
   });
 
   test('the overview fits the rings, which reach past the nodes on them', () => {
-    const { renderer } = mount(ROADMAP, { viewMode: 'all' });
+    const { renderer } = mount(ROADMAP, { view: 'all' });
     expect(internals(renderer).scene!.kind).toBe('overview');
 
     for (const edge of ringEdges(renderer)) {
@@ -731,6 +764,22 @@ describe('colors', () => {
     expect(link?.style.getPropertyValue('--orbit-link-color')).not.toBe('');
   });
 
+  test('each node\'s element says the color its planet is drawn with, as --orbit-node-color, in both views', () => {
+    // A public hook (docs/compatibility.md): pages pick the text that reads on a planet from it.
+    const { host, renderer } = mount(ROADMAP);
+
+    for (const view of ['focus', 'all'] as const) {
+      renderer.setViewMode(view);
+      const elements = Array.from(host.querySelectorAll<SVGGElement>('.orbit-node[data-orbit-node-id]')).filter((element) => fill(host, element.dataset.orbitNodeId!));
+      expect(elements.length).toBeGreaterThan(3);
+
+      for (const element of elements) {
+        const id = element.dataset.orbitNodeId!;
+        expect(`${view} ${id}: ${element.style.getPropertyValue('--orbit-node-color')}`).toBe(`${view} ${id}: ${fill(host, id)}`);
+      }
+    }
+  });
+
   test('the sun gets a halo and a wider shadow; planets get their own shadow, and small moons none', () => {
     const { host, renderer } = mount(ROADMAP);
     const shadowFilter = (id: string) => node(host, id).querySelector('.orbit-node__shadow')?.getAttribute('filter');
@@ -755,12 +804,12 @@ describe('colors', () => {
   });
 
   test('overview nodes, often hundreds, get no shadow or halo', () => {
-    const { host } = mount(ROADMAP, { viewMode: 'all' });
+    const { host } = mount(ROADMAP, { view: 'all' });
     expect(host.querySelectorAll('.orbit-node__shadow, .orbit-node__halo')).toHaveLength(0);
   });
 
   test('getNodeColor() reports the color a node is drawn with', () => {
-    const { renderer } = mount('# Root\n\n## One\n- First\n- Second\n## Two\n## Red <!-- orbit color: "#FF0000" -->\n## Named <!-- orbit color: tomato -->');
+    const { renderer } = mount('# Root\n\n## One\n- First\n- Second\n## Two\n## Red <!-- orbit color: "#FF0000" -->\n## Named <!-- orbit color: tomato -->\n## Other <!-- orbit color: "hsl(10 80% 60%)" -->');
     expect(renderer.getNodeColor('root')).toBe('#fad86f');
     expect(renderer.getNodeColor('one')).toBe('#febab6');
     expect(renderer.getNodeColor('first')).toBe('#febab6');
@@ -768,7 +817,9 @@ describe('colors', () => {
     expect(renderer.getNodeColor('second')).not.toBe('#febab6');
     expect(renderer.getNodeColor('two')).toBe('#99e0ba');
     expect(renderer.getNodeColor('red')).toBe('#ff0000');
-    expect(renderer.getNodeColor('named')).toBe('tomato');
+    expect(renderer.getNodeColor('named')).toBe('#ff6347');
+    // A color Orbit can't read, as written.
+    expect(renderer.getNodeColor('other')).toBe('hsl(10 80% 60%)');
     expect(renderer.getNodeColor('nowhere')).toBeNull();
   });
 
@@ -824,6 +875,14 @@ describe('toSVGString', () => {
   test('escapes text from the map', () => {
     const { renderer } = mount('# Fish & <Chips>');
     expect(renderer.toSVGString()).toContain('Fish &amp; &lt;Chips&gt;');
+  });
+
+  test('gives each map\'s export ids of its own, so exports can share a page', () => {
+    const first = mount(ROADMAP).renderer.toSVGString();
+    const second = mount('# Trip\n## Summit\n## Camp', { theme: 'night' }).renderer.toSVGString();
+    const ids = (svg: string) => Array.from(svg.matchAll(/ id="([^"]+)"/g), (match) => match[1]);
+    expect(ids(first).length).toBeGreaterThan(0);
+    expect(ids(first).filter((id) => ids(second).includes(id))).toEqual([]);
   });
 });
 

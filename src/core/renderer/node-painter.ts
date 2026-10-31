@@ -42,6 +42,9 @@ export interface NodeHost {
   /** The node whose text is being typed, if any. */
   editedId(): string | null;
 
+  /** Whether a node's ideas are hidden for later (see `hideChildren`), which its name says. */
+  hidesChildren(id: string): boolean;
+
   /** The node lifted to be dragged, the bodies carried under the press (null when nothing is), and the node it would drop into. */
   drag(): { liftedId: string | null; carried: Set<string> | null; targetId: string | null };
 
@@ -247,7 +250,7 @@ export class NodePainter {
 
       if (!view) {
         view = new NodeView(entry, entry.radius * display.camera.scale, this.ids, this.host.baseUrl(), this.host.extensions(), drawing, () => this.host.requestPaint());
-        view.element.setAttribute('aria-label', describeNode(entry.node, 0, entry.node.children.length, this.host.extensions(), this.host.words()));
+        view.element.setAttribute('aria-label', describeNode(entry.node, this.host.hidesChildren(entry.id), this.host.extensions(), this.host.words()));
         this.nodeViews.set(entry.id, view);
         this.host.tabStopsChanged();
       }

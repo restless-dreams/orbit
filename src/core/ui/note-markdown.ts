@@ -8,7 +8,7 @@
  * `code`, [links](https://…), <https://autolinks> and ![images](…).
  */
 
-import { isNodeLink } from '../node-links.js';
+import { CODE_OR_COMMENT, isNodeLink } from '../node-links.js';
 import { guardUrl, resolveUrl } from '../url-guard.js';
 
 export interface NoteRenderContext {
@@ -23,9 +23,6 @@ export interface NoteRenderContext {
 export const renderNoteMarkdown = (markdown: string, context: NoteRenderContext = {}): DocumentFragment => {
   return renderBlocks(withoutComments(markdown), context, 0);
 };
-
-/** Code, kept as written, or an HTML comment, hidden as markdown hides it. */
-const CODE_OR_COMMENT = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`)|<!--[\s\S]*?-->/g;
 
 /** The note without its HTML comments, which stay in the map's file; code shows them as written. */
 const withoutComments = (markdown: string): string => {

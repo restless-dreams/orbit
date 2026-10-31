@@ -2,8 +2,9 @@ import { describe, expect, it } from 'bun:test';
 import { exportWebPage } from '../src/core/web-page/page';
 import { startWebPage } from '../src/core/web-page/runtime';
 import { parseOrbit } from '../src/core/dispatch';
-import { themeTokens } from '../src/core/themes';
+import { ORBIT_THEME_PRESETS, themeTokens } from '../src/core/themes';
 import type { WebPageData } from '../src/core/web-page/page';
+import type { OrbitRendererTheme } from '../src/core/types';
 import { manualClock, useMapSize, useReducedMotion } from './helpers/renderer';
 
 useMapSize(800, 600);
@@ -51,6 +52,51 @@ describe('exportWebPage', () => {
     expect(automatic).toContain('@media (prefers-color-scheme: dark)');
   });
 
+  it('writes the theme\'s colors inside its style, so they can\'t add markup', () => {
+    const elements = (html: string) => Array.from(readPage(html).page.querySelectorAll('*'), (element) => element.tagName).join(' ');
+    const html = exportWebPage('# Launch', {
+      script: '',
+      theme: { preset: 'paper', tokens: { surface: 'red; } </style><script>alert(1)</script><style> :root {', 'sheet-text': '</STYLE\t><img src=x onerror=alert(2)>' } },
+    });
+    // The page has the elements any page has, and no others: the colors stay text inside its style.
+    expect(elements(html)).toBe(elements(exportWebPage('# Launch', { script: '' })));
+    expect(html.match(/<\/style/gi)).toHaveLength(1);
+  });
+
+  it('writes a theme\'s colors into its style only when they stay in their own declaration, as the live map takes them', () => {
+    const style = (theme: string | OrbitRendererTheme) => readPage(exportWebPage('# Launch', { script: '', theme })).page.querySelector('style')!.textContent!;
+    const paper = style({ preset: 'paper' });
+    const breakouts: Record<string, string>[] = [
+      // Ending the declaration and its rule, which the live map's style.setProperty refuses too.
+      { surface: 'red; } body { display: none } :root {' },
+      // Two values the live map takes, which only together end the rule: the first opens a string, the second closes it.
+      { surface: '"', 'sheet-background': '" } body { display: none } :root { --page-end: "' },
+      // An escape, a comment and a string that would run on over what comes after them.
+      { 'sheet-text': 'red\\' },
+      { 'sheet-border': 'red /*' },
+      { 'sheet-muted-text': '"red' },
+      { 'sheet-shadow': '0 8px 24px rgba(0, 0, 0, 0.2' },
+      // Something to load, which a color never needs.
+      { surface: 'url(wallpaper.png)' },
+    ];
+
+    for (const tokens of breakouts) {
+      // Each falls back to the preset's color, as the print layout's fonts do.
+      expect(style({ preset: 'paper', tokens })).toBe(paper);
+    }
+
+    const plain = { surface: '#123456', 'sheet-shadow': '0 8px 24px rgba(15, 23, 42, 0.16)', 'sheet-border': 'color-mix(in oklab, var(--page-text) 12%, transparent)' };
+    const kept = style({ preset: 'paper', tokens: plain });
+    expect(kept).toContain('--page-background: #123456;');
+    expect(kept).toContain('--page-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);');
+    expect(kept).toContain('--page-border: color-mix(in oklab, var(--page-text) 12%, transparent);');
+
+    // Every built-in theme's colors are plain enough: given on paper, the page writes them as that theme's page does.
+    for (const [name, tokens] of Object.entries(ORBIT_THEME_PRESETS)) {
+      expect(style({ preset: 'paper', tokens: { ...tokens } })).toBe(style(name));
+    }
+  });
+
   it('prints the map laid out for paper instead of the map on screen', () => {
     const { page } = readPage(exportWebPage('# Launch', { script: '' }));
     expect(page.getElementById('page-print')).not.toBeNull();
@@ -81,9 +127,14 @@ describe('the page', () => {
     const { renderer, text, key } = openPage(exportWebPage(MAP, { script: '' }));
     const caption = document.getElementById('page-caption')!;
     expect(caption.hidden).toBe(true);
-    (document.querySelector('[data-present]') as HTMLButtonElement).click();
+    const present = document.querySelector('[data-present]') as HTMLButtonElement;
+    present.focus();
+    present.click();
     expect(caption.hidden).toBe(false);
     expect([text('page-title'), text('page-note'), text('page-count')]).toEqual(['Trip', 'Where we go.', '1 of 4']);
+    // The Present button hides, so the title has the focus, and the keys. (Compared by id: with a map on the page, Bun's
+    // toBe takes 20 s to describe two different elements, then passes.)
+    expect(document.activeElement?.id).toBe('page-title');
     // The page has the map's keys while presenting, and the map takes no input of its own.
     key('ArrowRight');
     key('ArrowRight');
@@ -93,6 +144,7 @@ describe('the page', () => {
     key('Escape');
     clock.advance(2000);
     expect(caption.hidden).toBe(true);
+    expect(document.activeElement?.className).toBe('page__present');
     expect(renderer.getFocusedNode()?.id).toBe('summit');
     // P presents again, from the idea in focus.
     key('p');

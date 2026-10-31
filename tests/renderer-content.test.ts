@@ -87,9 +87,9 @@ describe('collapsed nodes', () => {
 describe('node details on the map', () => {
   test('nodes describe themselves to assistive technology', () => {
     const { host } = mount(RICH);
-    expect(node(host, 'status').getAttribute('aria-label')).toBe('Status, status blocked');
+    expect(node(host, 'status').getAttribute('aria-label')).toBe('Status, status: Blocked');
     expect(node(host, 'notes').getAttribute('aria-label')).toBe('Notes, has note');
-    expect(node(host, 'launch-plan').getAttribute('aria-label')).toBe('Launch plan, 3 items, has note, image, and link');
+    expect(node(host, 'launch-plan').getAttribute('aria-label')).toBe('Launch plan, 3 items, has note, picture, and link');
     expect(node(host, 'launch-plan').getAttribute('aria-current')).toBe('true');
   });
 
@@ -125,7 +125,7 @@ describe('actions under the focused node', () => {
   test('the focused node offers a button per kind of content', () => {
     const { host } = mount(RICH);
     const buttons = Array.from(host.querySelectorAll<HTMLButtonElement>('.orbit-actions button'));
-    expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual(['View image', 'Read note', 'Open link']);
+    expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual(['View picture', 'Read note', 'Open link']);
     expect(host.querySelector('.orbit-actions--visible')).not.toBeNull();
   });
 

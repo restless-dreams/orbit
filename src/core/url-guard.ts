@@ -4,7 +4,8 @@
  * baseUrl.
  */
 
-export type UrlSurface = 'image' | 'video' | 'embed' | 'link';
+/** Where a URL is used. `motion` is a live photo's: the few seconds of video a phone records around a picture. */
+export type UrlSurface = 'image' | 'video' | 'audio' | 'motion' | 'embed' | 'link';
 
 const warned = new Set<string>();
 const WARN_LIMIT = 500;
@@ -77,6 +78,30 @@ const hasScheme = (url: string): boolean => {
   return /^[a-z][a-z0-9+.-]*:/i.test(url);
 };
 
+/**
+ * The schemes a relative address may take from the base it's joined to:
+ * places to load from, never scripts. A relative address takes its base's
+ * scheme, so joined to `javascript://x/` it would run as one.
+ */
+const JOINABLE_SCHEMES = new Set(['http:', 'https:', 'file:']);
+
+/**
+ * Whether a map may name `baseUrl` as where its relative addresses resolve
+ * from: a web address (http or https, or protocol-relative) or a relative
+ * one, which the page's own address completes. Checked the way browsers read
+ * it, so " java\tscript://x/" is `javascript:` here too.
+ */
+export const isWebBase = (baseUrl: string): boolean => {
+  const url = normalizeUrl(baseUrl);
+
+  if (url.startsWith('//') || !hasScheme(url)) {
+    return true;
+  }
+
+  const scheme = url.slice(0, url.indexOf(':')).toLowerCase();
+  return scheme === 'http' || scheme === 'https';
+};
+
 const schemeAllowed = (scheme: string, surface: UrlSurface, parsed: URL): boolean => {
   if (scheme === 'http' || scheme === 'https') {
     return true;
@@ -86,8 +111,18 @@ const schemeAllowed = (scheme: string, surface: UrlSurface, parsed: URL): boolea
     return /^data:image\/(png|jpeg|jpg|gif|webp|avif|bmp|ico);/i.test(parsed.href);
   }
 
+  // A sound inside a page, such as a voice memo in a map shared as one file.
+  if (scheme === 'data' && surface === 'audio') {
+    return /^data:audio\/(mpeg|mp3|mp4|aac|x-m4a|ogg|opus|wav|wave|x-wav|flac|x-flac|webm);/i.test(parsed.href);
+  }
+
+  // A live photo's motion inside a page, with its picture: a few seconds, unlike a video.
+  if (scheme === 'data' && surface === 'motion') {
+    return /^data:video\/(mp4|quicktime|webm);/i.test(parsed.href);
+  }
+
   if (scheme === 'blob') {
-    return surface === 'image' || surface === 'video';
+    return surface === 'image' || surface === 'video' || surface === 'audio' || surface === 'motion';
   }
 
   if (scheme === 'mailto' || scheme === 'tel' || scheme === 'sms') {
@@ -129,7 +164,7 @@ export const resolveBaseUrl = (baseUrl: string): string => {
     }
 
     throw new Error(
-      `RendererOptions.baseUrl is relative ("${baseUrl}") and no document.baseURI is available. ` +
+      `OrbitRendererOptions.baseUrl is relative ("${baseUrl}") and no document.baseURI is available. ` +
       `Provide an absolute baseUrl when running outside a browser document context.`,
     );
   }
@@ -141,6 +176,9 @@ export const resolveBaseUrl = (baseUrl: string): string => {
  * - Absolute URLs (https://, http://, etc.) pass through unchanged.
  * - Protocol-relative URLs (//host/path) are treated as already-absolute (resolved by the browser at fetch time).
  * - Relative URLs (foo.jpg, ./x, /assets/y) are resolved against `baseUrl`.
+ * - The joined address is checked again: it keeps its base's scheme, so a base that isn't http, https or file
+ *   (such as `javascript://x/`, or one nothing can be joined to) leaves the address relative, as if there were
+ *   no base, for the page's own address to complete. Callers guard `url` first, so what this returns is safe too.
  *
  * For directory-relative resolution, `baseUrl` should end with `/`.
  * Per WHATWG URL spec, `new URL('foo.jpg', 'https://x/dir')` yields `https://x/foo.jpg`
@@ -159,7 +197,23 @@ export const resolveUrl = (url: string, baseUrl: string | undefined): string => 
     new URL(url);
     return url; // already absolute
   } catch {
-    const base = resolveBaseUrl(baseUrl);
-    return new URL(url, base).href;
+    // Relative: joined to the base below.
   }
+
+  const base = resolveBaseUrl(baseUrl);
+  let joined: URL;
+
+  try {
+    joined = new URL(url, base);
+  } catch {
+    warnOnce(baseUrl, 'not a base URL');
+    return url;
+  }
+
+  if (!JOINABLE_SCHEMES.has(joined.protocol)) {
+    warnOnce(baseUrl, 'base URL scheme forbidden');
+    return url;
+  }
+
+  return joined.href;
 };

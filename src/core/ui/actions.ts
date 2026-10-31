@@ -1,6 +1,6 @@
 /**
  * Buttons under the focused node: its type's details, its image, video,
- * embed, note and link, then your own actions.
+ * sound, embed, note and link, then your own actions.
  */
 
 import type { OrbitContentAction, OrbitNode } from '../types.js';
@@ -9,7 +9,7 @@ import { actionLabel, type OrbitAction } from '../extensions.js';
 import { hasMediaSource } from '../media.js';
 import { isNodeLink } from '../node-links.js';
 import { guardUrl } from '../url-guard.js';
-import { overlayTransform, pointsCoarsely } from '../browser.js';
+import { focusedElement, overlayTransform, pointsCoarsely } from '../browser.js';
 import { createActionIcon, createIcon, type IconName } from './icons.js';
 
 export type ActionKind = OrbitContentAction;
@@ -36,6 +36,10 @@ export const activeActions = (node: OrbitNode, hasDetails = false): ActionKind[]
     kinds.push('video');
   }
 
+  if (hasMediaSource(node.audio)) {
+    kinds.push('audio');
+  }
+
   if (hasMediaSource(node.embed) && !hasMediaSource(node.video)) {
     kinds.push('embed');
   }
@@ -55,6 +59,7 @@ const LABELS = {
   details: 'showDetails',
   image: 'viewImage',
   video: 'playVideo',
+  audio: 'playAudio',
   embed: 'openEmbed',
   note: 'readNote',
   link: 'openLink',
@@ -64,6 +69,7 @@ const ICONS: Record<ActionKind, IconName> = {
   details: 'info',
   image: 'image',
   video: 'video',
+  audio: 'audio',
   embed: 'embed',
   note: 'note',
   link: 'link',
@@ -131,6 +137,9 @@ export class ActionBar {
   /** The last node counted, and its count. */
   private counted: { node: OrbitNode; count: number } | null = null;
 
+  /** What each button does: one of Orbit's, or the id of one of your actions. */
+  private buttonActions = new Map<HTMLButtonElement, string>();
+
   constructor(context: ActionBarContext) {
     this.context = context;
     this.element = document.createElement('div');
@@ -162,13 +171,26 @@ export class ActionBar {
    */
   show(node: OrbitNode, x: number, y: number, wrap = 0): void {
     if (node !== this.node) {
+      // Making the buttons again would take focus to <body>: it goes to the new button that does the same, or the map.
+      const focused = this.focusedAction();
       this.node = node;
+      this.buttonActions.clear();
       this.element.replaceChildren(
         ...this.kinds(node).map((kind) => this.contentButton(node, kind)),
         ...this.context.actions(node).map((action) => this.actionButton(node, action)),
       );
       const words = this.words();
       this.element.setAttribute('aria-label', node.text ? words.text('ideaActions', { name: node.text }) : words.text('ideaActionsUntitled'));
+
+      if (focused !== null) {
+        const same = [...this.buttonActions].find(([, action]) => action === focused)?.[0];
+
+        if (same) {
+          same.focus({ preventScroll: true });
+        } else {
+          this.returnFocus();
+        }
+      }
     }
 
     if (!this.element.hasChildNodes()) {
@@ -200,26 +222,52 @@ export class ActionBar {
     }
 
     // Keep focus on the map if it was on one of the buttons: blurring would drop it to <body>, off the map's keys.
-    if (this.element.contains(this.element.ownerDocument.activeElement)) {
-      if (this.context.returnFocus) {
-        this.context.returnFocus();
-      } else {
-        (this.element.ownerDocument.activeElement as HTMLElement).blur();
-      }
+    if (this.hasFocus()) {
+      this.returnFocus();
     }
 
     this.element.classList.remove('orbit-actions--visible');
     this.visible = false;
   }
 
+  /** Whether one of the buttons has keyboard focus, in a shadow root too. */
+  private hasFocus(): boolean {
+    const active = focusedElement(this.element);
+    return active !== null && this.element.contains(active);
+  }
+
+  /** What the button with focus does, or null when none has it. */
+  private focusedAction(): string | null {
+    const active = focusedElement(this.element);
+    return active instanceof HTMLButtonElement ? this.buttonActions.get(active) ?? null : null;
+  }
+
+  private returnFocus(): void {
+    if (this.context.returnFocus) {
+      this.context.returnFocus();
+    } else {
+      (focusedElement(this.element) as HTMLElement | null)?.blur();
+    }
+  }
+
   private words(): OrbitWords {
     return this.context.words?.() ?? ENGLISH;
   }
 
-  /** Forgets the buttons, so the next `show` rebuilds them. */
+  /**
+   * Forgets the buttons, so the next `show` rebuilds them. While one has
+   * focus, they stay until then, so focus can go to the new one that does
+   * the same rather than to <body>.
+   */
   reset(): void {
     this.node = null;
     this.counted = null;
+
+    if (this.hasFocus()) {
+      return;
+    }
+
+    this.buttonActions.clear();
     this.element.replaceChildren();
     this.hide();
   }
@@ -254,6 +302,7 @@ export class ActionBar {
       this.context.onAction(node, action, event);
     });
 
+    this.buttonActions.set(button, action);
     return button;
   }
 }

@@ -41,7 +41,7 @@ createOrbitMap(element, markdown, { theme: materialTheme('#0B57D0') });
 registerTheme('brand', materialTheme('#E11D48', { dark: true }));
 ```
 
-It takes any color Orbit reads (hex, `rgb()`, `oklch()`…) and returns a theme object built on `material`, or `material-night` with `{ dark: true }`. The `material` themes themselves are built from Material's baseline purple, `MATERIAL_SEED`.
+It takes any color Orbit reads (hex, `rgb()`, `oklch()`, a name such as `tomato`…) and returns a theme object built on `material`, or `material-night` with `{ dark: true }`. The `material` themes themselves are built from Material's baseline purple, `MATERIAL_SEED`.
 
 ## Custom properties
 
@@ -76,7 +76,7 @@ For `<orbit-map>`, set them on the element (`orbit-map { --orbit-surface: … }`
 | Controls | `--orbit-control-background`, `--orbit-control-border`, `--orbit-control-text`, `--orbit-control-muted-text`, `--orbit-control-active-background`, `--orbit-control-active-text`, `--orbit-control-shadow`, `--orbit-control-blur` |
 | Tooltip | `--orbit-tooltip-background`, `--orbit-tooltip-text` |
 | Content buttons | `--orbit-action-background`, `--orbit-action-border`, `--orbit-action-text`, `--orbit-action-shadow` |
-| Detail sheet and media viewer | `--orbit-sheet-background` (behind the viewer's media too), `--orbit-sheet-text`, `--orbit-sheet-muted-text`, `--orbit-sheet-border`, `--orbit-sheet-backdrop`, `--orbit-sheet-shadow` (under the viewer's videos too), `--orbit-sheet-blur`, `--orbit-chip-background`, `--orbit-chip-text`, `--orbit-link-text`. The viewer's buttons are the controls'. |
+| Detail sheet and media viewer | `--orbit-sheet-background` (behind the viewer's media too), `--orbit-sheet-text`, `--orbit-sheet-muted-text`, `--orbit-sheet-border`, `--orbit-sheet-backdrop`, `--orbit-sheet-shadow` (under the viewer's videos too), `--orbit-sheet-blur`, `--orbit-chip-background`, `--orbit-chip-text`, `--orbit-link-text`. The viewer's buttons are the controls', and so is a live photo's mark; a sound's play button and slider, and a live photo's mark while it plays, take `--orbit-control-active-background` and `--orbit-control-active-text`. |
 | Status colors | `--orbit-status-active`, `--orbit-status-done`, `--orbit-status-blocked`, `--orbit-status-todo`, `--orbit-status-neutral` |
 | Error card | `--orbit-error-background`, `--orbit-error-border`, `--orbit-error-text` |
 

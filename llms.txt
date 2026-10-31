@@ -17,7 +17,7 @@
 
 - [Map format](https://github.com/restless-dreams/orbit/blob/main/docs/format.md): headings, lists, notes, media, every attribute and document option, the YAML flavor, and every diagnostic code
 - [README](https://github.com/restless-dreams/orbit/blob/main/README.md): install and a quick start for each way to draw a map
-- [Guide](https://github.com/restless-dreams/orbit/blob/main/docs/guide.md): every renderer option, event and method, the React component, the element, marked, pictures and videos, SVG export and the command line
+- [Guide](https://github.com/restless-dreams/orbit/blob/main/docs/guide.md): every renderer option, event and method, the React component, the element, marked, pictures, videos and sounds, SVG export and the command line
 - [Recipes](https://github.com/restless-dreams/orbit/blob/main/docs/recipes.md): plain HTML, React and Next.js, Vue, Svelte, Astro, remark and rehype, static sites
 - [Theming](https://github.com/restless-dreams/orbit/blob/main/docs/theming.md): the fourteen themes, Material themes from any color, and every CSS custom property
 - [Extending](https://github.com/restless-dreams/orbit/blob/main/docs/extending.md): node types, your own actions, status words and named themes, for one map or every map
@@ -25,8 +25,9 @@
 - [Map tools for AI](https://github.com/restless-dreams/orbit/blob/main/docs/map-tools.md): tools for any model to read and change a map, on screen or on a server, for each provider's API and MCP
 - [Maps from other apps](https://github.com/restless-dreams/orbit/blob/main/docs/import-export.md): bringing in OPML, FreeMind, Freeplane and XMind maps with their notes, links and pictures, what each warning means, and writing OPML
 - [Languages](https://github.com/restless-dreams/orbit/blob/main/docs/languages.md): maps in the page's language, English and Spanish built in, adding languages and changing single words
-- [Pictures and videos](https://github.com/restless-dreams/orbit/blob/main/docs/media.md): the media viewer, its keys, YouTube and Vimeo, sound and autoplay, and opening, playing and following media from code
+- [Pictures, videos and sounds](https://github.com/restless-dreams/orbit/blob/main/docs/media.md): the media viewer, its keys, live photos, sounds in Orbit's own player, YouTube and Vimeo, sound and autoplay, and opening, playing and following media from code
 - [Coding agents](https://github.com/restless-dreams/orbit/blob/main/docs/agents.md): the skill, validation as JSON, and messages for setup mistakes
+- [Compatibility](https://github.com/restless-dreams/orbit/blob/main/docs/compatibility.md): what each version keeps working, the public surface, and how changes are deprecated
 - [Everything in one file](https://cdn.jsdelivr.net/npm/@restless-dreams/orbit/llms-full.txt): the README and all of the guides above, for the latest release
 - [Website](https://orbit.hyuchia.com): live examples, the themes side by side, setup for each integration, and a playground to write a map and explore it in the browser
 

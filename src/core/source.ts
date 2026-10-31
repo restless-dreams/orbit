@@ -115,7 +115,11 @@ export interface FrontmatterBlock {
   closeIndex: number;
 }
 
-/** Frontmatter is a `---` fenced block starting on the first non-blank line. */
+/**
+ * Frontmatter is a `---` fenced block starting on the first non-blank line.
+ * It closes at a `---` at the start of a line, as in other apps that read
+ * frontmatter: an indented one is part of a value, such as a `|` block's.
+ */
 export const findFrontmatter = (lines: string[]): FrontmatterBlock | null => {
   const openIndex = firstContentLineIndex(lines);
 
@@ -124,7 +128,7 @@ export const findFrontmatter = (lines: string[]): FrontmatterBlock | null => {
   }
 
   for (let index = openIndex + 1; index < lines.length; index += 1) {
-    if (lines[index].trim() === '---') {
+    if (/^---\s*$/.test(lines[index])) {
       return { yaml: lines.slice(openIndex + 1, index).join('\n'), openIndex, closeIndex: index };
     }
   }

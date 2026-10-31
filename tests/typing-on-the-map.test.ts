@@ -84,6 +84,19 @@ describe('the + in the orbit', () => {
     expect(slotOf(renderer)).toBeUndefined();
   });
 
+  test("where it isn't drawn, it isn't a button for assistive technology either", () => {
+    const { host, renderer } = mount(MAP, { editable: true });
+    expect(plus(host).hasAttribute('aria-hidden')).toBe(false);
+    // The overview has no +, and neither does a map that can't be edited, as a quiz's card isn't:
+    // Chromium's WebView would still tell TalkBack of a button there, in the middle of the planet.
+    renderer.setViewMode('all');
+    expect(plus(host).getAttribute('aria-hidden')).toBe('true');
+    renderer.setViewMode('focus');
+    expect(plus(host).hasAttribute('aria-hidden')).toBe(false);
+    renderer.setOptions({ editable: false });
+    expect(plus(host).getAttribute('aria-hidden')).toBe('true');
+  });
+
   test('pressing it opens a field there; Enter adds the idea and moves on to the next', () => {
     const opened: OrbitEditorEvent[] = [];
     const edits: OrbitEdit[] = [];
@@ -322,6 +335,32 @@ describe('typing a node\'s text where it is', () => {
   });
 });
 
+describe('typing while the map is drawn again', () => {
+  test('another version of the same map keeps the field open, and what is typed goes into it', () => {
+    const { host, renderer } = mount('# Trip\n## Food\n## Museums');
+    renderer.editNode('food');
+    type(host, 'Street food');
+    // The map's text changed elsewhere, while typing: another device added an idea.
+    renderer.render(parseOrbit('# Trip\n## Food\n## Museums\n## Beaches'));
+    expect(field(host).value).toBe('Street food');
+    renderer.stopEditing(true);
+    expect(renderer.toMarkdown()).toBe('# Trip\n## Street food\n## Museums\n## Beaches');
+  });
+
+  test('another map never receives what was typed in this one, even where it has a node with the same id', () => {
+    const edits: OrbitEdit[] = [];
+    const { host, renderer } = mount('# Trip\n## Food\n## Museums', { onEdit: (edit) => edits.push(edit) });
+    renderer.editNode('food');
+    type(host, 'Street food');
+    renderer.render(parseOrbit('# Groceries\n## Food\n## Drinks'));
+    // The field closed with its map, and nothing was saved anywhere.
+    expect(host.querySelector('.orbit-editor:not([hidden])')).toBeNull();
+    renderer.stopEditing(true);
+    expect(renderer.toMarkdown()).toBe('# Groceries\n## Food\n## Drinks');
+    expect(edits).toEqual([]);
+  });
+});
+
 describe('keys for editing', () => {
   const key = (target: Element, name: string, init: KeyboardEventInit = {}): KeyboardEvent => {
     const event = new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true, ...init });
@@ -444,3 +483,83 @@ describe('keys for editing', () => {
   });
 });
 
+
+describe('typing where ideas are hidden', () => {
+  test('a node whose ideas are hidden takes no new one until they show: editNewNode() refuses', () => {
+    const opened = mock<(event: OrbitEditorEvent) => void>(() => undefined);
+    const { host, renderer } = mount(MAP, { editable: true, onEditorOpen: opened });
+    renderer.hideChildren('trip');
+    expect(slotOf(renderer)).toBeUndefined();
+    expect(renderer.editNewNode()).toBe(false);
+    expect(renderer.editNewNode('trip', 1)).toBe(false);
+    expect(host.querySelector<HTMLTextAreaElement>('.orbit-editor')?.hidden ?? true).toBe(true);
+    expect(opened).not.toHaveBeenCalled();
+
+    renderer.revealChildren('trip');
+    expect(renderer.editNewNode()).toBe(true);
+    expect(field(host).hidden).toBe(false);
+    expect(opened).toHaveBeenCalledTimes(1);
+  });
+
+  test('one elsewhere takes none either, and the map stays where it is', () => {
+    const { renderer } = mount(MAP, { editable: true });
+    renderer.hideChildren('food');
+    expect(renderer.editNewNode('food')).toBe(false);
+    expect(renderer.getFocusedNode()?.id).toBe('trip');
+  });
+
+  test('Tab on it opens no field', () => {
+    const { host, renderer } = mount(MAP, { editable: true, editingKeys: true });
+    renderer.hideChildren('food');
+    const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    node(host, 'food').dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(host.querySelector<HTMLTextAreaElement>('.orbit-editor')?.hidden ?? true).toBe(true);
+    expect(renderer.getFocusedNode()?.id).toBe('trip');
+  });
+
+  test('with nothing typed, Tab after an idea whose ideas are hidden keeps the field where it is', () => {
+    const { host, renderer } = mount(MAP, { editable: true, editingKeys: true });
+    renderer.hideChildren('food');
+    renderer.editNewNode('trip', 1);
+    expect(press(host, 'Tab').defaultPrevented).toBe(true);
+    expect(field(host).hidden).toBe(false);
+    expect(renderer.getFocusedNode()?.id).toBe('trip');
+    expect(slotOf(renderer)).toMatchObject({ parentId: 'trip', index: 1 });
+  });
+
+  test('its own text can still be typed, and finishing leaves a spin going, with no + to redraw', () => {
+    const clock = manualClock();
+
+    try {
+      const { renderer } = mount(MAP, { editable: true });
+      renderer.hideChildren('trip');
+      expect(renderer.editNode('trip')).toBe(true);
+      renderer.spin(400);
+      const { velocity } = internals(renderer).spinPhysics;
+      expect(velocity).not.toBe(0);
+      renderer.stopEditing(false);
+      expect(internals(renderer).spinPhysics.velocity).toBe(velocity);
+    } finally {
+      clock.restore();
+    }
+  });
+
+  test('past maxDepth, where no + can be either, finishing leaves a spin going too', () => {
+    const clock = manualClock();
+
+    try {
+      const { renderer } = mount(MAP, { editable: true, maxDepth: 1 });
+      renderer.flyTo('food');
+      expect(renderer.getFocusedNode()?.id).toBe('food');
+      expect(slotOf(renderer)).toBeUndefined();
+      renderer.editNode('food');
+      renderer.spin(400);
+      const { velocity } = internals(renderer).spinPhysics;
+      renderer.stopEditing(false);
+      expect(internals(renderer).spinPhysics.velocity).toBe(velocity);
+    } finally {
+      clock.restore();
+    }
+  });
+});

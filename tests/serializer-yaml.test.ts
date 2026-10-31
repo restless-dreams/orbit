@@ -10,7 +10,7 @@ describe('serializer-yaml', () => {
     const out = serializeOrbitYAML(original);
     const reparsed = parseOrbitYAML(out);
     expect(reparsed.options.title).toBe(original.options.title);
-    expect(reparsed.options.viewMode).toBe(original.options.viewMode);
+    expect(reparsed.options.view).toBe(original.options.view);
     expect(reparsed.root.text).toBe(original.root.text);
     expect(reparsed.root.icon).toBe(original.root.icon);
     expect(reparsed.root.children[0].text).toBe(original.root.children[0].text);

@@ -5,20 +5,22 @@
  * map: lay it out in an element that only shows in print.
  */
 
-import { parseOrbit } from './dispatch.js';
+import { documentOf } from './dispatch.js';
 import { documentToRendererOptions } from './document-options.js';
 import { MapExtensions, guarded, type OrbitNodeType, type OrbitStatusStyle } from './extensions.js';
 import { OrbitWords, type OrbitStrings } from './languages.js';
 import { hasMediaSource, videoPageUrl, youtubeThumbnailUrl } from './media.js';
 import { findIndexedLinkedNode, indexNodes, isNodeLink } from './node-links.js';
 import { renderToSVGString } from './render-to-svg.js';
+import { currentOptions } from './renderer/options.js';
 import { ensureStyles } from './styles.js';
 import { expandTheme, mergeThemes, resolvePalette, resolveThemeTokens, themeName, type OrbitThemeName } from './themes.js';
 import { guardUrl, resolveUrl } from './url-guard.js';
 import { resolveColor } from './engine/colors.js';
 import { assignNodeColors } from './engine/scene.js';
 import { renderNoteMarkdown } from './ui/note-markdown.js';
-import type { OrbitDocument, OrbitNode, OrbitRendererTheme, OrbitThemePreset, ViewMode } from './types.js';
+import { createIcon } from './ui/icons.js';
+import type { OrbitDocument, OrbitNode, OrbitRendererTheme, OrbitThemePreset, OrbitViewMode } from './types.js';
 
 export interface OrbitPrintOptions {
   /** The heading at the top. Default: the map's `title`, or its root's text. */
@@ -28,7 +30,10 @@ export interface OrbitPrintOptions {
   picture?: boolean;
 
   /** What the picture shows: `focus`, a node with its orbit, or `all`, the whole map. Default: the map's `view`, or `focus`. */
-  viewMode?: ViewMode;
+  view?: OrbitViewMode;
+
+  /** @deprecated Use `view`, as the renderer and a document name it: this name goes in Orbit 1.0. */
+  viewMode?: OrbitViewMode;
 
   /** The node in the middle of the picture in focus mode, by id. Default: the root. */
   focus?: string;
@@ -58,7 +63,7 @@ export interface OrbitPrintOptions {
   /** Status words and how they look, before the registered ones. */
   statuses?: Record<string, OrbitStatusStyle>;
 
-  /** The type a node that names none is laid out as (see `RendererOptions.nodeTypeFor`). */
+  /** The type a node that names none is laid out as (see `OrbitRendererOptions.nodeTypeFor`). */
   nodeTypeFor?: (node: OrbitNode) => string | undefined;
 
   /** Prefix for the picture's SVG ids; give each layout in one page its own. Default: `orbit-print`. */
@@ -112,13 +117,14 @@ export const printTheme = (theme: string | OrbitRendererTheme | undefined): Orbi
  * ```ts
  * import { renderPrintLayout } from '@restless-dreams/orbit';
  *
- * renderPrintLayout(document.querySelector('#print'), markdown, { viewMode: 'all' });
+ * renderPrintLayout(document.querySelector('#print'), markdown, { view: 'all' });
  * // #print { display: none } @media print { #print { display: block } #app { display: none } }
  * ```
  */
-export const renderPrintLayout = (container: HTMLElement, input: string | OrbitDocument, options: OrbitPrintOptions = {}): HTMLElement => {
+export const renderPrintLayout = (container: HTMLElement, input: string | OrbitDocument | OrbitNode, given: OrbitPrintOptions = {}): HTMLElement => {
+  const options = currentOptions(given);
   const words = new OrbitWords(options.language, options.strings);
-  const map = typeof input === 'string' ? parseOrbit(input, { untitled: words.text('untitledMap') }) : input;
+  const map = documentOf(input, { untitled: words.text('untitledMap') });
   const fromDocument = documentToRendererOptions(map.options);
   const theme = printTheme(mergeThemes(fromDocument.theme, options.theme));
   const tokens: Record<string, string> = resolveThemeTokens(themeName(theme), theme);
@@ -147,7 +153,7 @@ export const renderPrintLayout = (container: HTMLElement, input: string | OrbitD
     const svg = renderToSVGString(map, {
       width: PICTURE_SIZE,
       height: PICTURE_SIZE,
-      viewMode: options.viewMode,
+      view: options.view,
       focus: options.focus,
       theme,
       palette,
@@ -276,7 +282,7 @@ const chipsOf = (node: OrbitNode, layout: PrintContext): HTMLElement | null => {
   }
 
   if (node.status) {
-    const status = chip(node.status, 'orbit-print__chip--status');
+    const status = chip(layout.words.statusName(node.status), 'orbit-print__chip--status');
     const look = layout.extensions.status(node.status);
     status.style.setProperty('--orbit-print-status', resolveColor(look.color ?? `var(--_orbit-status-${look.tone})`, layout.tokens));
     chips.push(status);
@@ -342,7 +348,7 @@ const addressLink = (href: string): HTMLAnchorElement => {
   return anchor;
 };
 
-/** The node's picture, its video as a thumbnail and its address, and an embed's address. */
+/** The node's picture, its video as a thumbnail and its address, its sound by name (with its address, when it's on the web), and an embed's address. */
 const mediaOf = (node: OrbitNode, layout: PrintContext): HTMLElement[] => {
   const figures: HTMLElement[] = [];
 
@@ -377,6 +383,26 @@ const mediaOf = (node: OrbitNode, layout: PrintContext): HTMLElement[] => {
 
       const caption = element('figcaption', 'orbit-print__caption');
       caption.append(document.createTextNode(`${node.video.caption ?? layout.words.text('video')}: `), addressLink(videoPageUrl(resolved, node.video.provider)));
+      figure.appendChild(caption);
+      figures.push(figure);
+    }
+  }
+
+  if (hasMediaSource(node.audio)) {
+    const source = guardUrl(node.audio.src, 'audio');
+
+    if (source) {
+      const figure = element('figure', 'orbit-print__media orbit-print__media--audio');
+      const caption = element('figcaption', 'orbit-print__caption');
+      const resolved = resolveUrl(source, layout.baseUrl);
+      const name = node.audio.caption?.trim() || layout.words.text('audio');
+      caption.append(createIcon('audio'), document.createTextNode(/^https?:/i.test(resolved) ? `${name}: ` : name));
+
+      // A sound in the map's own files (or inside the page) has no address paper could use.
+      if (/^https?:/i.test(resolved)) {
+        caption.appendChild(addressLink(resolved));
+      }
+
       figure.appendChild(caption);
       figures.push(figure);
     }

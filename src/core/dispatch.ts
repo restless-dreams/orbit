@@ -1,11 +1,12 @@
-import type { OrbitDocument, ParsedOrbitDocument } from './types.js';
-import type { ParseOptions } from './parser-markdown.js';
+import type { OrbitDocument, OrbitNode, OrbitParsedDocument } from './types.js';
+import type { OrbitParseOptions } from './parser-markdown.js';
 import { parseOrbitMarkdown } from './parser-markdown.js';
 import { parseOrbitYAML } from './parser-yaml.js';
 import { parseYaml } from './yaml-mini.js';
 import { DOCUMENT_OPTION_KEYS } from './document-options.js';
 import { findFrontmatter, firstContentLineIndex, normalizeSource, sharedIndentation } from './source.js';
 import { documentSource, encodingOf } from './document-source.js';
+import { yamlSource } from './yaml-source.js';
 
 /**
  * Parses an orbit document in either flavor. Markdown is the default; a
@@ -25,7 +26,7 @@ import { documentSource, encodingOf } from './document-source.js';
  * for (const problem of diagnostics ?? []) console.warn(`line ${problem.line}: ${problem.message}`);
  * ```
  */
-export const parseOrbit = (input: string, options: ParseOptions = {}): ParsedOrbitDocument => {
+export const parseOrbit = (input: string, options: OrbitParseOptions = {}): OrbitParsedDocument => {
   const unfenced = stripOrbitFence(input);
   const source = normalizeSource(unfenced);
   const lines = source.split('\n');
@@ -44,10 +45,25 @@ export const parseOrbit = (input: string, options: ParseOptions = {}): ParsedOrb
     const yamlLines = [...lines];
     yamlLines[frontmatter.openIndex] = '';
     yamlLines[frontmatter.closeIndex] = '';
-    return parseOrbitYAML(yamlLines.join('\n'), options);
+    return keepYamlText(parseOrbitYAML(yamlLines.join('\n'), options), input);
   }
 
-  return parseOrbitYAML(source, options);
+  return keepYamlText(parseOrbitYAML(source, options), input);
+};
+
+/**
+ * A YAML map for a newer format is saved as it was given while nothing
+ * changes (see `yamlSource`): with its fence, frontmatter, line endings and
+ * byte-order mark.
+ */
+const keepYamlText = (document: OrbitParsedDocument, input: string): OrbitParsedDocument => {
+  const source = yamlSource(document);
+
+  if (source) {
+    source.text = input;
+  }
+
+  return document;
 };
 
 /** The flavor `parseOrbit` reads a document as: `markdown` or `yaml`. */
@@ -163,4 +179,18 @@ const frontmatterFlavor = (yaml: string): string | undefined => {
   } catch {
     return undefined;
   }
+};
+
+/**
+ * A map as the functions that take one read it: markdown or YAML, parsed
+ * with `options`; a parsed document, as it is; or a tree's root node, as a
+ * document with no options of its own.
+ */
+export const documentOf = (input: string | OrbitDocument | OrbitNode, options: OrbitParseOptions = {}): OrbitDocument => {
+  if (typeof input === 'string') {
+    return parseOrbit(input, options);
+  }
+
+  // A node has children; a document has a root.
+  return 'children' in input ? { root: input, options: {}, warnings: [] } : input;
 };

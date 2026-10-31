@@ -122,7 +122,7 @@ For anything else, such as the Vercel AI SDK or LangChain, build the tools from 
 | `find_nodes` | Searches titles, notes and tags, in any case and with or without accents, and statuses by what they mean: `done` finds `shipped` too. | `query`, `status`, `tag` |
 | `read_node` | Everything about one node: its whole note, its picture, video or page, where it is, its children, and the nodes that link to it. | `node_id` |
 | `add_nodes` | Adds nodes, or whole branches, written as a markdown list. | `parent_id`, `outline`, `index` |
-| `update_node` | Changes a title or attributes, and `clear` removes attributes. | `node_id`, `text`, `note`, `status`, `priority`, `tags`, `icon`, `color`, `link`, `image`, `video`, `embed`, `collapsed`, `clear` |
+| `update_node` | Changes a title or attributes, and `clear` removes attributes. | `node_id`, `text`, `note`, `status`, `priority`, `tags`, `icon`, `color`, `link`, `image`, `video`, `audio`, `embed`, `collapsed`, `clear` |
 | `move_node` | Moves a branch under another node, or to another place among its siblings. | `node_id`, `parent_id`, `index` |
 | `reorder_children` | Puts all the children of a node in a new order at once: to sort them, or to group them. | `parent_id`, `order` |
 | `remove_node` | Removes a branch. Never the root. | `node_id` |
@@ -160,7 +160,7 @@ Lines count from the outline's first line. Nothing changed.
 
 ## On screen, or on a server
 
-- **A map on screen:** `createMapTools(map)` takes what `createOrbitMap` returns, the `renderer` of an `<orbit-map>` element, or the `renderer` of `OrbitMindMap`'s ref. Each change goes through `addNode`, `updateNode`, `moveNode` and `removeNode` (see [Editing](editing.md)): it animates, Orbit announces it, and `edit` fires. `read_map` says which node the reader is looking at, and `show_node` takes them to one.
+- **A map on screen:** `createMapTools(map)` takes what `createOrbitMap` returns, the `renderer` of an `<orbit-map>` element, or the `renderer` of `OrbitMindMap`'s ref. Each change goes through `addNode`, `updateNode`, `moveNode` and `removeNode` (see [Editing](editing.md)): it animates, Orbit announces it, and `edit` fires. `read_map` says which node the reader is looking at, and `show_node` takes them to one. The tools read the map itself, not the view: ideas the map keeps hidden for later ([`hideChildren`](guide.md#hiding-ideas-to-reveal-later)) are there for the model too, so don't hand a quiz's map to a model that shouldn't see its answers.
 - **A document:** `createMapTools(markdown)` or `createMapTools(parseOrbit(markdown))`, on a server or anywhere without a map on screen. The tools change the document in place, and `serializeOrbitMarkdown(tools.document)` saves it, the way it was written apart from what changed.
 
 ```js

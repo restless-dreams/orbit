@@ -165,6 +165,23 @@ This map defines two node types: people show their initials, and milestones get 
 [![The sky turning over the tent](${image('night-sky.jpg')})](${image('night-sky.webm')})
 <!-- orbit caption: Four seconds of stars turning over the tent. -->`,
     },
+    live: {
+      title: 'A live photo (a picture with its motion)',
+      source: `# 🏔 Summit day
+<!-- orbit
+image:
+  src: ${image('mountain.jpg')}
+  motion:
+    src: ${image('mountain-motion.webm')}
+    still: 1.5
+  alt: Sunrise from the summit
+  caption: The last steps, just as the sun came up.
+-->
+> Up at four, at the top by six.
+
+## Camp
+![Sunset at camp](${image('sunset.jpg')})`,
+    },
     team: {
       title: 'Team and tasks (status and checklists)',
       source: `# 👥 Platform team

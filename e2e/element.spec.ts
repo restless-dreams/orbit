@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { openMap } from './helpers';
 
 test('<orbit-map> redraws when its content is fixed after a broken edit', async ({ page }) => {

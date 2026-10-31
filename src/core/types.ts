@@ -69,14 +69,26 @@ export interface OrbitNode {
 
   priority?: number;
 
-  /** A picture shown inside the node and in the detail sheet. */
-  image?: { src: string; alt?: string; caption?: string };
+  /**
+   * A picture shown inside the node and in the detail sheet. A live photo's
+   * picture carries its `motion`, the few seconds of video a phone records
+   * around it, which the media viewer plays (see `OrbitMotion`).
+   */
+  image?: { src: string; alt?: string; caption?: string; motion?: OrbitMotion };
 
   /** A video (YouTube, Vimeo or a file) played in the detail sheet. */
   video?: { src: string; provider?: 'youtube' | 'vimeo' | 'native'; thumbnail?: string; caption?: string };
 
   /** A page shown in a frame in the detail sheet. */
   embed?: { src: string; caption?: string };
+
+  /**
+   * A sound: a voice memo, music or a recording, played in the detail sheet
+   * and the media viewer. Its caption is only ever in its own value
+   * (`audio: { src: …, caption: … }`): a `caption` key beside it stays with
+   * the node's video, embed or picture, as older versions read it.
+   */
+  audio?: { src: string; caption?: string };
 
   /** Attributes Orbit doesn't use itself, kept for your own code (`<!-- orbit owner: Ana -->`). */
   attrs?: Record<string, unknown>;
@@ -93,8 +105,22 @@ export interface OrbitNode {
   parent?: OrbitNode;
 }
 
-/** Orbit's own buttons for a node: its picture, video, embed, note, link, and its type's details. */
-export type OrbitContentAction = 'image' | 'video' | 'embed' | 'note' | 'link' | 'details';
+/**
+ * A live photo's motion: the few seconds of video a phone records around a
+ * picture. Written `motion: media/summit-motion.mp4` inside the picture's
+ * value, or `motion: { src, still }`. The node's picture is the still: the map
+ * and the detail sheet show it, and the media viewer plays the motion over it.
+ */
+export interface OrbitMotion {
+  /** The video's address, such as an `.mp4`: relative ones resolve against `baseUrl`, as every media address does. */
+  src: string;
+
+  /** Where in the video the picture was taken, in seconds, when the phone said so. */
+  still?: number;
+}
+
+/** Orbit's own buttons for a node: its picture, video, sound, embed, note, link, and its type's details. */
+export type OrbitContentAction = 'image' | 'video' | 'audio' | 'embed' | 'note' | 'link' | 'details';
 
 /** A button pressed under the focused node or in its detail sheet. */
 export interface OrbitActionEvent {
@@ -122,7 +148,7 @@ export interface OrbitEventMap {
   'focus-change': { node: OrbitNode; path: OrbitNode[] };
 
   /** The map switched between focus mode and the overview. */
-  'view-mode-change': { mode: ViewMode };
+  'view-mode-change': { mode: OrbitViewMode };
 
   /** A node was clicked or activated with the keyboard, before the map reacts. */
   'node-click': { node: OrbitNode };
@@ -130,8 +156,13 @@ export interface OrbitEventMap {
   /** A content button under the focused node was pressed. */
   action: OrbitActionDetail;
 
-  /** A spun orbit came to rest, with this planet on top. */
-  'spin-settle': { planet: OrbitNode };
+  /** A spun orbit came to rest, with `node` on top. */
+  'spin-settle': {
+    node: OrbitNode;
+
+    /** @deprecated Use `node`, as every other event names it: `planet` goes in Orbit 1.0. */
+    planet: OrbitNode;
+  };
 
   /**
    * A node was long-pressed, right-clicked, or chosen with the context menu
@@ -152,45 +183,48 @@ export interface OrbitEventMap {
   /** A node is dragged somewhere else on an editable map: lifted, carried over a place, or let go (see `phase`). */
   'node-drag': OrbitNodeDragEvent;
 
-  /** The media viewer opened, or stepped to another picture or video. */
+  /** The media viewer opened, or stepped to another picture, video or sound. */
   'media-open': OrbitMediaEvent;
 
   /** The media viewer closed. */
   'media-close': OrbitMediaEvent;
 
-  /** The video in the media viewer started, paused, moved on, ended or was muted; while it plays, its time a few times a second. */
+  /** The video, sound or live photo's motion in the media viewer started, paused, moved on, ended or was muted; while it plays, its time a few times a second. */
   'media-state': OrbitMediaState;
 }
 
-/** A node's picture or video in the media viewer. */
+/** A node's picture, video or sound in the media viewer. */
 export interface OrbitMediaEvent {
   node: OrbitNode;
 
-  /** `image`, the node's picture, or `video`, its video. */
-  kind: 'image' | 'video';
+  /** `image`, the node's picture, `video`, its video, or `audio`, its sound. */
+  kind: 'image' | 'video' | 'audio';
 
-  /** Its place among the map's pictures and videos, in reading order, from 0. */
+  /** Its place among the map's pictures, videos and sounds, in reading order, from 0. */
   index: number;
 
-  /** How many pictures and videos the viewer steps through. */
+  /** How many pictures, videos and sounds the viewer steps through. */
   total: number;
 }
 
 /** What `openMedia` shows. */
 export interface OrbitMediaOptions {
-  /** For a node with a picture and a video: which to show. Default: the picture. */
-  kind?: 'image' | 'video';
+  /** For a node with more than one: which to show. Default: the picture, then the video, then the sound. */
+  kind?: 'image' | 'video' | 'audio';
 
-  /** Start a video playing as it opens. Default true. */
+  /** Start a video or sound playing as it opens, and a live photo's motion once (never with reduced motion). Default true. */
   autoplay?: boolean;
 
-  /** Start a video this many seconds in. YouTube and Vimeo start at the whole second. Default 0. */
+  /** Start a video or sound this many seconds in. YouTube and Vimeo start at the whole second. Default 0. */
   startAt?: number;
 }
 
-/** The video in the media viewer, as it plays (see the `media-state` event). */
+/** The video, sound or live photo's motion in the media viewer, as it plays (see the `media-state` event). */
 export interface OrbitMediaState {
   node: OrbitNode;
+
+  /** What plays: the node's `video`, its sound (`audio`), or its live photo's motion over its picture (`image`). */
+  kind: 'image' | 'video' | 'audio';
 
   /** Playing, rather than paused, not started yet, or ended. */
   playing: boolean;
@@ -262,11 +296,24 @@ export interface OrbitEdit {
   tree: OrbitNode;
 }
 
-/** What `addNode` and `updateNode` take: a node's text and attributes. */
+/**
+ * What `addNode` and `updateNode` take: a node's text and attributes, read
+ * as a file's are. The format's shorthands work here too: a picture, video,
+ * sound or embed as its address (`{ image: 'summit.jpg' }`), a live photo's
+ * motion as its own, tags as `'web, mobile'` and a type as `'task@2'`. A
+ * value Orbit can't read throws a `TypeError` that says what it takes, and
+ * the map stays as it was.
+ */
 export type OrbitNodeInput = Partial<Pick<
   OrbitNode,
-  'text' | 'icon' | 'color' | 'paletteColor' | 'status' | 'priority' | 'tags' | 'collapsed' | 'link' | 'note' | 'noteFormat' | 'image' | 'video' | 'embed' | 'type' | 'typeVersion' | 'attrs'
->>;
+  'text' | 'icon' | 'color' | 'paletteColor' | 'status' | 'priority' | 'collapsed' | 'link' | 'note' | 'noteFormat' | 'type' | 'typeVersion' | 'attrs'
+>> & {
+  tags?: string[] | string;
+  image?: string | (Omit<NonNullable<OrbitNode['image']>, 'motion'> & { motion?: OrbitMotion | string });
+  video?: string | OrbitNode['video'];
+  audio?: string | OrbitNode['audio'];
+  embed?: string | OrbitNode['embed'];
+};
 
 /** What `addNode` takes: a node's text and attributes, and the nodes to add under it, as many levels down as you like. */
 export type OrbitNewNode = OrbitNodeInput & { text: string; children?: OrbitNewNode[] };
@@ -274,7 +321,10 @@ export type OrbitNewNode = OrbitNodeInput & { text: string; children?: OrbitNewN
 export type OrbitEventName = keyof OrbitEventMap;
 
 /** `focus`: one node at the center with its children around it. `all`: the overview of the whole tree. */
-export type ViewMode = 'focus' | 'all';
+export type OrbitViewMode = 'focus' | 'all';
+
+/** @deprecated Use `OrbitViewMode`: this name goes in Orbit 1.0. */
+export type ViewMode = OrbitViewMode;
 
 /** A built-in theme, or `auto` for `paper` or `night` following the reader's light or dark preference. */
 export type OrbitThemePreset = OrbitThemeName | 'auto';
@@ -292,16 +342,25 @@ export interface OrbitDocumentOptions {
   /** A theme name, as written (unknown names are reported and ignored). */
   theme?: string;
 
-  /** Written `view:` in the document. */
-  viewMode?: ViewMode;
+  /** The first view: `focus` or `all`, the overview. */
+  view?: OrbitViewMode;
 
   showRings?: boolean;
   interactive?: boolean;
 
-  /** Written `animation:` in the document. */
+  /** Keep the orbit turning slowly on its own. */
+  animation?: boolean;
+
+  /** Seconds per turn of the orbit's drift. */
+  speed?: number;
+
+  /** @deprecated Use `view`, as the document writes it: this name goes in Orbit 1.0. */
+  viewMode?: OrbitViewMode;
+
+  /** @deprecated Use `animation`, as the document writes it: this name goes in Orbit 1.0. */
   orbitAnimation?: boolean;
 
-  /** Written `speed:` in the document: seconds per turn of the orbit's drift. */
+  /** @deprecated Use `speed`, as the document writes it: this name goes in Orbit 1.0. */
   orbitSpeed?: number;
 
   palette?: string[];
@@ -311,6 +370,8 @@ export interface OrbitDocumentOptions {
 
   maxDepth?: number;
   className?: string;
+
+  /** Where the map's relative addresses resolve from: a web address (http or https) or a relative path; others are reported and ignored. */
   baseUrl?: string;
 
   /** The format version the document is written for. */
@@ -332,12 +393,15 @@ export interface OrbitDocument {
   /** Problems the parser recovered from, one line each ("Line 4: …"). */
   warnings: string[];
 
-  /** The same problems with a code, line and severity. Always set on parse results. */
+  /** The same problems with a code, line and severity. Always set on parse results, and on a map's `getDocument()`. */
   diagnostics?: OrbitDiagnostic[];
 }
 
 /** A document as the parsers return it, with its diagnostics always set. */
-export type ParsedOrbitDocument = OrbitDocument & { diagnostics: OrbitDiagnostic[] };
+export type OrbitParsedDocument = OrbitDocument & { diagnostics: OrbitDiagnostic[] };
+
+/** @deprecated Use `OrbitParsedDocument`: this name goes in Orbit 1.0. */
+export type ParsedOrbitDocument = OrbitParsedDocument;
 
 /**
  * A theme with your own values: `{ preset: 'night', tokens: { surface: '#0b1020', 'ring-dash': 'none' } }`.
@@ -376,18 +440,18 @@ export interface OrbitZoomOptions {
    */
   wheel?: 'auto' | 'always' | 'modifier' | false;
 
-  /** Smallest zoom, relative to the fitted view. Default 0.4. */
+  /**
+   * Smallest zoom in the overview, relative to the fitted view. Default 0.4.
+   * Focus mode stops at 0.6 whatever this says: zooming out there goes up a
+   * level, or from the root to the overview, before it gets that far.
+   */
   minimum?: number;
 
   /** Largest zoom, relative to the fitted view. Default 6. */
   maximum?: number;
 }
 
-/**
- * How a map looks and behaves. Every option is optional; options passed to
- * the renderer win over the document's frontmatter.
- */
-/** Room the page's own controls take at the map's edges, in px (see `RendererOptions.insets`). */
+/** Room the page's own controls take at the map's edges, in px (see `OrbitRendererOptions.insets`). */
 export interface OrbitInsets {
   top?: number;
   right?: number;
@@ -395,9 +459,16 @@ export interface OrbitInsets {
   left?: number;
 }
 
-export interface RendererOptions {
+/**
+ * How a map looks and behaves. Every option is optional; options passed to
+ * the renderer win over the document's frontmatter.
+ */
+export interface OrbitRendererOptions {
   /** The first view: `focus` (default) or `all`, the overview. */
-  viewMode?: ViewMode;
+  view?: OrbitViewMode;
+
+  /** @deprecated Use `view`, as a document writes it: this name goes in Orbit 1.0. */
+  viewMode?: OrbitViewMode;
 
   /**
    * The node in focus when the map first draws, by id: to open a map where
@@ -412,9 +483,15 @@ export interface RendererOptions {
   interactive?: boolean;
 
   /** Keep the orbit turning slowly on its own. */
+  animation?: boolean;
+
+  /** Seconds per turn of `animation`'s drift: bigger is slower. Default 90. */
+  speed?: number;
+
+  /** @deprecated Use `animation`, as a document writes it: this name goes in Orbit 1.0. */
   orbitAnimation?: boolean;
 
-  /** Seconds per revolution of `orbitAnimation`. */
+  /** @deprecated Use `speed`, as a document writes it: this name goes in Orbit 1.0. */
   orbitSpeed?: number;
 
   /** Levels below the root to render (1 = root + direct children). */
@@ -459,13 +536,13 @@ export interface RendererOptions {
   /** A node was clicked or activated with the keyboard, before the map reacts. */
   onNodeClick?: (node: OrbitNode) => void;
 
-  onViewModeChange?: (mode: ViewMode) => void;
+  onViewModeChange?: (mode: OrbitViewMode) => void;
 
   /** A button was pressed. Return `false` to skip what it does (the detail sheet, the link, or your action's `run`). */
   onAction?: (event: OrbitActionEvent) => void | false;
 
-  /** A new node is in focus. */
-  onFocusChange?: (node: OrbitNode) => void;
+  /** A new node is in focus, with the `path` from the root to it, as `focus-change` has them. */
+  onFocusChange?: (node: OrbitNode, path: OrbitNode[]) => void;
 
   /**
    * A node was long-pressed, right-clicked or chosen with the context menu
@@ -498,9 +575,20 @@ export interface RendererOptions {
    * The parts of the map the page covers with its own controls, such as a
    * toolbar floating over its bottom edge, in px from each edge. Views are
    * fitted into what's left, and the map still draws under the controls.
-   * Changing them glides a fitted view to its new place.
+   * Changing them moves a fitted view to its new place (see
+   * `insetsTransition`).
    */
   insets?: OrbitInsets;
+
+  /**
+   * How the insets a `setOptions` call brings take effect, for that call
+   * alone. By default (`'instant'`) a fitted view is kept within its new
+   * room at once, as it has to be while the keyboard slides or a sheet is
+   * dragged and the insets change every frame. `'glide'` glides it all the
+   * way from where it was, with the camera, for a change made once, such as
+   * a panel coming or going.
+   */
+  insetsTransition?: 'instant' | 'glide';
 
   /**
    * Build the map on the map: a + in the orbit adds an idea, typed right
@@ -523,7 +611,7 @@ export interface RendererOptions {
   editingKeys?: boolean;
 
   /** Called when a flicked orbit comes to rest, with the planet nearest the top. */
-  onSpinSettle?: (planet: OrbitNode) => void;
+  onSpinSettle?: (node: OrbitNode) => void;
 
   /** Buttons under the focused node for its note, media, link and actions. Default true. */
   showActionButtons?: boolean;
@@ -532,27 +620,36 @@ export interface RendererOptions {
   showDetailSheet?: boolean;
 
   /**
-   * Show pictures and videos in the media viewer, over the whole window:
-   * "View image" and "Play video" open it, and so do the pictures and
-   * videos in the detail sheet. Default true. With `false`, those buttons
-   * open the detail sheet instead (unless `showDetailSheet` is `false` too).
-   * `openMedia` opens the viewer either way.
+   * Show pictures, videos and sounds in the media viewer, over the whole
+   * window: "View picture", "Play video" and "Play sound" open it, and so do
+   * the detail sheet's pictures and its videos' and sounds' Expand buttons.
+   * Default true. With `false`, those buttons open the detail sheet instead
+   * (unless `showDetailSheet` is `false` too), whose videos and sounds then
+   * have no Expand button. `openMedia` opens the viewer either way.
    */
+  showMediaViewer?: boolean;
+
+  /** @deprecated Use `showMediaViewer`, named as `showRings` and the other switches are: this name goes in Orbit 1.0. */
   mediaViewer?: boolean;
 
-  /** The media viewer opened, or stepped to another picture or video. */
+  /** The media viewer opened, or stepped to another picture, video or sound. */
   onMediaOpen?: (event: OrbitMediaEvent) => void;
 
   /** The media viewer closed. */
   onMediaClose?: (event: OrbitMediaEvent) => void;
 
-  /** The video in the media viewer started, paused, moved on, ended or was muted; while it plays, its time a few times a second. */
+  /** The video, sound or live photo's motion in the media viewer started, paused, moved on, ended or was muted; while it plays, its time a few times a second. */
   onMediaState?: (state: OrbitMediaState) => void;
 
   /** Renders a note to HTML yourself. The HTML is used as-is: sanitize untrusted notes. */
   noteRenderer?: (note: string, context: { node: OrbitNode; format: 'markdown' | 'plain' }) => string;
 
-  /** Resolves relative image, video and link URLs. */
+  /**
+   * Resolves relative image, video, sound and link URLs: an http, https or
+   * file address, or a relative one, which the page's address completes.
+   * Joined to a base of any other kind, such as `javascript:`, they'd take
+   * its scheme, so they stay relative instead.
+   */
   baseUrl?: string;
 
   /**
@@ -580,11 +677,14 @@ export interface RendererOptions {
   nodeTypeFor?: (node: OrbitNode) => string | undefined;
 }
 
-export const DEFAULT_OPTIONS: Required<Pick<RendererOptions, 'viewMode' | 'showRings' | 'interactive' | 'orbitAnimation' | 'orbitSpeed' | 'showControls'>> = {
-  viewMode: 'focus',
+/** @deprecated Use `OrbitRendererOptions`: this name goes in Orbit 1.0. */
+export type RendererOptions = OrbitRendererOptions;
+
+export const DEFAULT_OPTIONS: Required<Pick<OrbitRendererOptions, 'view' | 'showRings' | 'interactive' | 'animation' | 'speed' | 'showControls'>> = {
+  view: 'focus',
   showRings: true,
   interactive: true,
-  orbitAnimation: false,
-  orbitSpeed: 90,
+  animation: false,
+  speed: 90,
   showControls: true,
 };

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import { renderToSVGString } from '../src/index';
 import { parseOrbit } from '../src/core/dispatch';
+import { mixOklab, parseColor, toHex } from '../src/core/engine/colors';
 
 const MAP = `---
 title: Launch plan
@@ -42,7 +43,7 @@ describe('renderToSVGString', () => {
   test('takes a size, a theme, a view and a node to focus on', () => {
     const night = renderToSVGString(MAP, { width: 1000, height: 700, theme: 'night' });
     expect(night).toContain('<rect width="1000" height="700" fill="#0b1120"/>');
-    const overview = renderToSVGString(MAP, { viewMode: 'all' });
+    const overview = renderToSVGString(MAP, { view: 'all' });
     expect(overview).toContain('Interviews');
     const focused = renderToSVGString(MAP, { focus: 'research' });
     const texts = Array.from(parse(focused).querySelectorAll('text')).map((text) => text.textContent ?? '');
@@ -52,7 +53,7 @@ describe('renderToSVGString', () => {
 
   test('draws each theme\'s planets, rings and lettering', () => {
     const paper = renderToSVGString(MAP);
-    expect(paper).toContain('<filter id="orbit-export-shadow"');
+    expect(paper).toMatch(/<filter id="orbit-export-[0-9a-f]{8}-shadow"/);
     expect(paper).toContain('stroke-dasharray="1 6"');
     // The sun's halo: a thin ring around it.
     expect(paper).toMatch(/<circle cx="400" cy="300" r="[\d.]+" fill="none" stroke="#[0-9a-f]{6}" stroke-opacity="0.55" stroke-width="1"\/>/);
@@ -68,8 +69,8 @@ describe('renderToSVGString', () => {
     expect(blueprint).toContain('<rect width="800" height="600" fill="#123a7a"/>');
 
     // Liquid glass catches its light along the rim: the shading's circle sits to the bottom right.
-    expect(renderToSVGString(MAP, { theme: 'liquid' })).toContain('<radialGradient id="orbit-export-shade" cx="0.53" cy="0.55" r="0.56">');
-    expect(paper).toContain('<radialGradient id="orbit-export-shade" cx="0.34" cy="0.3" r="0.78">');
+    expect(renderToSVGString(MAP, { theme: 'liquid' })).toMatch(/<radialGradient id="orbit-export-[0-9a-f]{8}-shade" cx="0.53" cy="0.55" r="0.56">/);
+    expect(paper).toMatch(/<radialGradient id="orbit-export-[0-9a-f]{8}-shade" cx="0.34" cy="0.3" r="0.78">/);
 
     const textColors = (svg: string) => new Set(Array.from(parse(svg).querySelectorAll('text')).map((text) => text.getAttribute('fill')));
     // White on the jewel-toned planets, dark on the golden sun.
@@ -109,8 +110,39 @@ describe('renderToSVGString', () => {
     expect(svg).toContain(`fill="url(#${prefix}-shade)"`);
   });
 
+  test('gives each drawing ids of its own, so SVGs of different maps can share a page', () => {
+    const first = renderToSVGString(MAP);
+    const second = renderToSVGString('# Trip\n## Summit\n![The view](summit.jpg)\n## Camp', { theme: 'cosmos' });
+    const ids = (svg: string) => Array.from(svg.matchAll(/ id="([^"]+)"/g), (match) => match[1]);
+    expect(ids(first).length).toBeGreaterThan(0);
+    expect(ids(first).filter((id) => ids(second).includes(id))).toEqual([]);
+    // The same drawing always gets the same ids, so exporting it again writes the same file.
+    expect(renderToSVGString(MAP)).toBe(first);
+
+    // Inlined in one page, each SVG's references find the definitions inside it.
+    try {
+      document.body.innerHTML = first + second;
+
+      for (const svg of Array.from(document.querySelectorAll('svg'))) {
+        const references = Array.from(svg.outerHTML.matchAll(/url\(#([^)]+)\)/g), (match) => match[1]);
+        expect(references.length).toBeGreaterThan(0);
+        expect(references.filter((id) => !svg.contains(document.getElementById(id)))).toEqual([]);
+      }
+    } finally {
+      document.body.innerHTML = '';
+    }
+  });
+
   test('an empty map says so', () => {
     expect(renderToSVGString('')).toContain('This map is empty');
+  });
+
+  test('an empty map writes the theme\'s colors as attribute values too, so they can\'t add markup', () => {
+    const svg = renderToSVGString('', { theme: { tokens: { 'muted-text': '"/><script>alert(1)</script><text fill="' } } });
+    const document = parse(svg);
+    expect(document.querySelector('script')).toBeNull();
+    expect(Array.from(document.querySelectorAll('text'), (text) => text.textContent)).toEqual(['This map is empty']);
+    expect(svg).toContain('fill="&quot;/&gt;&lt;script&gt;alert(1)&lt;/script&gt;&lt;text fill=&quot;"');
   });
 
   test('rejects sizes it cannot draw instead of hanging', () => {
@@ -141,6 +173,32 @@ color: "blue\\" onclick=\\"alert(2)"
     expect(document.querySelector('script')).toBeNull();
     // Colors Orbit can't read are kept, escaped, for the viewer to make sense of.
     expect(svg).toContain('fill="blue&quot; onclick=&quot;alert(2)"');
+  });
+
+  test('draws colors CSS knows by name, and their shades, as plain colors', () => {
+    const svg = renderToSVGString(`---
+palette: [gold, navy]
+---
+# Root
+## Tomato
+<!-- orbit
+color: Tomato
+-->
+### First
+### Second
+## Navy`, { view: 'all' });
+    const document = parse(svg);
+    // Every color is written out, as the export promises: none is left for a page's stylesheet to resolve.
+    const paints = Array.from(document.querySelectorAll('*')).flatMap((element) => ['fill', 'stroke', 'stop-color'].map((name) => element.getAttribute(name) ?? 'none'));
+    expect(paints.filter((paint) => !/^(#[0-9a-f]{6}|none|url\(#[\w-]+\))$/.test(paint))).toEqual([]);
+    // The second sibling takes a shade of its branch's tomato, as on the live map.
+    const fills = Array.from(document.querySelectorAll('circle[fill^="#"]'), (circle) => circle.getAttribute('fill'));
+    expect(fills).toContain('#ffd700');
+    expect(fills).toContain('#ff6347');
+    expect(fills).toContain(toHex(mixOklab(parseColor('#ff6347')!, parseColor('#ffffff')!, 0.78)));
+    // A name on a navy planet is the theme's light text.
+    const navy = Array.from(document.querySelectorAll('text')).find((text) => text.textContent === 'Navy');
+    expect(navy?.getAttribute('fill')).toBe('#ffffff');
   });
 
   test('keeps the theme\'s background: the wallpaper glass shows through, stars, a grid', () => {

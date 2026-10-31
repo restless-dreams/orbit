@@ -32,3 +32,7 @@ mkdir /tmp/orbit-0.1.0 && cd /tmp/orbit-0.1.0 && npm init -y && npm pkg set type
 cd -
 bun scripts/release-fixtures.ts --orbit /tmp/orbit-0.1.0/node_modules/@restless-dreams/orbit/dist/index.js --version 0.1.0
 ```
+
+`0.3.0/` was written by Orbit 0.3.0, which was made but never published: npm
+and GitHub go from 0.2.0 to 0.4.0. Its folder stays, as every version's does.
+`0.4.0/` was written by 0.4.0 as it was released: `next/` as it was then.

@@ -9,7 +9,7 @@ describe('parseOrbit auto-detect', () => {
 
   it('--- frontmatter reads as markdown', () => {
     const doc = parseOrbit(`---\nview: focus\n---\n# A`);
-    expect(doc.options.viewMode).toBe('focus');
+    expect(doc.options.view).toBe('focus');
   });
 
   it('--- with flavor: yaml routes to YAML', () => {

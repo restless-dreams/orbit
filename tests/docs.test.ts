@@ -10,7 +10,7 @@ import { statusTone } from '../src/core/ui/detail-sheet';
 import { isAddressOrAnchor, linksIn, llmsFiles } from '../scripts/build-llms';
 import { EXAMPLE_MAP } from '../bin/example';
 import { OrbitWords } from '../src/core/languages';
-import { isOrbitThemePreset, themeNames } from '../src/core/themes';
+import { isThemePreset, themeNames } from '../src/core/themes';
 
 // The format reference is what people and coding agents write maps from:
 // these tests keep it true to the parser.
@@ -190,7 +190,7 @@ describe('the files coding agents read', () => {
   });
 
   test('llms.txt and the skill name every theme', () => {
-    const themes = themeNames().filter(isOrbitThemePreset).sort();
+    const themes = themeNames().filter(isThemePreset).sort();
 
     for (const path of ['llms.txt', 'skills/orbit/SKILL.md']) {
       expect(`${path}: ${listedThemes(readFile(path)).sort().join(', ')}`).toBe(`${path}: ${themes.join(', ')}`);

@@ -5,16 +5,18 @@
  */
 
 import type { OrbitDocument, OrbitNode } from './types.js';
+import { currentDocumentOptions } from './document-options.js';
 import { emitYaml, assignKey, plainScalarReadsBack, type YamlValue } from './yaml-mini.js';
 import { nodesWithExplicitIds } from './utils.js';
 import { detectVideoProvider } from './media.js';
 import { isTitleIcon, parseOrbitMarkdown, parseTitle } from './parser-markdown.js';
-import { mediaExtras } from './node-attributes.js';
+import { mediaExtras, motionValue } from './node-attributes.js';
+import { optionsToWrite } from './format-upgrades.js';
 
 /** A whole map in Orbit's own form. */
 export const writeMarkdown = (doc: OrbitDocument): string => {
   let out = '';
-  const fmKeys = collectFrontmatter(doc);
+  const fmKeys = collectFrontmatter({ options: optionsToWrite(doc.options), extra: doc.extra });
 
   if (Object.keys(fmKeys).length > 0) {
     out += '---\n' + emitYaml(fmKeys as unknown as YamlValue) + '---\n\n';
@@ -25,7 +27,7 @@ export const writeMarkdown = (doc: OrbitDocument): string => {
 };
 
 export const collectFrontmatter = (doc: Pick<OrbitDocument, 'options' | 'extra'>): Record<string, unknown> => {
-  const o = doc.options;
+  const o = currentDocumentOptions(doc.options);
   const r: Record<string, unknown> = {};
 
   if (o.title) {
@@ -36,8 +38,8 @@ export const collectFrontmatter = (doc: Pick<OrbitDocument, 'options' | 'extra'>
     r.theme = o.theme;
   }
 
-  if (o.viewMode) {
-    r.view = o.viewMode;
+  if (o.view) {
+    r.view = o.view;
   }
 
   if (o.showRings !== undefined) {
@@ -48,12 +50,12 @@ export const collectFrontmatter = (doc: Pick<OrbitDocument, 'options' | 'extra'>
     r.interactive = o.interactive;
   }
 
-  if (o.orbitAnimation !== undefined) {
-    r.animation = o.orbitAnimation;
+  if (o.animation !== undefined) {
+    r.animation = o.animation;
   }
 
-  if (o.orbitSpeed !== undefined) {
-    r.speed = o.orbitSpeed;
+  if (o.speed !== undefined) {
+    r.speed = o.speed;
   }
 
   if (o.palette) {
@@ -104,6 +106,13 @@ export const CHECKBOXES: Record<string, string> = { todo: '[ ]', done: '[x]', ac
 export interface Writing {
   /** The nodes whose ids the parsers wouldn't make from their text, so they are written. */
   explicitIds: ReadonlySet<OrbitNode>;
+
+  /**
+   * The nodes whose file keeps their icon in an `<!-- orbit -->` comment
+   * rather than before their title: an edit keeps it there, so a new title
+   * or a new icon never writes it in both places.
+   */
+  iconsInComments?: ReadonlySet<OrbitNode>;
 }
 
 export const emitHeading = (node: OrbitNode, level: number, writing: Writing): string => {
@@ -188,7 +197,8 @@ const isTitleLink = (link: string): boolean => {
 };
 
 export const titleLine = (node: OrbitNode, listItem: boolean, writing: Writing): { title: string; attributes: Record<string, unknown> } => {
-  const attributes = collectAttrs(node, writing.explicitIds);
+  const iconInComment = writing.iconsInComments?.has(node) ?? false;
+  const attributes = collectAttrs(node, writing.explicitIds, iconInComment);
   let title = escapeTitle(node.text);
   const linked = node.link !== undefined && isTitleLink(node.link);
 
@@ -197,7 +207,7 @@ export const titleLine = (node: OrbitNode, listItem: boolean, writing: Writing):
     title = title.replace(/[[\]]/g, '\\$&');
   }
 
-  if (node.icon && isTitleIcon(node.icon)) {
+  if (node.icon && isTitleIcon(node.icon) && !iconInComment) {
     title = `${node.icon} ${title}`;
   }
 
@@ -353,18 +363,33 @@ const readsBack = (text: string): boolean => {
  * attribute comment carrying what the line form cannot express: an explicit
  * `contentType` when auto-detection would misclassify, and the caption.
  */
-/** Media a markdown line can hold: plain addresses, and alt text without brackets. Others go in the attributes. */
-const fitsOnALine = (media: { src: string; alt?: string; thumbnail?: string; provider?: string }): boolean => {
+/** A picture, video or embed, as the writers see one: a picture may carry a live photo's motion. */
+interface WrittenMedia {
+  src: string;
+  alt?: string;
+  caption?: string;
+  thumbnail?: string;
+  provider?: string;
+  motion?: NonNullable<NonNullable<OrbitNode['image']>['motion']>;
+}
+
+/**
+ * Media a markdown line can hold: plain addresses, and alt text without
+ * brackets. Others go in the attributes, and so does a live photo, whose
+ * motion has no line of its own.
+ */
+const fitsOnALine = (media: WrittenMedia): boolean => {
   // A media line reads its provider back from the address: one set differently would be rewritten.
   const providerKept = media.provider === undefined || media.provider === (detectVideoProvider(media.src) ?? 'native');
   return providerKept && isTitleLink(media.src) && (media.thumbnail === undefined || isTitleLink(media.thumbnail)) && !/[[\]\n]/.test(media.alt ?? '')
-    && mediaExtras(media) === undefined;
+    && media.motion === undefined && mediaExtras(media) === undefined;
 };
 
 /** A media value as an attribute: its defined fields, and a video's provider only when its address doesn't say it. */
-const mediaAttribute = (media: { src: string; alt?: string; caption?: string; thumbnail?: string; provider?: string }): Record<string, unknown> => {
-  // Fields Orbit doesn't read go first, as written; Orbit's own follow.
-  const value: Record<string, unknown> = { src: media.src, ...mediaExtras(media) };
+const mediaAttribute = (media: WrittenMedia): Record<string, unknown> => {
+  // A live photo's motion goes right after the address, and fields Orbit doesn't read after it, as written: versions
+  // from before live photos keep a motion with those, and write them all there, so a map reads back the same in each.
+  const value: Record<string, unknown> = { src: media.src, ...(media.motion === undefined ? {} : { motion: motionValue(media.motion) }), ...mediaExtras(media) };
 
   for (const key of ['alt', 'thumbnail', 'caption'] as const) {
     if (media[key] !== undefined) {
@@ -377,6 +402,11 @@ const mediaAttribute = (media: { src: string; alt?: string; caption?: string; th
   }
 
   return value;
+};
+
+/** A sound as an attribute: its address alone when that's all it has, else its fields. */
+const audioAttribute = (audio: NonNullable<OrbitNode['audio']>): unknown => {
+  return audio.caption === undefined && mediaExtras(audio) === undefined ? audio.src : mediaAttribute(audio);
 };
 
 export const renderMedia = (node: OrbitNode): string => {
@@ -430,11 +460,15 @@ export const commentYaml = (value: Record<string, unknown>): string => {
   return emitYaml(value as unknown as YamlValue).trimEnd().replace(/--(!?)>/g, '--$1\\u003e');
 };
 
-/** Attributes carried in `<!-- orbit ... -->` comments: the ones a node's title and lines don't show. */
-export const collectAttrs = (node: OrbitNode, explicitIds: ReadonlySet<OrbitNode>): Record<string, unknown> => {
+/**
+ * Attributes carried in `<!-- orbit ... -->` comments: the ones a node's
+ * title and lines don't show. Its icon is one when it can't go before the
+ * title, or when its file keeps it in a comment (`iconInComment`).
+ */
+export const collectAttrs = (node: OrbitNode, explicitIds: ReadonlySet<OrbitNode>, iconInComment = false): Record<string, unknown> => {
   const r: Record<string, unknown> = {};
 
-  if (node.icon && !isTitleIcon(node.icon)) {
+  if (node.icon && (!isTitleIcon(node.icon) || iconInComment)) {
     r.icon = node.icon;
   }
 
@@ -476,6 +510,11 @@ export const collectAttrs = (node: OrbitNode, explicitIds: ReadonlySet<OrbitNode
     if (media && !fitsOnALine(media)) {
       r[key] = mediaAttribute(media);
     }
+  }
+
+  // A sound has no line of its own (that would be new syntax to older versions): always an attribute.
+  if (node.audio) {
+    r.audio = audioAttribute(node.audio);
   }
 
   if (node.noteFormat && node.noteFormat !== 'markdown' && node.note) {

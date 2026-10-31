@@ -60,3 +60,20 @@ Plain text, shown as written: *not emphasis*.
   - Hidden child
 - Video file
   <!-- orbit video: { src: clips/teaser.mp4, provider: native, caption: Ten seconds } -->
+- Voice memo <!-- orbit audio: memos/kickoff.m4a -->
+- Interview
+  <!-- orbit
+  audio:
+    src: https://example.com/interview.mp3
+    caption: The first interview
+  -->
+- Launch day
+  <!-- orbit
+  image:
+    src: images/launch.jpg
+    motion:
+      src: images/launch.mp4
+      still: 1.5
+    alt: The team on the stage
+  -->
+- Crowd <!-- orbit image: { src: images/crowd.jpg, motion: images/crowd.mp4 } -->

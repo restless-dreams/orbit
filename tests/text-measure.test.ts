@@ -180,7 +180,8 @@ describe('line breaks', () => {
 
   test('place labels with the measure the map gives', () => {
     const font = uniformFont('placement', 0.3);
-    expect(labelPlacement('planet', 16, 'Pricing', false)).toBe('hidden');
+    // Estimated, the name doesn't fit inside the planet and goes on its pill; measured narrower, it fits.
+    expect(labelPlacement('planet', 16, 'Pricing', false)).toBe('outside');
     expect(labelPlacement('planet', 16, 'Pricing', false, false, font)).toBe('inside');
   });
 });

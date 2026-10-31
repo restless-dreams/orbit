@@ -69,8 +69,9 @@ export interface LabelPlanOptions {
   hasIcon?(entry: DisplayNode): boolean;
 
   /**
-   * An icon to show on the node's pill, before its name: for a node whose
-   * picture or content fills it, so the icon has no place inside.
+   * An icon to show on the node's pill, before its name: a name on a pill
+   * takes its node's icon with it, since a picture or content filling the
+   * node, or a name too long for it, leaves the icon no place inside.
    */
   pillIcon?(entry: DisplayNode): string | undefined;
 
@@ -97,6 +98,12 @@ export interface LabelPlanOptions {
 
   /** Whether nodes show a "+N" for children that aren't drawn, which names inside them keep clear of: the map does, an export doesn't. */
   counts?: boolean;
+
+  /** Boxes on the screen that no pill may cover, such as the field a node's text is typed in. */
+  keepClear?: readonly Box[];
+
+  /** The map's language (a tag such as `es-MX`), which long words in names break by (default: English). */
+  language?: string;
 }
 
 const BELOW: Point = { x: 0, y: 1 };
@@ -157,6 +164,12 @@ export const planLabels = (display: Display, order: DisplayNode[], options: Labe
   }
 
   const taken = new ScreenGrid<Box>(viewport);
+
+  // What must stay in view counts as a name already placed: no pill goes over it.
+  for (const box of options.keepClear ?? []) {
+    taken.add(box, box);
+  }
+
   const measures = options.measures ?? ESTIMATED_LABELS;
   const countMeasure = options.counts ? measures.count() : null;
   const planned: PlannedLabel[] = [];
@@ -171,7 +184,7 @@ export const planLabels = (display: Display, order: DisplayNode[], options: Labe
     }
 
     const countWidth = countMeasure && showsCount(entry.role, screenRadius, entry.hiddenChildren) ? measureCount(entry.hiddenChildren, countMeasure) : 0;
-    const placement = labelPlacement(entry.role, screenRadius, entry.node.text, options.hasImage(entry), options.hasIcon?.(entry), measures.inside(entry.role, entry.node), !options.moving, countWidth);
+    const placement = labelPlacement(entry.role, screenRadius, entry.node.text, options.hasImage(entry), options.hasIcon?.(entry), measures.inside(entry.role, entry.node), !options.moving, countWidth, options.language);
 
     if (placement === 'hidden' || (placement === 'outside' && options.inFlight)) {
       continue;
@@ -180,7 +193,7 @@ export const planLabels = (display: Display, order: DisplayNode[], options: Labe
     // While the map moves, a name starts to show only where the estimate would show it too, and during a
     // flight between views, only such names show at all; the rest wait for the map to be still.
     if (placement === 'inside' && options.moving && measures !== ESTIMATED_LABELS && (options.inFlight || !options.isShown?.(entry.id))
-      && labelPlacement(entry.role, screenRadius, entry.node.text, false, options.hasIcon?.(entry), INSIDE_ESTIMATE, true, countWidth) !== 'inside') {
+      && labelPlacement(entry.role, screenRadius, entry.node.text, false, options.hasIcon?.(entry), INSIDE_ESTIMATE, true, countWidth, options.language) !== 'inside') {
       continue;
     }
 
@@ -190,7 +203,9 @@ export const planLabels = (display: Display, order: DisplayNode[], options: Labe
     let lines: 1 | 2 = 1;
     let width = 0;
     const icon = placement === 'outside' ? options.pillIcon?.(entry) : undefined;
-    const text = icon ? `${icon} ${entry.node.text}`.trim() : entry.node.text;
+    // A no-break space keeps the icon on the line with the start of the name: a pill on two lines never leaves it
+    // alone on the first, wherever the browser's emoji are a little wider than measured.
+    const text = icon ? `${icon}\u00a0${entry.node.text}`.trim() : entry.node.text;
 
     if (placement === 'outside') {
       const sides = labelSides(entry, display);
@@ -219,23 +234,38 @@ export const planLabels = (display: Display, order: DisplayNode[], options: Labe
       const wrappedSpots = () => (wrapped ??= canWrap(text, pill) ? sides.map((side) => spotFor(side, 2)) : []);
       let spot = spots.find(isFree) ?? wrappedSpots().find(isFree);
 
-      if (!spot && entry.role === 'sun') {
-        // The focused node always says what it is, even over its neighbors…
-        spot = spots.find(({ box }) => insideViewport(box, viewport)) ?? spots[0];
-      } else if (!spot && entry.role === 'planet') {
-        // …and so does each planet: over as few nodes as it can, never over another label.
+      // Where a pill with no free side covers the fewest nodes, never another label (nor, where `allowed` says
+      // so, some nodes): on the map, and the first side to cover that few, so it keeps to its side as the map moves.
+      const cheapestSpot = (allowed: (box: Box) => boolean = () => true): Spot | undefined => {
         let cheapest = Infinity;
+        let found: Spot | undefined;
 
         for (const candidate of [...spots, ...wrappedSpots()]) {
-          if (insideViewport(candidate.box, viewport) && !coversLabel(candidate.box)) {
+          if (insideViewport(candidate.box, viewport) && !coversLabel(candidate.box) && allowed(candidate.box)) {
             const cost = coverCost(candidate.box);
 
             if (cost < cheapest) {
-              spot = candidate;
+              found = candidate;
               cheapest = cost;
             }
           }
         }
+
+        return found;
+      };
+
+      // Moons are small, and a pill over some of them still leaves them seen: a planet whose name only didn't fit
+      // inside it may cover moons, never another planet, the sun or the +.
+      const coversOnlyMoons = (box: Box) => !discs.some(box, (disc) => disc.id !== entry.id && disc.cost > COVER_COST.moon && discOverlapsBox(disc, box));
+
+      if (!spot && entry.role === 'sun') {
+        // The focused node always says what it is, even over its neighbors, where it covers the fewest of them,
+        // though never over what must stay in view, such as the field a new idea is typed in…
+        spot = cheapestSpot() ?? (coversLabel(spots[0].box) ? undefined : spots[0]);
+      } else if (!spot && entry.role === 'planet') {
+        // …and so does each planet: one with a picture over as few nodes as it can, one whose name only didn't
+        // fit inside it over moons at most, or with no pill, as it would have had no name.
+        spot = options.hasImage(entry) ? cheapestSpot() : cheapestSpot(coversOnlyMoons);
       }
 
       if (!spot) {
@@ -257,10 +287,15 @@ export const planLabels = (display: Display, order: DisplayNode[], options: Labe
 };
 
 /**
- * The sides a node's pill may go, best first. Toward the parent is usually
- * free (a planet's moons and a branch's children sit on the far side); a
- * leaf in the overview has its far side free too. Moons look away from
- * their planet. Below and above are the fallbacks.
+ * The sides a node's pill may go, best first. A planet's pill goes under it,
+ * where a picture's caption would, or over it, and only then toward the sun
+ * or away from it: a pill between a planet and the sun reads as the sun's,
+ * or the next planet's. In the overview, toward the parent is usually free
+ * (a branch's children sit on the far side), and a leaf has its far side
+ * free too. Moons look away from their planet. Below and above are the
+ * fallbacks, and an overview node's last ones are beside it, across the line
+ * to its parent: in a run of ideas going up or down, the ideas before and
+ * after it take every other side.
  */
 export const labelSides = (entry: DisplayNode, display: Display): Point[] => {
   const parent = entry.parentId === undefined ? undefined : display.nodes.get(entry.parentId);
@@ -277,8 +312,18 @@ export const labelSides = (entry: DisplayNode, display: Display): Point[] => {
     return [outward];
   }
 
+  if (entry.role === 'planet') {
+    return [BELOW, ABOVE, inward, outward];
+  }
+
+  if (entry.role !== 'node') {
+    return [inward, BELOW, ABOVE, outward];
+  }
+
   const isLeaf = entry.node.children.length === 0 || entry.hiddenChildren >= entry.node.children.length;
-  return isLeaf && entry.role === 'node' ? [outward, inward, BELOW, ABOVE] : [inward, BELOW, ABOVE, outward];
+  // Across the line to the parent, the side nearer the right first, where a name reads on from its node.
+  const across = [{ x: -inward.y, y: inward.x }, { x: inward.y, y: -inward.x }].sort((first, second) => second.x - first.x);
+  return isLeaf ? [outward, inward, BELOW, ABOVE, ...across] : [inward, BELOW, ABOVE, outward, ...across];
 };
 
 /**

@@ -185,4 +185,17 @@
     font-size: 8.5pt;
     overflow-wrap: anywhere;
   }
+
+  // A sound, by name: its icon before it, on the caption's line.
+  &__media--audio &__caption .orbit-icon {
+    width: 10pt;
+    height: 10pt;
+    margin-right: 4pt;
+    vertical-align: -1.5pt;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
 }

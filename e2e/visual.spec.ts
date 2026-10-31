@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { THEMES, openMap, settle } from './helpers';
 
 // Screenshots of every theme and view, compared with the ones in

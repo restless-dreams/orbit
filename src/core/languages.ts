@@ -101,6 +101,12 @@ export interface OrbitStrings {
   /** How many ideas an idea holds, as announced and in its description: `{count}`. */
   ideaCount: OrbitPluralText;
 
+  /** How many ideas are hidden under an idea (see `hideChildren`), as announced and in the outline: `{count}`. */
+  hiddenIdeaCount: OrbitPluralText;
+
+  /** Announced when the ideas hidden under the idea in focus are shown: `{name}` is that idea, and `{list}` names them. */
+  revealed: string;
+
   /** Announced when an idea is added: `{name}`. */
   added: string;
 
@@ -116,11 +122,23 @@ export interface OrbitStrings {
   /** `{name}` in those announcements when the idea has no text. */
   anIdea: string;
 
-  /** Part of an idea's description: `{status}` is its status word. */
+  /** Part of an idea's description: `{status}` is its status, as `statusName` says it. */
   status: string;
 
   /** The status in the tooltip: `{status}`. */
   statusLabel: string;
+
+  /** A status a file writes as `todo`, as people read it. Other status words are said as written. */
+  statusTodo: string;
+
+  /** A status written `active`. */
+  statusActive: string;
+
+  /** A status written `done`. */
+  statusDone: string;
+
+  /** A status written `blocked`. */
+  statusBlocked: string;
 
   /** Part of an idea's description: `{list}` lists what it has, from the words below. */
   has: string;
@@ -129,6 +147,7 @@ export interface OrbitStrings {
   hasNote: string;
   hasImage: string;
   hasVideo: string;
+  hasAudio: string;
   hasEmbed: string;
   hasLink: string;
 
@@ -165,7 +184,14 @@ export interface OrbitStrings {
   /** The picture in the detail sheet, which opens the viewer: `{description}` is its alternative text. */
   viewImageOf: string;
 
+  /** A live photo in the detail sheet, which opens the viewer, when it has no alternative text. */
+  viewLivePhoto: string;
+
+  /** A live photo in the detail sheet: `{description}` is its alternative text. */
+  viewLivePhotoOf: string;
+
   playVideo: string;
+  playAudio: string;
   openEmbed: string;
   readNote: string;
   openLink: string;
@@ -189,11 +215,14 @@ export interface OrbitStrings {
   /** The priority chip: `{priority}`. */
   priority: string;
 
-  /** The button over a video in the detail sheet. */
+  /** The button over a video or a sound in the detail sheet, which moves it to the media viewer. */
   expand: string;
 
-  /** That button, for assistive technology. */
+  /** That button over a video, for assistive technology. */
   expandVideo: string;
+
+  /** That button over a sound, for assistive technology. */
+  expandAudio: string;
 
   /** A picture's name in the viewer when it has no description or caption. */
   picture: string;
@@ -201,20 +230,56 @@ export interface OrbitStrings {
   /** A video's name in the viewer when it has no caption. */
   video: string;
 
+  /** A sound's name in the viewer and the detail sheet when it has no caption. */
+  audio: string;
+
   /** Where the viewer is among the map's pictures and videos: `{index}` of `{total}`. */
   position: string;
 
   /** The viewer's button that zooms the picture to fit. */
   fitPicture: string;
 
+  /**
+   * The mark on a live photo, a picture with the few seconds of video a
+   * phone records around it, in the viewer and the detail sheet: a word or
+   * two, as phones show it.
+   */
+  live: string;
+
+  /** A live photo's mark in the viewer, the button that plays its motion, for assistive technology: keep the mark's words (`live`) in it. */
+  playLivePhoto: string;
+
+  /** The tooltip of a live photo's mark in the viewer, which screen readers read after its name. */
+  holdToPlay: string;
+
   pictureUnavailable: string;
   videoUnavailable: string;
+  audioUnavailable: string;
 
   /** A video its site doesn't let other pages play. */
   videoUnavailableHere: string;
 
   openPictureInNewTab: string;
   openVideoInNewTab: string;
+  openAudioInNewTab: string;
+
+  /** A sound player's play button, while it's paused. */
+  play: string;
+
+  pause: string;
+  mute: string;
+  unmute: string;
+
+  /** The player's buttons that go back and on: `{count}` seconds. */
+  skipBack: OrbitPluralText;
+
+  skipForward: OrbitPluralText;
+
+  /** The slider that moves a sound to another time. */
+  playbackPosition: string;
+
+  /** Where a sound is, for screen readers: `{time}` of `{duration}`. */
+  timeOf: string;
 
   /** A video's link to its site: `{provider}` is YouTube or Vimeo. */
   watchOn: string;
@@ -238,7 +303,7 @@ const ENGLISH: OrbitStrings = {
   mapPath: 'Map path',
   back: 'Back',
   backTo: 'Back to {name}',
-  backToParent: 'Back to the parent node',
+  backToParent: 'Back to the idea above',
   view: 'View',
   focus: 'Focus',
   overview: 'Overview',
@@ -252,20 +317,27 @@ const ENGLISH: OrbitStrings = {
   outline: 'Map outline',
   overviewAnnouncement: 'Overview of the whole map',
   ideaCount: { one: '{count} item', other: '{count} items' },
+  hiddenIdeaCount: { one: '{count} hidden idea', other: '{count} hidden ideas' },
+  revealed: '{name}: {list}',
   added: 'Added {name}',
-  removed: 'Removed {name}',
+  removed: 'Deleted {name}',
   moved: 'Moved {name} to {parent}',
   movedToTop: 'Moved {name} to the top',
-  anIdea: 'a node',
+  anIdea: 'an idea',
 
-  status: 'status {status}',
+  status: 'status: {status}',
   statusLabel: 'Status: {status}',
+  statusTodo: 'To do',
+  statusActive: 'In progress',
+  statusDone: 'Done',
+  statusBlocked: 'Blocked',
   has: 'has {list}',
   hasDetails: 'details',
   hasNote: 'note',
-  hasImage: 'image',
+  hasImage: 'picture',
   hasVideo: 'video',
-  hasEmbed: 'embed',
+  hasAudio: 'sound',
+  hasEmbed: 'web page',
   hasLink: 'link',
 
   textOf: 'Text of {name}',
@@ -273,16 +345,19 @@ const ENGLISH: OrbitStrings = {
   newIdea: 'New idea',
   addIdeaTo: 'Add an idea to {name}',
   moveHere: 'Move {name} here',
-  thisIdea: 'this node',
+  thisIdea: 'this idea',
   theIdea: 'the idea',
 
   ideaActions: '{name} actions',
-  ideaActionsUntitled: 'Node actions',
+  ideaActionsUntitled: 'Idea actions',
   showDetails: 'Show details',
-  viewImage: 'View image',
-  viewImageOf: 'View image: {description}',
+  viewImage: 'View picture',
+  viewImageOf: 'View picture: {description}',
+  viewLivePhoto: 'View live photo',
+  viewLivePhotoOf: 'View live photo: {description}',
   playVideo: 'Play video',
-  openEmbed: 'Open embed',
+  playAudio: 'Play sound',
+  openEmbed: 'Open web page',
   readNote: 'Read note',
   openLink: 'Open link',
   goTo: 'Go to {name}',
@@ -295,16 +370,31 @@ const ENGLISH: OrbitStrings = {
   priority: 'Priority {priority}',
   expand: 'Expand',
   expandVideo: 'Expand the video',
+  expandAudio: 'Expand the sound',
 
   picture: 'Picture',
   video: 'Video',
+  audio: 'Sound',
   position: '{index} of {total}',
   fitPicture: 'Fit the picture',
+  live: 'Live',
+  playLivePhoto: 'Play the live photo',
+  holdToPlay: 'Hold to play',
   pictureUnavailable: 'This picture can’t be shown.',
   videoUnavailable: 'This video can’t be played.',
+  audioUnavailable: 'This sound can’t be played.',
   videoUnavailableHere: 'This video can’t be played here.',
   openPictureInNewTab: 'Open the picture in a new tab',
   openVideoInNewTab: 'Open the video in a new tab',
+  openAudioInNewTab: 'Open the sound in a new tab',
+  play: 'Play',
+  pause: 'Pause',
+  mute: 'Turn the sound off',
+  unmute: 'Turn the sound on',
+  skipBack: { one: 'Back {count} second', other: 'Back {count} seconds' },
+  skipForward: { one: 'Forward {count} second', other: 'Forward {count} seconds' },
+  playbackPosition: 'Position',
+  timeOf: '{time} of {duration}',
   watchOn: 'Watch on {provider}',
 };
 
@@ -336,20 +426,27 @@ const SPANISH: OrbitStrings = {
   outline: 'Esquema del mapa',
   overviewAnnouncement: 'Vista general de todo el mapa',
   ideaCount: { one: '{count} idea', many: '{count} ideas', other: '{count} ideas' },
+  hiddenIdeaCount: { one: '{count} idea oculta', many: '{count} ideas ocultas', other: '{count} ideas ocultas' },
+  revealed: '{name}: {list}',
   added: 'Se agregó {name}',
   removed: 'Se eliminó {name}',
   moved: 'Se movió {name} a {parent}',
   movedToTop: 'Se movió {name} al nivel superior',
   anIdea: 'una idea',
 
-  status: 'estado {status}',
+  status: 'estado: {status}',
   statusLabel: 'Estado: {status}',
+  statusTodo: 'Por hacer',
+  statusActive: 'En curso',
+  statusDone: 'Hecho',
+  statusBlocked: 'Bloqueado',
   has: 'tiene {list}',
   hasDetails: 'detalles',
   hasNote: 'nota',
   hasImage: 'imagen',
   hasVideo: 'video',
-  hasEmbed: 'contenido insertado',
+  hasAudio: 'audio',
+  hasEmbed: 'página web',
   hasLink: 'enlace',
 
   textOf: 'Texto de {name}',
@@ -365,8 +462,11 @@ const SPANISH: OrbitStrings = {
   showDetails: 'Ver detalles',
   viewImage: 'Ver imagen',
   viewImageOf: 'Ver imagen: {description}',
+  viewLivePhoto: 'Ver foto en vivo',
+  viewLivePhotoOf: 'Ver foto en vivo: {description}',
   playVideo: 'Reproducir video',
-  openEmbed: 'Abrir contenido insertado',
+  playAudio: 'Reproducir audio',
+  openEmbed: 'Abrir página web',
   readNote: 'Leer nota',
   openLink: 'Abrir enlace',
   goTo: 'Ir a {name}',
@@ -379,16 +479,31 @@ const SPANISH: OrbitStrings = {
   priority: 'Prioridad {priority}',
   expand: 'Ampliar',
   expandVideo: 'Ampliar el video',
+  expandAudio: 'Ampliar el audio',
 
   picture: 'Imagen',
   video: 'Video',
+  audio: 'Audio',
   position: '{index} de {total}',
   fitPicture: 'Ajustar la imagen',
+  live: 'En vivo',
+  playLivePhoto: 'Reproducir la foto en vivo',
+  holdToPlay: 'Mantén presionado para reproducirla',
   pictureUnavailable: 'No se puede mostrar esta imagen.',
   videoUnavailable: 'No se puede reproducir este video.',
+  audioUnavailable: 'No se puede reproducir este audio.',
   videoUnavailableHere: 'Este video no se puede reproducir aquí.',
   openPictureInNewTab: 'Abrir la imagen en una pestaña nueva',
   openVideoInNewTab: 'Abrir el video en una pestaña nueva',
+  openAudioInNewTab: 'Abrir el audio en una pestaña nueva',
+  play: 'Reproducir',
+  pause: 'Pausar',
+  mute: 'Silenciar',
+  unmute: 'Activar el sonido',
+  skipBack: { one: 'Retroceder {count} segundo', many: 'Retroceder {count} segundos', other: 'Retroceder {count} segundos' },
+  skipForward: { one: 'Avanzar {count} segundo', many: 'Avanzar {count} segundos', other: 'Avanzar {count} segundos' },
+  playbackPosition: 'Posición',
+  timeOf: '{time} de {duration}',
   watchOn: 'Ver en {provider}',
 };
 
@@ -455,6 +570,9 @@ export const languageOf = (element: Element | null | undefined): string | null =
 };
 
 /** The words of one map: its language's, with the `strings` it was given on top. */
+/** The statuses a file writes with the words for them (see `OrbitWords.statusName`). */
+const STATUS_NAMES: Record<string, TextKey> = { todo: 'statusTodo', active: 'statusActive', done: 'statusDone', blocked: 'statusBlocked' };
+
 export class OrbitWords {
   /** The tag of the language the words come from: `es` for a map asked for `es-MX`. */
   readonly language: string;
@@ -462,12 +580,20 @@ export class OrbitWords {
   /** The tag numbers, plurals and lists are written for: `es-MX` there. */
   readonly locale: string;
 
+  /**
+   * The language the map is asked to be in, even one with no words of its
+   * own here (English when none is): the one its names are written in, which
+   * long words break by (see `hyphenation.ts`).
+   */
+  readonly asked: string;
+
   private readonly table: OrbitStrings;
 
   constructor(requested?: string | null, strings?: Partial<OrbitStrings>) {
     const tag = requested ? canonicalTag(requested) : null;
     this.language = tag === null ? 'en' : registered.has(tag) ? tag : registered.has(baseOf(tag)) ? baseOf(tag) : 'en';
     this.locale = tag !== null && (tag === this.language || baseOf(tag) === this.language) ? tag : this.language;
+    this.asked = tag ?? 'en';
     const table = registered.get(this.language) ?? ENGLISH;
     this.table = strings ? { ...table, ...validStrings(strings, 'strings') } : table;
   }
@@ -486,6 +612,16 @@ export class OrbitWords {
     const forms = this.table[key];
     const category = pluralRules(this.locale)?.select(count) ?? (count === 1 ? 'one' : 'other');
     return this.fill(forms[category] ?? forms.other, { ...values, count });
+  }
+
+  /**
+   * A node's status as people read it: the four a file writes as `todo`,
+   * `active`, `done` and `blocked` in the map's language ("En curso"), any
+   * other word as written.
+   */
+  statusName(status: string): string {
+    const key = STATUS_NAMES[status.trim().toLowerCase()];
+    return key ? this.text(key) : status;
   }
 
   /** Items as the language lists them: "a, b and c". */

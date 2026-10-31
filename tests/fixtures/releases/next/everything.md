@@ -65,3 +65,25 @@ due: "2026-11-01"
 - Video file
   [video](clips/teaser.mp4)
   <!-- orbit caption: Ten seconds -->
+- Voice memo <!-- orbit audio: memos/kickoff.m4a -->
+- Interview
+  <!-- orbit
+  audio:
+    src: "https://example.com/interview.mp3"
+    caption: The first interview
+  -->
+- Launch day
+  <!-- orbit
+  image:
+    src: images/launch.jpg
+    motion:
+      src: images/launch.mp4
+      still: 1.5
+    alt: The team on the stage
+  -->
+- Crowd
+  <!-- orbit
+  image:
+    src: images/crowd.jpg
+    motion: images/crowd.mp4
+  -->

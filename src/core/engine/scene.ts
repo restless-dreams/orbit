@@ -93,6 +93,13 @@ export interface Scene {
 
   /** Focus scenes of editable maps: the free place in the orbit where a new idea goes. */
   addSlot?: SceneSlot;
+
+  /**
+   * Focus scenes of a sun whose children are hidden (see `SceneOptions.hidden`):
+   * where each of them goes once they're shown, in their own colors, with
+   * nothing drawn there but a faint place.
+   */
+  hiddenPlaces?: ScenePlace[];
 }
 
 /** A free place in the sun's orbit, laid out like a planet, for the next child. */
@@ -106,6 +113,25 @@ export interface SceneSlot {
   x: number;
   y: number;
   radius: number;
+  orbitAngle: number;
+  orbitRadius: number;
+}
+
+/**
+ * The place a hidden child of the sun keeps in its orbit: laid out like a
+ * planet, so the child lands there when it's shown, and drawn faintly until then.
+ */
+export interface ScenePlace {
+  /** The hidden child's id. */
+  id: string;
+
+  /** The sun it's hidden under. */
+  parentId: string;
+
+  x: number;
+  y: number;
+  radius: number;
+  color: string;
   orbitAngle: number;
   orbitRadius: number;
 }
@@ -135,6 +161,13 @@ export interface SceneOptions {
    * doesn't grow or shrink as the places in it move. Focus scenes only.
    */
   keptRings?: { focusId: string; radii: number[] };
+
+  /**
+   * Nodes whose children are hidden from view: they're drawn as if folded,
+   * with a "+N" and no moons, and as a sun their orbit keeps a faint place
+   * for each child (`Scene.hiddenPlaces`), laid out as they'd be once shown.
+   */
+  hidden?: ReadonlySet<string>;
 }
 
 /** The id the slot uses while it is laid out with the planets; no node can have it. */
@@ -240,8 +273,8 @@ const reordered = (children: OrbitNode[], reorder: SceneOptions['reorder']): Orb
   return [...others.slice(0, index), moving, ...others.slice(index)];
 };
 
-const visibleChildren = (node: OrbitNode, maxDepth: number | undefined): OrbitNode[] => {
-  if (node.collapsed) {
+const visibleChildren = (node: OrbitNode, maxDepth: number | undefined, hidden?: ReadonlySet<string>): OrbitNode[] => {
+  if (node.collapsed || hidden?.has(node.id)) {
     return [];
   }
 
@@ -254,10 +287,12 @@ const visibleChildren = (node: OrbitNode, maxDepth: number | undefined): OrbitNo
 
 export const buildFocusScene = (tree: OrbitNode, focusId: string, options: SceneOptions): Scene => {
   const focused = findNodeById(tree, focusId) ?? tree;
-  const { viewport, colors, maxDepth, reorder } = options;
+  const { viewport, colors, maxDepth, reorder, hidden } = options;
   const children = reordered(focused.children, reorder);
   const canGrow = maxDepth === undefined || focused.level < maxDepth;
-  const slotIndex = options.addSlot && canGrow
+  // A sun whose children are hidden lays them out all the same, for their places, and has no + until they're shown.
+  const hiding = hidden?.has(focused.id) === true;
+  const slotIndex = options.addSlot && canGrow && !hiding
     ? Math.min(children.length, Math.max(0, Math.trunc(options.addSlot.index ?? children.length)))
     : null;
   // Entering a collapsed node opens it: `collapsed` folds a node away
@@ -279,6 +314,7 @@ export const buildFocusScene = (tree: OrbitNode, focusId: string, options: Scene
     containerHeight: viewport.height,
     maxDepth,
     keptRings: options.keptRings?.focusId === focused.id ? options.keptRings.radii : undefined,
+    hidden,
   });
   const slotCount = slotIndex === null ? 0 : 1;
   const nodes = new Map<string, SceneNode>();
@@ -321,7 +357,7 @@ export const buildFocusScene = (tree: OrbitNode, focusId: string, options: Scene
     }
 
     const node = findNodeById(focused, planet.id) ?? planet;
-    const moons = visibleChildren(node, maxDepth).slice(0, MOON_LIMIT);
+    const moons = visibleChildren(node, maxDepth, hidden).slice(0, MOON_LIMIT);
     const radius = planetRadius ?? planet.radius;
     nodes.set(planet.id, {
       id: planet.id,
@@ -383,7 +419,7 @@ export const buildFocusScene = (tree: OrbitNode, focusId: string, options: Scene
     }));
 
   const extent = { x: extentX, y: extentY };
-  return {
+  const scene: Scene = {
     kind: 'focus',
     focusId: focused.id,
     nodes,
@@ -393,6 +429,36 @@ export const buildFocusScene = (tree: OrbitNode, focusId: string, options: Scene
     extent,
     addSlot,
   };
+  return hiding ? withHiddenChildren(scene) : scene;
+};
+
+/**
+ * `scene` with its sun's children hidden: the planets and their moons leave,
+ * and each planet leaves its place behind, so the orbit's rings and the
+ * camera stay as they'll be when the children are shown again.
+ */
+const withHiddenChildren = (scene: Scene): Scene => {
+  const nodes = new Map<string, SceneNode>();
+  const hiddenPlaces: ScenePlace[] = [];
+
+  for (const node of scene.nodes.values()) {
+    if (node.role === 'sun') {
+      nodes.set(node.id, { ...node, hiddenChildren: 0 });
+    } else if (node.role === 'planet' && node.orbitAngle !== undefined && node.orbitRadius !== undefined) {
+      hiddenPlaces.push({
+        id: node.id,
+        parentId: scene.focusId,
+        x: node.x,
+        y: node.y,
+        radius: node.radius,
+        color: node.color,
+        orbitAngle: node.orbitAngle,
+        orbitRadius: node.orbitRadius,
+      });
+    }
+  }
+
+  return { ...scene, nodes, hiddenPlaces };
 };
 
 /**
@@ -422,6 +488,7 @@ export const buildOverviewScene = (tree: OrbitNode, options: SceneOptions): Scen
     containerWidth: viewport.width,
     containerHeight: viewport.height,
     maxDepth,
+    hidden: options.hidden,
   });
   const nodes = new Map<string, SceneNode>();
   const links: SceneLink[] = [];
@@ -432,7 +499,7 @@ export const buildOverviewScene = (tree: OrbitNode, options: SceneOptions): Scen
   for (const entry of positioned) {
     const node = byId.get(entry.id) ?? entry;
     const color = colors.get(node.id) ?? '#999999';
-    const shown = visibleChildren(node, maxDepth).length;
+    const shown = visibleChildren(node, maxDepth, options.hidden).length;
     nodes.set(entry.id, {
       id: entry.id,
       node,

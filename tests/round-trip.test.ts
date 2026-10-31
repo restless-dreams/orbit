@@ -173,6 +173,14 @@ describe('yaml round-trip fidelity', () => {
     expect(back.root.note).toBe('  indented first\nplain second');
   });
 
+  it('keeps lists of lists in custom attributes, in both flavors', () => {
+    const grid = [[1, 2], [3, 4]];
+    const doc = parseOrbitYAML('nodes:\n  - text: Root\n    grid:\n      - [1, 2]\n      - [3, 4]\n');
+    expect(doc.root.attrs).toEqual({ grid });
+    expect(yamlRoundTrip(doc).root.attrs).toEqual({ grid });
+    expect(mdRoundTrip(doc).root.attrs).toEqual({ grid });
+  });
+
   it('accepts scalar strings as child shorthand', () => {
     const doc = parseOrbitYAML('nodes:\n  - text: Root\n    children: [Task A, Task B]\n');
     expect(doc.root.children.map((c) => c.text)).toEqual(['Task A', 'Task B']);

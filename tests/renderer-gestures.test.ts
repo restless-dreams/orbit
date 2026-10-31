@@ -167,7 +167,7 @@ describe('spinning the orbit', () => {
 
 describe('panning and zooming', () => {
   test('dragging the overview pans it without rebuilding nodes, then glides', () => {
-    const { host, renderer } = mount(MAP, { viewMode: 'all' });
+    const { host, renderer } = mount(MAP, { view: 'all' });
     const svg = renderer.getSVGElement();
     const state = internals(renderer);
     const before = Array.from(host.querySelectorAll('.orbit-node'));
@@ -189,7 +189,7 @@ describe('panning and zooming', () => {
   });
 
   test('a drag asks where the map is on the page once, not on every move', () => {
-    const { host, renderer } = mount(MAP, { viewMode: 'all' });
+    const { host, renderer } = mount(MAP, { view: 'all' });
     const svg = renderer.getSVGElement();
     const asked = spyOn(host.querySelector<HTMLElement>('.orbit')!, 'getBoundingClientRect');
     let time = clock.now;
@@ -205,7 +205,7 @@ describe('panning and zooming', () => {
   });
 
   test('the wheel zooms around the pointer, keeping the point under it in place', () => {
-    const { renderer } = mount(MAP, { viewMode: 'all' });
+    const { renderer } = mount(MAP, { view: 'all' });
     const state = internals(renderer);
     const anchor = { x: 450, y: 120 };
     const worldBefore = {
@@ -224,7 +224,7 @@ describe('panning and zooming', () => {
   });
 
   test('with zoom.wheel set to modifier, a plain wheel leaves the page alone and shows a hint', () => {
-    const { host, renderer } = mount(MAP, { viewMode: 'all', zoom: { wheel: 'modifier' } });
+    const { host, renderer } = mount(MAP, { view: 'all', zoom: { wheel: 'modifier' } });
     const plain = wheel({ deltaY: -200 });
     renderer.getSVGElement().dispatchEvent(plain);
     clock.advance(400);
@@ -239,7 +239,7 @@ describe('panning and zooming', () => {
   });
 
   test('zooming stays within the zoom range', () => {
-    const { renderer } = mount(MAP, { viewMode: 'all', zoom: { minimum: 0.5, maximum: 2 } });
+    const { renderer } = mount(MAP, { view: 'all', zoom: { minimum: 0.5, maximum: 2 } });
     const state = internals(renderer);
     state.zoomAt(50, { x: 300, y: 200 });
     expect(state.zoomLevel()).toBeCloseTo(2, 5);
@@ -289,7 +289,7 @@ describe('panning and zooming', () => {
   });
 
   test('zoom buttons and fit move the camera', () => {
-    const { host, renderer } = mount(MAP, { viewMode: 'all' });
+    const { host, renderer } = mount(MAP, { view: 'all' });
     const state = internals(renderer);
     click(host.querySelector('[aria-label="Zoom in"]')!);
     expect(state.zoomLevel()).toBeCloseTo(1.6, 5);
@@ -298,7 +298,7 @@ describe('panning and zooming', () => {
   });
 
   test('a pinch takes the camera over from a flight', () => {
-    const { renderer } = mount(MAP, { viewMode: 'all', transitionDuration: 400 });
+    const { renderer } = mount(MAP, { view: 'all', transitionDuration: 400 });
     const state = internals(renderer) as RendererInternals & { cameraFlight: unknown };
     clock.advance(1000);
     renderer.zoomBy(1.6);
@@ -312,7 +312,7 @@ describe('panning and zooming', () => {
   });
 
   test('a frame with no elapsed time keeps a banked wheel zoom', () => {
-    const { renderer } = mount(MAP, { viewMode: 'all' });
+    const { renderer } = mount(MAP, { view: 'all' });
     const state = internals(renderer);
     renderer.getSVGElement().dispatchEvent(wheel({ deltaY: -200 }));
     const zoom = renderer as unknown as { wheelZoom: { remaining: number } | null; wheelTask: (now: number, elapsed: number) => boolean | 'hold' };
@@ -325,7 +325,7 @@ describe('panning and zooming', () => {
   });
 
   test('a frame with no elapsed time doesn\'t end a glide', () => {
-    const { renderer } = mount(MAP, { viewMode: 'all' });
+    const { renderer } = mount(MAP, { view: 'all' });
     const svg = renderer.getSVGElement();
     let time = clock.now;
     svg.dispatchEvent(pointer('pointerdown', { x: 100, y: 100, time }));
@@ -346,7 +346,7 @@ describe('panning and zooming', () => {
   });
 
   test('lifting one finger of a three-finger pinch re-baselines the pair that remains', () => {
-    const { renderer } = mount(MAP, { viewMode: 'all' });
+    const { renderer } = mount(MAP, { view: 'all' });
     const svg = renderer.getSVGElement();
     const state = internals(renderer);
     let time = clock.now;

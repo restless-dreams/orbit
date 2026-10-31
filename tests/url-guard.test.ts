@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { guardUrl, resolveBaseUrl, resolveUrl } from '../src/core/url-guard';
+import { guardUrl, isWebBase, resolveBaseUrl, resolveUrl } from '../src/core/url-guard';
 
 describe('url-guard scheme allowlist', () => {
   it('http/https accepted on every surface', () => {
@@ -143,5 +143,43 @@ describe('url-guard baseUrl resolution', () => {
   it('baseUrl without trailing slash drops the last segment (documented behavior)', () => {
     // As the WHATWG URL spec has it: callers give a baseUrl that ends in /.
     expect(resolveUrl('foo.jpg', 'https://example.com/dir')).toBe('https://example.com/foo.jpg');
+  });
+
+  it('joins to file bases, as the command line does for maps on the computer', () => {
+    expect(resolveUrl('photos/summit.jpg', 'file:///home/maps/')).toBe('file:///home/maps/photos/summit.jpg');
+  });
+
+  it('leaves an address relative when its base would make it a script, or can\'t be joined to', () => {
+    const calls: unknown[][] = [];
+    const original = console.warn;
+    console.warn = (...args: unknown[]) => { calls.push(args); };
+
+    try {
+      // Joined, `%0aalert(1)` would be `javascript://x/%0aalert(1)`: a comment, a line break, and the script. The bases
+      // are this test's own: each is reported once a run, and other tests report theirs.
+      for (const base of ['javascript://joined/', 'JAVASCRIPT://joined/', ' java\tscript://joined/', 'javascript:/joined/', 'vbscript://joined/', 'data:text/html,joined', 'about:joined']) {
+        expect(resolveUrl('%0aalert(1)', base)).toBe('%0aalert(1)');
+        expect(resolveUrl('media/summit.jpg', base)).toBe('media/summit.jpg');
+      }
+    } finally {
+      console.warn = original;
+    }
+
+    // Each base is reported once.
+    expect(calls.length).toBe(7);
+  });
+});
+
+describe('url-guard bases a map may name', () => {
+  it('web addresses, protocol-relative ones and relative paths', () => {
+    for (const base of ['https://example.com/maps/', 'HTTP://example.com/', ' https://example.com/ ', '//cdn.example.com/photos/', '/docs/assets/', 'media/', './photos/', '../shared/']) {
+      expect(isWebBase(base)).toBe(true);
+    }
+  });
+
+  it('nothing else, in any disguise', () => {
+    for (const base of ['javascript://x/', 'JaVaScRiPt://x/', ' java\tscript://x/', 'java\nscript://x/', '\u0000javascript://x/', 'javascript:/x/', 'vbscript://x/', 'data:text/html,x', 'file:///etc/', 'blob:https://example.com/id', 'ftp://example.com/']) {
+      expect(isWebBase(base)).toBe(false);
+    }
   });
 });

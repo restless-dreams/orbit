@@ -46,11 +46,35 @@ export const mapState = (page: Page): Promise<MapState> => {
 /** Waits until no flight is in progress. */
 export const settle = async (page: Page): Promise<void> => {
   await page.waitForFunction(() => !(window as unknown as { map: { transition: unknown } }).map.transition);
+  // The frame after the flight's last draws where it landed.
+  await frames(page, 2);
+};
+
+/**
+ * Lets the page run `count` animation frames. A wait that watches each frame,
+ * not a timer: headless WebKit here runs no animation frames while a test only
+ * waits, so a map moving by itself would stand still.
+ */
+export const frames = async (page: Page, count: number): Promise<void> => {
+  await page.evaluate(() => {
+    (window as unknown as { framesLeft: number }).framesLeft = 0;
+  });
+
+  // Playwright runs the check on every frame, and counts them here.
+  await page.waitForFunction((target) => {
+    const counted = window as unknown as { framesLeft: number };
+    counted.framesLeft += 1;
+    return counted.framesLeft >= target;
+  }, count);
 };
 
 /** The middle of a node on screen. */
 export const nodeCenter = async (page: Page, id: string): Promise<{ x: number; y: number }> => {
-  const box = await page.locator(`[data-orbit-node-id="${id}"]`).boundingBox();
+  // The page's own measure: Playwright's box for an SVG group comes out 14 px lower in WebKit.
+  const box = await page.locator(`[data-orbit-node-id="${id}"]`).evaluate((node) => {
+    const { x, y, width, height } = node.getBoundingClientRect();
+    return width > 0 && height > 0 ? { x, y, width, height } : null;
+  });
 
   if (!box) {
     throw new Error(`Node ${id} is not on screen`);

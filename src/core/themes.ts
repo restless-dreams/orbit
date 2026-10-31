@@ -1,3 +1,4 @@
+import { warnDeprecated } from './deprecated.js';
 import type { OrbitRendererTheme, OrbitThemePreset } from './types.js';
 
 /**
@@ -1158,15 +1159,21 @@ export const ORBIT_THEME_PRESETS: Readonly<Record<OrbitThemeName, Readonly<Orbit
 const DARK_THEMES = new Set<OrbitThemeName>(['night', 'glass-night', 'cosmos', 'blueprint', 'flat-night', 'material-night', 'liquid-night']);
 
 /** Whether `value` names a built-in theme: one of the presets or `auto`. */
-export const isOrbitThemePreset = (value: unknown): value is OrbitThemePreset => {
+export const isThemePreset = (value: unknown): value is OrbitThemePreset => {
   return typeof value === 'string' && (value === 'auto' || Object.prototype.hasOwnProperty.call(ORBIT_THEME_PRESETS, value));
+};
+
+/** @deprecated Use `isThemePreset`, the same function, named as the other theme functions are: this name goes in Orbit 1.0. */
+export const isOrbitThemePreset = (value: unknown): value is OrbitThemePreset => {
+  warnDeprecated('isOrbitThemePreset()', 'isThemePreset()');
+  return isThemePreset(value);
 };
 
 /** The built-in theme a `theme` option starts from (registered names followed), `paper` when it names none. */
 export const themeName = (theme: string | OrbitRendererTheme | undefined): OrbitThemePreset => {
   const expanded = expandTheme(theme);
   const preset = typeof expanded === 'string' ? expanded : expanded?.preset;
-  return isOrbitThemePreset(preset) ? preset : 'paper';
+  return isThemePreset(preset) ? preset : 'paper';
 };
 
 const registeredThemes = new Map<string, OrbitRendererTheme>();
@@ -1178,7 +1185,7 @@ const registeredThemes = new Map<string, OrbitRendererTheme>();
  * tokens. Returns a function that removes it again.
  */
 export const registerTheme = (name: string, theme: OrbitRendererTheme): () => void => {
-  if (isOrbitThemePreset(name)) {
+  if (isThemePreset(name)) {
     throw new Error(`"${name}" is one of Orbit's own themes; give yours another name.`);
   }
 
@@ -1198,7 +1205,7 @@ export const registerTheme = (name: string, theme: OrbitRendererTheme): () => vo
 
 /** Whether `value` names a theme: a built-in one, `auto`, or a registered one. */
 export const isThemeName = (value: unknown): value is string => {
-  return isOrbitThemePreset(value) || (typeof value === 'string' && registeredThemes.has(value));
+  return isThemePreset(value) || (typeof value === 'string' && registeredThemes.has(value));
 };
 
 /** Every theme name: the built-in ones, `auto`, then the registered ones. */

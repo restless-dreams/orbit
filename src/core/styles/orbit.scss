@@ -303,7 +303,8 @@
   &__halo,
   &__status,
   &__marker,
-  &__play {
+  &__play,
+  &__sound {
     pointer-events: none;
   }
 
@@ -387,13 +388,32 @@
     }
   }
 
+  // A sound wave's bars on the note marker's colors, stroked in the badge's own
+  // units: they grow and shrink with it, as the marker's rim does (0.235 of
+  // the badge is the marker's 0.04 of the planet).
+  &__sound {
+    circle {
+      fill: var(--_orbit-note-indicator);
+      stroke: var(--_orbit-badge-stroke);
+      stroke-width: 0.235;
+    }
+
+    path {
+      fill: none;
+      stroke: #ffffff;
+      stroke-width: 0.22;
+      stroke-linecap: round;
+    }
+  }
+
   &--moon {
     cursor: pointer;
   }
 
   // The focused node's buttons already offer its note and media.
   &--sun &__marker,
-  &--sun &__play {
+  &--sun &__play,
+  &--sun &__sound {
     display: none;
   }
 
@@ -414,7 +434,8 @@
 
   &--speck &__marker,
   &--speck &__status,
-  &--speck &__play {
+  &--speck &__play,
+  &--speck &__sound {
     display: none;
   }
 
@@ -720,6 +741,25 @@
 
   to {
     transform: scale(1);
+  }
+}
+
+// Where a hidden idea lands once it's shown (hideChildren): a faint disc in
+// its own color, still, so a map at rest draws nothing. Opacities rather
+// than mixes, so browsers without color-mix() draw it the same.
+// engine/export.ts draws it the same way (HIDDEN_PLACE): change both together.
+.orbit-hidden-place {
+  pointer-events: none;
+
+  &__disc {
+    fill: var(--orbit-node-color);
+    fill-opacity: 0.24;
+    stroke: var(--orbit-node-color);
+    stroke-opacity: 0.85;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-dasharray: 0.1 6;
+    vector-effect: non-scaling-stroke;
   }
 }
 
@@ -1327,6 +1367,40 @@
     }
   }
 
+  // A live photo shows still, as on the map, with its mark over its corner.
+  &__media--live {
+    position: relative;
+  }
+
+  &__live {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    box-sizing: border-box;
+    height: 24px;
+    padding: 0 9px 0 6px;
+    border: 1px solid var(--_orbit-control-border);
+    border-radius: 999px;
+    background: var(--_orbit-control-background);
+    color: var(--_orbit-control-text);
+    box-shadow: var(--_orbit-control-shadow);
+    backdrop-filter: blur(var(--_orbit-control-blur));
+    -webkit-backdrop-filter: blur(var(--_orbit-control-blur));
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 1;
+    white-space: nowrap;
+    pointer-events: none;
+
+    .orbit-icon {
+      width: 15px;
+      height: 15px;
+    }
+  }
+
   // A picture is a button that opens it in the media viewer.
   &__picture {
     display: block;
@@ -1372,6 +1446,13 @@
       width: 16px;
       height: 16px;
     }
+  }
+
+  // Why a sound in the sheet doesn't play.
+  &__problem {
+    margin: 8px 0 0;
+    color: var(--_orbit-sheet-muted-text);
+    font-size: 13px;
   }
 
   &__note {
@@ -1531,6 +1612,258 @@
   }
 }
 
+// A sound's player: a pill in the detail sheet, big under its art in the media
+// viewer. The play button is the map's accent and turns from a circle into a
+// rounded square while the sound plays; the slider fills with the accent as it
+// goes (--_orbit-audio-progress, set by the player).
+.orbit-audio {
+  --_orbit-audio-accent: var(--_orbit-control-active-background);
+  --_orbit-audio-on-accent: var(--_orbit-control-active-text);
+  --_orbit-audio-track: color-mix(in srgb, var(--_orbit-sheet-text) 16%, transparent);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-sizing: border-box;
+  padding: 8px 16px 8px 8px;
+  border-radius: 999px;
+  background: var(--_orbit-chip-background);
+  color: var(--_orbit-sheet-text);
+  font-family: var(--_orbit-font-family);
+
+  &__element {
+    display: none;
+  }
+
+  &__button {
+    position: relative;
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+
+    &:hover {
+      background: color-mix(in srgb, currentColor 8%, transparent);
+    }
+
+    &:focus-visible {
+      outline: 2.5px solid var(--_orbit-focus-ring);
+      outline-offset: 2px;
+    }
+
+    &:disabled {
+      cursor: default;
+    }
+
+    .orbit-icon {
+      width: 22px;
+      height: 22px;
+    }
+  }
+
+  &__toggle {
+    width: 44px;
+    height: 44px;
+    border-radius: 22px;
+    background: var(--_orbit-audio-accent);
+    color: var(--_orbit-audio-on-accent);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
+    transition: border-radius 260ms cubic-bezier(0.2, 0.8, 0.2, 1), transform 140ms ease;
+
+    &:hover {
+      background: var(--_orbit-audio-accent);
+      filter: brightness(1.06);
+    }
+
+    &:active {
+      transform: scale(0.94);
+    }
+  }
+
+  &--playing &__toggle {
+    border-radius: 14px;
+  }
+
+  // While the sound waits for more of itself, a ring turns around the button.
+  &--waiting &__toggle::after {
+    content: '';
+    position: absolute;
+    inset: -5px;
+    border: 2px solid var(--_orbit-audio-accent);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: orbit-viewer-spin 900ms linear infinite;
+  }
+
+  &__track {
+    display: grid;
+    flex: 1;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  &__position {
+    width: 100%;
+    height: 22px;
+    margin: 0;
+    background: transparent;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+
+    &::-webkit-slider-runnable-track {
+      height: 6px;
+      border-radius: 999px;
+      background: linear-gradient(to right, var(--_orbit-audio-accent) var(--_orbit-audio-progress, 0%), var(--_orbit-audio-track) var(--_orbit-audio-progress, 0%));
+    }
+
+    &::-webkit-slider-thumb {
+      width: 16px;
+      height: 16px;
+      margin-top: -5px;
+      border: 0;
+      border-radius: 50%;
+      background: var(--_orbit-audio-accent);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+      transition: transform 140ms ease;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    &:active::-webkit-slider-thumb {
+      transform: scale(1.25);
+    }
+
+    &::-moz-range-track {
+      height: 6px;
+      border-radius: 999px;
+      background: var(--_orbit-audio-track);
+    }
+
+    &::-moz-range-progress {
+      height: 6px;
+      border-radius: 999px;
+      background: var(--_orbit-audio-accent);
+    }
+
+    &::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border: 0;
+      border-radius: 50%;
+      background: var(--_orbit-audio-accent);
+    }
+
+    &:focus-visible {
+      outline: none;
+    }
+
+    &:focus-visible::-webkit-slider-thumb {
+      outline: 2.5px solid var(--_orbit-focus-ring);
+      outline-offset: 2px;
+    }
+
+    &:disabled {
+      cursor: default;
+    }
+  }
+
+  &__times {
+    display: flex;
+    justify-content: space-between;
+    color: var(--_orbit-sheet-muted-text);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+  }
+
+  // Big, in the media viewer: the slider and times, then back, play and on, with the sound's switch beside them.
+  &--stage {
+    display: grid;
+    grid-template-areas:
+      'track track track'
+      '. buttons tools';
+    grid-template-columns: 1fr auto 1fr;
+    gap: 14px 0;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+  }
+
+  &--stage &__track {
+    grid-area: track;
+  }
+
+  &--stage &__times {
+    font-size: 13px;
+  }
+
+  &__buttons {
+    display: flex;
+    grid-area: buttons;
+    align-items: center;
+    gap: 24px;
+  }
+
+  &__tools {
+    display: flex;
+    grid-area: tools;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  &--stage &__toggle {
+    width: 72px;
+    height: 72px;
+    border-radius: 36px;
+
+    .orbit-icon {
+      width: 32px;
+      height: 32px;
+    }
+  }
+
+  &--stage#{&}--playing &__toggle {
+    border-radius: 24px;
+  }
+
+  &__skip {
+    width: 52px;
+    height: 52px;
+
+    .orbit-icon {
+      width: 30px;
+      height: 30px;
+    }
+  }
+
+  &__skip-seconds {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding-top: 2px;
+    font-size: 9.5px;
+    font-weight: 700;
+    pointer-events: none;
+  }
+
+  // On a map the page drives, the player only shows how it's going.
+  &--still &__button,
+  &--still &__position {
+    pointer-events: none;
+  }
+}
+
 // Media viewer
 
 // A picture or video over the whole window. It takes its colors from the
@@ -1655,6 +1988,127 @@
     cursor: grabbing;
   }
 
+  // A live photo's picture: held, it plays instead of opening the browser's menu.
+  &__picture--live {
+    -webkit-touch-callout: none;
+  }
+
+  // A live photo's motion, laid exactly over its picture (by live-photo.ts). It
+  // fades in from its first frame, and back out onto the picture as it settles.
+  &__motion {
+    position: absolute;
+    box-sizing: content-box;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    object-fit: cover;
+    transform-origin: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 360ms ease;
+
+    &--shown {
+      opacity: 1;
+      transition-duration: 160ms;
+    }
+
+    &--gliding {
+      transition: opacity 360ms ease, transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    &--shown#{&}--gliding {
+      transition-duration: 160ms, 220ms;
+    }
+  }
+
+  // A live photo's mark: a pill with Orbit's rings and the word phones show,
+  // inside the picture's top left corner (placeLiveMark), in the colors of the
+  // map's controls. It's the button that plays the motion: while it plays, it
+  // takes the controls' accent and its dashed orbit turns.
+  &__live {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    box-sizing: border-box;
+    height: 28px;
+    margin: 0;
+    padding: 0 11px 0 7px;
+    border: 1px solid var(--_orbit-control-border);
+    border-radius: 999px;
+    background: var(--_orbit-control-background);
+    color: var(--_orbit-control-text);
+    box-shadow: var(--_orbit-control-shadow);
+    backdrop-filter: blur(var(--_orbit-control-blur));
+    -webkit-backdrop-filter: blur(var(--_orbit-control-blur));
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 650;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+
+    // A finger's worth of room around it to press.
+    &::before {
+      content: '';
+      position: absolute;
+      inset: -8px;
+    }
+
+    &[hidden] {
+      display: none;
+    }
+
+    &:hover {
+      background: color-mix(in srgb, var(--_orbit-control-text) 8%, var(--_orbit-control-background));
+    }
+
+    &:focus-visible {
+      outline: 2.5px solid var(--_orbit-focus-ring);
+      outline-offset: 2px;
+    }
+
+    &:disabled {
+      cursor: default;
+    }
+
+    .orbit-icon {
+      width: 17px;
+      height: 17px;
+    }
+
+    // The dashed orbit, the icon's last path, turns around the middle.
+    .orbit-icon path:last-child {
+      transform-box: view-box;
+      transform-origin: 12px 12px;
+    }
+
+    &--playing {
+      border-color: transparent;
+      background: var(--_orbit-control-active-background);
+      color: var(--_orbit-control-active-text);
+
+      &:hover {
+        background: var(--_orbit-control-active-background);
+      }
+
+      .orbit-icon path:last-child {
+        animation: orbit-viewer-orbit 2.4s linear infinite;
+      }
+    }
+
+    &--gliding {
+      transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease, transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+  }
+
   &__player {
     position: absolute;
     overflow: hidden;
@@ -1669,6 +2123,104 @@
       height: 100%;
       border: 0;
       background: #000000;
+    }
+  }
+
+  // A sound: its art, then its player, centered on the stage (sized by layout()).
+  &__sound {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+
+    .orbit-audio {
+      width: 100%;
+    }
+  }
+
+  // The idea's picture, or art made of its color and icon: rings, a moon on
+  // the inner one, and both turning while the sound plays.
+  &__art {
+    position: relative;
+    flex: none;
+    width: var(--_orbit-viewer-art, 280px);
+    height: var(--_orbit-viewer-art, 280px);
+    overflow: hidden;
+    border-radius: 32px;
+    box-shadow: var(--_orbit-sheet-shadow);
+
+    &[hidden] {
+      display: none;
+    }
+
+    &--made {
+      background: radial-gradient(circle at 32% 26%, color-mix(in oklab, var(--orbit-art-color, #9ed5fd) 52%, #ffffff) 0%, var(--orbit-art-color, #9ed5fd) 46%, color-mix(in oklab, var(--orbit-art-color, #9ed5fd) 58%, #000000) 100%);
+    }
+  }
+
+  &__art-picture {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+
+  &__art-ring {
+    position: absolute;
+    inset: 21%;
+    border: 1.5px solid rgba(255, 255, 255, 0.5);
+    border-radius: 50%;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: -6px;
+      left: calc(50% - 6px);
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.6);
+    }
+
+    &--outer {
+      inset: 7%;
+      border-style: dashed;
+      border-color: rgba(255, 255, 255, 0.34);
+
+      &::after {
+        display: none;
+      }
+    }
+  }
+
+  &--playing &__art-ring {
+    animation: orbit-viewer-orbit 18s linear infinite;
+  }
+
+  &--playing &__art-ring--outer {
+    animation-duration: 60s;
+    animation-direction: reverse;
+  }
+
+  &__art-center {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: #ffffff;
+    font-size: calc(var(--_orbit-viewer-art, 280px) * 0.24);
+    line-height: 1;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+
+    .orbit-icon {
+      width: 30%;
+      height: 30%;
+      stroke-width: 1.5;
     }
   }
 
@@ -1826,6 +2378,12 @@
   }
 }
 
+@keyframes orbit-viewer-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .orbit-error {
   box-sizing: border-box;
   margin: 12px;
@@ -1882,8 +2440,25 @@
     background: rgba(127, 127, 127, 0.14);
   }
 
-  .orbit-viewer__step:hover {
+  .orbit-viewer__step:hover,
+  .orbit-viewer__live:hover {
     background: var(--_orbit-control-background);
+  }
+
+  .orbit-viewer__live--playing:hover {
+    background: var(--_orbit-control-active-background);
+  }
+
+  .orbit-audio {
+    --_orbit-audio-track: rgba(127, 127, 127, 0.3);
+  }
+
+  .orbit-audio__button:hover {
+    background: rgba(127, 127, 127, 0.14);
+  }
+
+  .orbit-viewer__art--made {
+    background: var(--orbit-art-color, #9ed5fd);
   }
 }
 
@@ -1899,7 +2474,9 @@
 @media (prefers-reduced-motion: reduce) {
   .orbit *,
   .orbit-sheet,
-  .orbit-viewer {
+  .orbit-sheet *,
+  .orbit-viewer,
+  .orbit-viewer * {
     transition: none !important;
     animation: none !important;
   }
@@ -1911,8 +2488,21 @@
     stroke: Highlight;
   }
 
+  // Forced colors paint the page in the reader's colors but leave strokes as written: a theme's rings and lines,
+  // made for its own background, could vanish on theirs (a dark theme's light rings on white).
+  .orbit-ring {
+    stroke: GrayText;
+    stroke-opacity: 1;
+  }
+
+  .orbit-link {
+    stroke: CanvasText;
+    stroke-opacity: 1;
+  }
+
   .orbit-add__disc,
-  .orbit-add__plus {
+  .orbit-add__plus,
+  .orbit-hidden-place__disc {
     stroke: CanvasText;
   }
 
@@ -1925,7 +2515,8 @@
     display: none;
   }
 
-  .orbit-button[aria-pressed='true'] {
+  .orbit-button[aria-pressed='true'],
+  .orbit-viewer__live--playing {
     outline: 2px solid Highlight;
   }
 }

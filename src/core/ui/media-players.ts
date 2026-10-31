@@ -30,8 +30,8 @@ export interface PlaybackState {
 }
 
 export interface MediaPlayer {
-  /** What shows the video: a `<video>` element or a frame. */
-  readonly element: HTMLVideoElement | HTMLIFrameElement;
+  /** What shows the video: a `<video>` element or a frame; for a sound, Orbit's own player. */
+  readonly element: HTMLElement;
 
   /** Width over height, as far as it's known yet. */
   readonly ratio: number;
@@ -198,7 +198,7 @@ const pageOrigin = (): string | null => {
  * learns its length or jumps to another time, and otherwise at most every
  * `TIME_REPORT` ms while it plays.
  */
-class StateReporter {
+export class StateReporter {
   private last: PlaybackState | null = null;
   private lastAt = 0;
   private readonly listener: (state: PlaybackState) => void;

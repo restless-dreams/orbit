@@ -38,17 +38,40 @@ const PLAIN = /^[\x20-\x7e\xa0-\xff\u2000-\u200a]*$/;
 
 let segmenter: Intl.Segmenter | null | undefined;
 
+/**
+ * The segmenter's answers, by text. Names with an emoji or a script
+ * beyond Latin-1 are split again by each measurement of them (at two sizes,
+ * where they break, how they hyphenate), and the segmenter is slow to call:
+ * when an orbit of a few hundred such names comes into view, splitting them
+ * took a quarter of the frame.
+ */
+const segmented = new Map<string, readonly string[]>();
+/** More texts than the largest maps have; past it, the answers start over. */
+const SEGMENTED_LIMIT = 20000;
+
 /** The characters of `text` as people see them, so an emoji with its modifiers stays whole. */
-export const graphemes = (text: string): string[] => {
+export const graphemes = (text: string): readonly string[] => {
   if (PLAIN.test(text)) {
     return text.split('');
+  }
+
+  const known = segmented.get(text);
+
+  if (known) {
+    return known;
   }
 
   if (segmenter === undefined) {
     segmenter = typeof Intl !== 'undefined' && 'Segmenter' in Intl ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
   }
 
-  return segmenter ? Array.from(segmenter.segment(text), (part) => part.segment) : Array.from(text);
+  if (segmented.size >= SEGMENTED_LIMIT) {
+    segmented.clear();
+  }
+
+  const characters = segmenter ? Array.from(segmenter.segment(text), (part) => part.segment) : Array.from(text);
+  segmented.set(text, characters);
+  return characters;
 };
 
 /** How many narrow and wide characters `text` has. */

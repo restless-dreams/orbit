@@ -9,13 +9,21 @@
 
 import type { OrbitNewNode, OrbitNode, OrbitNodeInput } from './types.js';
 import { branchColorsBefore, keepBranchColors, type BranchColorRules } from './branch-colors.js';
+import { mediaWithExtras, unreadAttributes } from './node-attributes.js';
+import { readNodeInput } from './node-input.js';
 import { findIndexedLinkedNode, indexNodes, nodeLinksOf } from './node-links.js';
 import { findNodeById, getNodePath, nodeSlug, setParent } from './utils.js';
+import { documentSource } from './document-source.js';
+import { unreadParts, yamlSource } from './yaml-source.js';
+import { ideaName, isNewerFormat, newerFormatError } from './format-upgrades.js';
 
 /** The attributes `addNode` and `updateNode` set, in the order nodes list them. */
 const ATTRIBUTE_KEYS = [
-  'icon', 'color', 'paletteColor', 'status', 'priority', 'tags', 'collapsed', 'type', 'typeVersion', 'link', 'note', 'noteFormat', 'image', 'video', 'embed', 'attrs',
+  'icon', 'color', 'paletteColor', 'status', 'priority', 'tags', 'collapsed', 'type', 'typeVersion', 'link', 'note', 'noteFormat', 'image', 'video', 'audio', 'embed', 'attrs',
 ] as const satisfies readonly Exclude<keyof OrbitNodeInput, 'text'>[];
+
+/** The attributes that are a file's, whose fields Orbit doesn't read are kept through edits (see `mediaWithExtras`). */
+const MEDIA_KEYS: ReadonlySet<string> = new Set(['image', 'video', 'audio', 'embed']);
 
 /** Every id in the tree. */
 export const nodeIds = (root: OrbitNode): Set<string> => {
@@ -58,7 +66,8 @@ export const createNode = (input: OrbitNewNode, taken: ReadonlySet<string>): Orb
 
   const create = (entry: OrbitNewNode): OrbitNode => {
     const node: OrbitNode = { id: '', text: '', level: 0, children: [] };
-    assignAttributes(node, { ...entry, text: typeof entry.text === 'string' ? entry.text : '' });
+    const read = readNodeInput(entry);
+    assignAttributes(node, { ...read, text: read.text ?? '' });
     node.id = uniqueId(nodeSlug(node.text), ids);
     ids.add(node.id);
     node.children = (entry.children ?? []).map(create);
@@ -87,7 +96,10 @@ export const newNodeFrom = (node: OrbitNode): OrbitNewNode => {
   return copy;
 };
 
-/** Sets the text and attributes `changes` names. An attribute set to `undefined` is removed. */
+/**
+ * Sets the text and attributes `changes` names, read by `readNodeInput`. An
+ * attribute set to `undefined` is removed.
+ */
 export const assignAttributes = (node: OrbitNode, changes: OrbitNodeInput): void => {
   if (typeof changes.text === 'string') {
     // A title is one line: a line break would end the heading in the saved map.
@@ -107,6 +119,8 @@ export const assignAttributes = (node: OrbitNode, changes: OrbitNodeInput): void
       delete target[key];
     } else if (Array.isArray(value)) {
       target[key] = [...value];
+    } else if (MEDIA_KEYS.has(key) && typeof value === 'object' && value !== null) {
+      target[key] = mediaWithExtras(value, target[key]);
     } else if (typeof value === 'object' && value !== null) {
       target[key] = { ...value };
     } else {
@@ -169,6 +183,63 @@ export const detachChild = (parent: OrbitNode, node: OrbitNode): void => {
   setParent(node, undefined);
 };
 
+/** Whether `root` is the tree of a map read from a file written for a newer format: edits mustn't lose what this version can't read of it. */
+const isNewerMap = (root: OrbitNode): boolean => {
+  const markdown = documentSource({ root });
+  return yamlSource({ root }) !== undefined || (markdown !== undefined && isNewerFormat(markdown.options));
+};
+
+/**
+ * Refuses, before anything changes, ideas added or moved under `parent` in a
+ * map written for a newer format, when its ideas are written in a form this
+ * version can't read: writing the new ones would lose them.
+ */
+const refuseIdeasUnder = (root: OrbitNode, parent: OrbitNode): void => {
+  const parts = isNewerMap(root) ? unreadParts(yamlSource({ root }), parent) : undefined;
+
+  if (parts?.children) {
+    throw newerFormatError(`${ideaName(parent)}'s ideas are`, 'adding one would lose them');
+  }
+
+  if (parts?.entry) {
+    throw newerFormatError(`${ideaName(parent)} is`, 'adding ideas under it would lose it');
+  }
+};
+
+/**
+ * Refuses, before anything changes, a change to what this version couldn't
+ * read of `node` in a map written for a newer format: new text for text it
+ * can't read, a new value for an attribute whose value it couldn't read, or
+ * any change to an idea written in a form it can't read. Taking a value
+ * away loses nothing it was asked to keep: removing one, as removing an idea,
+ * is the edit.
+ */
+const refuseChanges = (root: OrbitNode, node: OrbitNode, changes: OrbitNodeInput): void => {
+  if (!isNewerMap(root)) {
+    return;
+  }
+
+  const parts = unreadParts(yamlSource({ root }), node);
+  const name = ideaName(node);
+
+  if (parts.entry && Object.keys(changes).length > 0) {
+    throw newerFormatError(`${name} is`, 'changing it would lose it');
+  }
+
+  if (parts.text && typeof changes.text === 'string') {
+    throw newerFormatError(`${name}'s text is`, 'new text would lose it');
+  }
+
+  for (const key of unreadAttributes(node.attrs)) {
+    const value = (changes as Record<string, unknown>)[key];
+    const inAttrs = changes.attrs?.[key];
+
+    if (value !== undefined || (inAttrs !== undefined && JSON.stringify(inAttrs) !== JSON.stringify(node.attrs?.[key]))) {
+      throw newerFormatError(`${name}'s ${key} is`, `a new ${key} would lose it`);
+    }
+  }
+};
+
 /** Adds `input`, with its children, under `parentId` at `index` among its children (default: last). Null when there's no such parent. */
 export const addToTree = (root: OrbitNode, parentId: string, input: OrbitNewNode, index?: number, colors?: BranchColorRules): { node: OrbitNode; parent: OrbitNode } | null => {
   const path = getNodePath(root, parentId);
@@ -178,6 +249,7 @@ export const addToTree = (root: OrbitNode, parentId: string, input: OrbitNewNode
   }
 
   const parent = path[path.length - 1];
+  refuseIdeasUnder(root, parent);
   const before = colors && branchColorsBefore(root, colors);
   const node = createNode(input, nodeIds(root));
   insertChild(parent, node, path.length - 1, index);
@@ -201,13 +273,17 @@ export const updateInTree = (root: OrbitNode, id: string, changes: OrbitNodeInpu
     return null;
   }
 
+  // Every value is read before any changes: one Orbit can't read throws with the node as it was.
+  const read = readNodeInput(changes);
+  refuseChanges(root, node, read);
   const previousId = node.id;
   const previousText = node.text;
-  const idFollowsText = typeof changes.text === 'string' && hasTextId(node) && !isLinkedTo(root, node);
+  const textId = typeof read.text === 'string' && hasTextId(node);
   const before = colors && branchColorsBefore(root, colors);
-  assignAttributes(node, changes);
+  assignAttributes(node, read);
 
-  if (idFollowsText && node.text !== previousText) {
+  // Links are looked at once the changes are made: a link they add, to the node itself too, keeps the id it names.
+  if (textId && node.text !== previousText && !isLinkedTo(root, node)) {
     const taken = nodeIds(root);
     taken.delete(node.id);
     node.id = uniqueId(nodeSlug(node.text), taken);
@@ -256,6 +332,7 @@ export const moveInTree = (root: OrbitNode, id: string, parentId: string, index?
 
   const from = path[path.length - 2];
   const to = parentPath[parentPath.length - 1];
+  refuseIdeasUnder(root, to);
   const before = colors && branchColorsBefore(root, colors);
   detachChild(from, node);
   insertChild(to, node, parentPath.length - 1, index);

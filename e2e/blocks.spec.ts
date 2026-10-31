@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 
 /** Each block's height, its map's, and its drawing's, in CSS pixels. */
 const measure = (page: import('@playwright/test').Page) => page.evaluate(() => {

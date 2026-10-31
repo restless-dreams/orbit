@@ -94,8 +94,8 @@ describe('openMedia', () => {
     expect(openViewer(host)).toBeNull();
   });
 
-  test('opens whatever mediaViewer and showDetailSheet say', () => {
-    const { host, renderer } = mount(MAP, { mediaViewer: false, showDetailSheet: false });
+  test('opens whatever showMediaViewer and showDetailSheet say', () => {
+    const { host, renderer } = mount(MAP, { showMediaViewer: false, showDetailSheet: false });
     expect(renderer.openMedia('trip')).toBe(true);
     expect(openViewer(host)).not.toBeNull();
   });

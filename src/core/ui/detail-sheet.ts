@@ -1,5 +1,6 @@
 /**
- * The detail sheet: a node's media, note, status, tags and link. A native
+ * The detail sheet: a node's media, note, status, tags and link. A sound
+ * plays in Orbit's own player, which stops when the sheet closes. A native
  * `<dialog>` opened as a modal, so it sits in the top layer, traps focus,
  * closes with Esc and makes the page behind it inert. Phones get a bottom
  * sheet that can be swiped down to close.
@@ -13,8 +14,11 @@ import { createActionIcon, createIcon } from './icons.js';
 import { embedFrame, playerFrame } from './frames.js';
 import { renderNoteMarkdown } from './note-markdown.js';
 import { isNodeLink } from '../node-links.js';
+import { AudioPlayer } from './audio-player.js';
+import { liveMotion } from './live-photo.js';
+import { focusedElement } from '../browser.js';
 
-export type DetailSection = 'details' | 'image' | 'video' | 'embed' | 'note';
+export type DetailSection = 'details' | 'image' | 'video' | 'audio' | 'embed' | 'note';
 
 /** What the map tells the sheet about the node it shows, beyond its content: its type, actions and status look. */
 export interface SheetExtensions {
@@ -55,11 +59,11 @@ export interface DetailRequest {
   extensions?: SheetExtensions;
 
   /**
-   * Opens the media viewer on the node's picture or video: with it, the
-   * picture is a button and the video gets one. `startAt` is where the
-   * sheet's own player of a video file was.
+   * Opens the media viewer on the node's picture, video or sound: with it,
+   * the picture is a button and the video and sound get one. `startAt` is
+   * where the sheet's own player of a video file or a sound was.
    */
-  onViewMedia?: (node: OrbitNode, kind: 'image' | 'video', event: MouseEvent, startAt?: number) => void;
+  onViewMedia?: (node: OrbitNode, kind: 'image' | 'video' | 'audio', event: MouseEvent, startAt?: number) => void;
 
   /** The map's words, in its language. Default: English. */
   words?: OrbitWords;
@@ -74,8 +78,15 @@ export class DetailSheet {
   private request: DetailRequest | null = null;
   private returnFocus: HTMLElement | SVGElement | null = null;
 
-  constructor(host: HTMLElement) {
+  /** The sound playing in the sheet, which stops when the sheet closes or shows another node. */
+  private sound: AudioPlayer | null = null;
+
+  /** Puts keyboard focus on the map, when what had it before the sheet opened has gone. */
+  private readonly focusLost: (() => void) | undefined;
+
+  constructor(host: HTMLElement, focusLost?: () => void) {
     this.host = host;
+    this.focusLost = focusLost;
   }
 
   get isOpen(): boolean {
@@ -93,14 +104,16 @@ export class DetailSheet {
   }
 
   open(request: DetailRequest): void {
-    const active = (this.host.ownerDocument ?? document).activeElement;
+    // Inside a shadow root, the element with focus is in it, not its host.
+    const active = focusedElement(this.host);
 
-    if (!this.isOpen && (active instanceof HTMLElement || active instanceof SVGElement)) {
+    if (!this.isOpen && active) {
       this.returnFocus = active;
     }
 
     this.request = request;
     const dialog = this.ensureDialog();
+    this.stopSound();
     dialog.replaceChildren(...this.buildContent(request));
     dialog.setAttribute('aria-label', request.node.text || this.words.text('details'));
 
@@ -130,7 +143,13 @@ export class DetailSheet {
       dialog.removeAttribute('open');
     }
 
+    this.stopSound();
     this.restoreFocus();
+  }
+
+  private stopSound(): void {
+    this.sound?.destroy();
+    this.sound = null;
   }
 
   /** Closes the sheet, then hands the linked node to the map to fly to. */
@@ -151,8 +170,11 @@ export class DetailSheet {
     const target = this.returnFocus;
     this.returnFocus = null;
 
-    if (target && target.isConnected) {
+    // A button made again while the sheet was open, such as the one that opened it, has left the page.
+    if (target?.isConnected) {
       target.focus({ preventScroll: true });
+    } else if (target) {
+      this.focusLost?.();
     }
   }
 
@@ -163,7 +185,12 @@ export class DetailSheet {
 
     const dialog = document.createElement('dialog');
     dialog.className = 'orbit-sheet';
-    dialog.addEventListener('close', () => this.restoreFocus());
+
+    // Closed by the browser (Esc) too: a sound stops with it.
+    dialog.addEventListener('close', () => {
+      this.stopSound();
+      this.restoreFocus();
+    });
 
     // A click on the dialog box itself (outside its content) is a backdrop click.
     dialog.addEventListener('click', (event) => {
@@ -413,7 +440,7 @@ export class DetailSheet {
 
     if (node.status) {
       const chip = element('span', 'orbit-sheet__chip orbit-sheet__chip--status');
-      chip.textContent = node.status;
+      chip.textContent = this.words.statusName(node.status);
       const look = extensions?.status(node.status) ?? { tone: statusTone(node.status) };
       chip.style.setProperty('--orbit-chip-dot', look.color ?? `var(--_orbit-status-${look.tone})`);
       chips.push(chip);
@@ -452,16 +479,28 @@ export class DetailSheet {
         const image = document.createElement('img');
         image.src = resolveUrl(source, baseUrl);
         image.alt = node.image.alt ?? '';
+        // A live photo shows still here, as on the map, with its mark: the viewer plays it.
+        const live = liveMotion(node.image) !== null;
+        let picture: HTMLElement = image;
 
         if (onViewMedia) {
           const button = element('button', 'orbit-sheet__picture');
           button.type = 'button';
-          button.setAttribute('aria-label', image.alt ? this.words.text('viewImageOf', { description: image.alt }) : this.words.text('viewImage'));
+          const words = this.words;
+          const label = live
+            ? image.alt ? words.text('viewLivePhotoOf', { description: image.alt }) : words.text('viewLivePhoto')
+            : image.alt ? words.text('viewImageOf', { description: image.alt }) : words.text('viewImage');
+          button.setAttribute('aria-label', label);
           button.appendChild(image);
           button.addEventListener('click', (event) => onViewMedia(node, 'image', event));
-          figure.prepend(button);
-        } else {
-          figure.prepend(image);
+          picture = button;
+        }
+
+        figure.prepend(picture);
+
+        if (live) {
+          figure.classList.add('orbit-sheet__media--live');
+          picture.after(this.liveMark(picture !== image));
         }
 
         figures.push(figure);
@@ -496,11 +535,64 @@ export class DetailSheet {
           figure.prepend(player);
 
           if (onViewMedia) {
-            figure.appendChild(this.expandButton(figure, (event, startAt) => onViewMedia(node, 'video', event, startAt)));
+            figure.appendChild(this.expandButton((event) => {
+              let startAt: number | undefined;
+              const video = figure.querySelector('video');
+
+              if (video) {
+                // One that has ended starts over.
+                startAt = video.currentTime > 0 && !video.ended ? video.currentTime : undefined;
+                video.pause();
+              }
+
+              // A frame stops playing only by loading again.
+              const frame = figure.querySelector('iframe');
+              frame?.replaceWith(frame.cloneNode(true));
+              onViewMedia(node, 'video', event, startAt);
+            }, this.words.text('expandVideo')));
           }
 
           figures.push(figure);
         }
+      }
+    }
+
+    if (hasMediaSource(node.audio)) {
+      const source = guardUrl(node.audio.src, 'audio');
+
+      if (source) {
+        const figure = this.figure('audio', node.audio.caption);
+        const player = new AudioPlayer({
+          source: resolveUrl(source, baseUrl),
+          autoplay: false,
+          controls: true,
+          title: node.audio.caption || node.text || this.words.text('audio'),
+          words: this.words,
+          size: 'inline',
+          onState: () => undefined,
+          onError: () => {
+            if (!figure.querySelector('.orbit-sheet__problem')) {
+              const problem = element('p', 'orbit-sheet__problem');
+              problem.textContent = this.words.text('audioUnavailable');
+              player.element.after(problem);
+            }
+          },
+        });
+
+        this.sound = player;
+        figure.prepend(player.element);
+
+        if (onViewMedia) {
+          figure.appendChild(this.expandButton((event) => {
+            // One that has ended starts over.
+            const { time, ended } = player.state;
+            const startAt = time > 0 && !ended ? time : undefined;
+            player.pause();
+            onViewMedia(node, 'audio', event, startAt);
+          }, this.words.text('expandAudio')));
+        }
+
+        figures.push(figure);
       }
     }
 
@@ -519,30 +611,34 @@ export class DetailSheet {
   }
 
   /**
-   * The button that moves a video to the media viewer. The sheet's own
-   * player stops first; a video file goes on from where it was.
+   * A live photo's mark, over its picture's top left corner: Orbit's rings and
+   * the word phones show. Over the picture's button, whose name says it's a
+   * live photo, assistive technology skips it (`named`).
    */
-  private expandButton(figure: HTMLElement, expand: (event: MouseEvent, startAt?: number) => void): HTMLButtonElement {
+  private liveMark(named: boolean): HTMLElement {
+    const mark = element('span', 'orbit-sheet__live');
+    const word = element('span', '');
+    word.textContent = this.words.text('live');
+    mark.append(createIcon('live'), word);
+
+    if (named) {
+      mark.setAttribute('aria-hidden', 'true');
+    }
+
+    return mark;
+  }
+
+  /**
+   * The button that moves a video or sound to the media viewer. `expand`
+   * stops the sheet's own player first, so a file goes on from where it was;
+   * `label` is the button's name for assistive technology.
+   */
+  private expandButton(expand: (event: MouseEvent) => void, label: string): HTMLButtonElement {
     const button = element('button', 'orbit-sheet__expand');
     button.type = 'button';
-    button.setAttribute('aria-label', this.words.text('expandVideo'));
+    button.setAttribute('aria-label', label);
     button.append(createIcon('expand'), document.createTextNode(this.words.text('expand')));
-
-    button.addEventListener('click', (event) => {
-      let startAt: number | undefined;
-      const video = figure.querySelector('video');
-
-      if (video) {
-        startAt = video.currentTime > 0 ? video.currentTime : undefined;
-        video.pause();
-      }
-
-      // A frame stops playing only by loading again.
-      const frame = figure.querySelector('iframe');
-      frame?.replaceWith(frame.cloneNode(true));
-      expand(event, startAt);
-    });
-
+    button.addEventListener('click', (event) => expand(event));
     return button;
   }
 

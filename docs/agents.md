@@ -19,7 +19,7 @@ it lists.
 
 ## Install the skill
 
-The package includes an agent skill in `skills/orbit`, in the [Agent Skills](https://agentskills.io) format that Codex, Claude Code, Kimi Code, Cursor, GitHub Copilot and other agents read: a `SKILL.md` with instructions they load on their own when a task involves mind maps, and the guides to the format, recipes, theming, extending, editing, pictures and videos, and languages next to it.
+The package includes an agent skill in `skills/orbit`, in the [Agent Skills](https://agentskills.io) format that Codex, Claude Code, Kimi Code, Cursor, GitHub Copilot and other agents read: a `SKILL.md` with instructions they load on their own when a task involves mind maps, and the guides to the format, recipes, theming, extending, editing, pictures, videos and sounds, and languages next to it.
 
 The [skills CLI](https://github.com/vercel-labs/skills) puts it where each agent in your project looks for skills:
 
@@ -49,7 +49,7 @@ Agents use the skill when a task calls for it, or when you ask for it by name: `
 ## What agents can rely on
 
 - **One way to do each thing.** `createOrbitMap(element, markdown, options)` for any page, `<orbit-map>` without a build step, `OrbitMindMap` from `@restless-dreams/orbit/react`, `@restless-dreams/orbit/marked` for markdown pipelines and `renderToSVGString` without a browser.
-- **Typed options.** Every option is in the type declarations, and TypeScript rejects one that doesn't exist (plain JavaScript ignores it). A few are spelled their own way where they're set: the frontmatter's `view` is `viewMode` in code and `view-mode` on `<orbit-map>`, and its `animation`, `speed` and `title` are `orbitAnimation`, `orbitSpeed` and `ariaLabel` in code.
+- **Typed options.** Every option is in the type declarations, and TypeScript rejects one that doesn't exist (plain JavaScript ignores it). Options are named as the frontmatter names them (`view`, `animation`, `speed`, and `view` on `<orbit-map>`), but for the frontmatter's `title`, which is `ariaLabel` in code. Names before 0.4.0 still work, and warn (see [Compatibility](compatibility.md)).
 - **A starting point.** `npx @restless-dreams/orbit example > map.md` writes a map that shows the main features; `--yaml` writes it as YAML.
 - **Problems with the fix.** Parsing is forgiving, and every problem is reported with what to do about it, and with its line wherever it has one: `Unknown frontmatter key "rings" (ignored). Did you mean "showRings"?`, `Unknown theme "dark". Themes: paper, night, … Did you mean "night"?`, `view must be "focus" or "all" (the overview), got "overview".`
 - **Checks without a browser.**

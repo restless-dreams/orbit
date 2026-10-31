@@ -329,8 +329,11 @@ const readMarkup = (input: string, mode: ReadingMode): MarkupElement => {
     index = afterAttributes;
 
     if (mode.html && RAW_TEXT_ELEMENTS.has(localName)) {
-      // Code and styles are left out, up to their end tag.
-      const end = text.toLowerCase().indexOf(`</${localName}`, index);
+      // Code and styles are left out, up to their end tag, found in any case from here without copying the text:
+      // lowercasing all of it for each element took time that grew with the square of a note full of them.
+      const endTag = new RegExp(`</${localName}`, 'gi');
+      endTag.lastIndex = index;
+      const end = endTag.exec(text)?.index ?? -1;
       index = end === -1 ? text.length : text.indexOf('>', end) + 1 || text.length;
       continue;
     }

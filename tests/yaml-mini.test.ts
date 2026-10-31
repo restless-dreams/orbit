@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { emitYaml, parseYaml } from '../src/core/yaml-mini';
+import { parseOrbit } from '../src/core/dispatch';
+import { emitYaml, parseYaml, type YamlValue } from '../src/core/yaml-mini';
 
 describe('yaml-mini scalars', () => {
   it('plain string', () => {
@@ -200,6 +201,21 @@ describe('yaml-mini emitter', () => {
     expect(parseYaml(emitYaml(tree))).toEqual(tree);
   });
 
+  it('writes lists inside lists as lists', () => {
+    expect(emitYaml({ grid: [[1, 2], [3]] })).toBe('grid:\n  - [1, 2]\n  - [3]\n');
+
+    const trees: YamlValue[] = [
+      { grid: [[], ['a: b', 'plain'], [null, true]] },
+      { grid: [[{ a: 1, b: [[2]] }], [[['deep']]]] },
+      { rows: [{ cells: [[1, 2]] }] },
+      [[1, [2, 3]], 'x', ['line one\nline two']],
+    ];
+
+    for (const tree of trees) {
+      expect(parseYaml(emitYaml(tree))).toEqual(tree);
+    }
+  });
+
   it('quotes a multiline value whose line would close frontmatter', () => {
     const tree = { note: 'line one\n---\nline three' };
     expect(emitYaml(tree)).not.toContain('|\n');
@@ -238,6 +254,34 @@ describe('yaml-mini reads the YAML other apps write', () => {
       list: ['first', 'first'],
     });
     expect(() => parseYaml('x: *missing')).toThrow(/Unknown alias/);
+  });
+
+  it('aliases of aliases stop before they fill the memory', () => {
+    // Each line repeats the one before nine times: nine lines would be 387 million values from 500 bytes.
+    const bomb = (levels: number): string => {
+      const lines = ['a0: &a0 "x"'];
+
+      for (let level = 1; level <= levels; level++) {
+        lines.push(`a${level}: &a${level} [${Array(9).fill(`*a${level - 1}`).join(', ')}]`);
+      }
+
+      return lines.join('\n');
+    };
+
+    const started = performance.now();
+    expect(() => parseYaml(bomb(9))).toThrow(/Aliases repeat more than 100000 values/);
+    expect(performance.now() - started).toBeLessThan(5_000);
+    // A few levels, as anchors are really used, still read.
+    expect((parseYaml(bomb(3)) as Record<string, unknown[]>).a3).toHaveLength(9);
+    // Each document starts its count over.
+    expect(() => parseYaml(bomb(4))).not.toThrow();
+    expect(() => parseYaml(bomb(4))).not.toThrow();
+    // In a map's frontmatter, and as a YAML map, it's a problem the map reports, not one that stops it.
+    const frontmatter = parseOrbit(`---\n${bomb(9).replace(/^a/gm, 'x')}\n---\n# Plan\n`);
+    expect(frontmatter.root.text).toBe('Plan');
+    expect(frontmatter.diagnostics.some((diagnostic) => diagnostic.message.includes('Aliases repeat'))).toBe(true);
+    const yaml = parseOrbit(`title: Plan\n${bomb(9)}\nnodes:\n  - text: Plan\n`);
+    expect(yaml.diagnostics.some((diagnostic) => diagnostic.message.includes('Aliases repeat'))).toBe(true);
   });
 
   it('quoted keys, a tab after the colon, and document markers', () => {

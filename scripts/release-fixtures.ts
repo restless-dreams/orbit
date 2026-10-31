@@ -54,7 +54,7 @@ export interface FixtureNode {
 
 /** A node's own fields, besides `id`, `text`, `attrs` and `children`, in the versions so far. */
 export const NODE_FIELDS = [
-  'icon', 'color', 'paletteColor', 'status', 'priority', 'tags', 'collapsed', 'type', 'typeVersion', 'link', 'note', 'noteFormat', 'image', 'video', 'embed',
+  'icon', 'color', 'paletteColor', 'status', 'priority', 'tags', 'collapsed', 'type', 'typeVersion', 'link', 'note', 'noteFormat', 'image', 'video', 'audio', 'embed',
 ] as const;
 
 /** A node as a fixture records it: everything it says, its own fields and custom attributes together. */
@@ -161,6 +161,9 @@ const editTrip = (orbit: OrbitModule, source: string): string => {
     renderer.updateNode('beaches', { status: 'done' });
     renderer.updateNode('music', { color: '#E5484D', tags: ['evening'] });
     renderer.updateNode('tascas', { note: 'Book a table for eight.' });
+    // A caption changed the way an app changes one: the value rebuilt from the fields it knows.
+    renderer.updateNode('gulbenkian', { image: { src: 'images/gulbenkian.jpg', alt: 'The garden pond', caption: 'The garden' } });
+    renderer.updateNode('pasteis-de-nata', { image: { src: 'images/nata.jpg', motion: { src: 'images/nata.mp4', still: 1.2 }, caption: 'Still warm' } });
     renderer.moveNode('fado-in-alfama', 'markets');
     renderer.removeNode('maat');
     renderer.addNode('weekend-in-lisbon', { text: 'Parks' }, 1);

@@ -1,7 +1,8 @@
 import { MapExtensions, type OrbitNodeType, type OrbitStatusStyle } from './extensions.js';
-import type { OrbitDocument, OrbitNode, OrbitRendererTheme, OrbitThemePreset, ViewMode } from './types.js';
+import type { OrbitDocument, OrbitNode, OrbitRendererTheme, OrbitThemePreset, OrbitViewMode } from './types.js';
 import { parseOrbit } from './dispatch.js';
 import { documentToRendererOptions } from './document-options.js';
+import { currentOptions } from './renderer/options.js';
 import { findNodeById } from './utils.js';
 import { hasMediaSource } from './media.js';
 import { expandTheme, mergeThemes, resolvePalette, resolveThemeTokens, themeName } from './themes.js';
@@ -19,7 +20,7 @@ import { OrbitWords, type OrbitStrings } from './languages.js';
  */
 export const MAX_SVG_EXPORT_SIZE = 1_000_000;
 
-export interface RenderToSVGOptions {
+export interface OrbitSVGOptions {
   /** Width of the drawing, in pixels: positive, at most `MAX_SVG_EXPORT_SIZE`. Default 800. */
   width?: number;
 
@@ -27,7 +28,10 @@ export interface RenderToSVGOptions {
   height?: number;
 
   /** `focus` (default) or `all` for the overview. */
-  viewMode?: ViewMode;
+  view?: OrbitViewMode;
+
+  /** @deprecated Use `view`, as the renderer and a document name it: this name goes in Orbit 1.0. */
+  viewMode?: OrbitViewMode;
 
   /** The node at the center in focus mode, by id. Default: the root. */
   focus?: string;
@@ -54,7 +58,11 @@ export interface RenderToSVGOptions {
   /** Size the SVG to its container (100% wide and tall) instead of in pixels. */
   responsive?: boolean;
 
-  /** Prefix for the SVG's ids; give each SVG inlined in one page its own. */
+  /**
+   * Prefix for the SVG's ids. Without one, they're made from the drawing,
+   * so SVGs of different maps can share a page, and the same drawing
+   * always gets the same ones.
+   */
   idPrefix?: string;
 
   /** Node types by name, before the registered ones: their icons, colors and tokens. */
@@ -63,15 +71,21 @@ export interface RenderToSVGOptions {
   /** Status words and how they look, before the registered ones. */
   statuses?: Record<string, OrbitStatusStyle>;
 
-  /** The type a node that names none is drawn as, for display only (see `RendererOptions.nodeTypeFor`). */
+  /** The type a node that names none is drawn as, for display only (see `OrbitRendererOptions.nodeTypeFor`). */
   nodeTypeFor?: (node: OrbitNode) => string | undefined;
 }
+
+/** @deprecated Use `OrbitSVGOptions`: this name goes in Orbit 1.0. */
+export type RenderToSVGOptions = OrbitSVGOptions;
 
 /**
  * Renders a map to a standalone SVG string, without a browser: for files,
  * the command line, static sites and server rendering. It draws what the
  * renderer shows at rest, with the theme's colors resolved to plain values
- * and the labels as SVG text.
+ * and the labels as SVG text. It draws the map itself, with none of a
+ * renderer's view state, so every idea shows, ideas a renderer hides with
+ * `hideChildren` included; a renderer's `toSVGString()` exports its view as
+ * it is.
  *
  * @example
  * ```ts
@@ -80,7 +94,8 @@ export interface RenderToSVGOptions {
  * const svg = renderToSVGString('# Launch\n## Research\n## Build', { width: 1200, height: 800, theme: 'cosmos' });
  * ```
  */
-export const renderToSVGString = (input: string | OrbitDocument | OrbitNode, options: RenderToSVGOptions = {}): string => {
+export const renderToSVGString = (input: string | OrbitDocument | OrbitNode, given: OrbitSVGOptions = {}): string => {
+  const options = currentOptions(given);
   const words = new OrbitWords(options.language, options.strings);
   const doc: OrbitDocument | null = typeof input === 'string' ? parseOrbit(input, { untitled: words.text('untitledMap') }) : isDocument(input) ? input : null;
   const tree = doc ? doc.root : (input as OrbitNode);
@@ -111,9 +126,9 @@ export const renderToSVGString = (input: string | OrbitDocument | OrbitNode, opt
     colors: assignNodeColors(tree, resolvePalette(options.palette ?? fromDocument.palette), (node) => extensions.color(node)),
     maxDepth: options.maxDepth ?? fromDocument.maxDepth,
   };
-  const viewMode = options.viewMode ?? fromDocument.viewMode ?? 'focus';
+  const view = options.view ?? fromDocument.view ?? 'focus';
   const focusId = options.focus && findNodeById(tree, options.focus) ? options.focus : tree.id;
-  const scene = viewMode === 'all' ? buildOverviewScene(tree, sceneOptions) : buildFocusScene(tree, focusId, sceneOptions);
+  const scene = view === 'all' ? buildOverviewScene(tree, sceneOptions) : buildFocusScene(tree, focusId, sceneOptions);
   return exportDisplay(sceneDisplay(scene, 0, scene.frame), exportOptions);
 };
 
@@ -125,7 +140,7 @@ const readSize = (value: number | undefined, fallback: number, name: 'width' | '
   const size = value ?? fallback;
 
   if (!Number.isFinite(size) || size <= 0 || size > MAX_SVG_EXPORT_SIZE) {
-    throw new Error(`RenderToSVGOptions.${name} must be a positive number no larger than ${MAX_SVG_EXPORT_SIZE}: got ${size}.`);
+    throw new Error(`OrbitSVGOptions.${name} must be a positive number no larger than ${MAX_SVG_EXPORT_SIZE}: got ${size}.`);
   }
 
   return size;
@@ -133,13 +148,13 @@ const readSize = (value: number | undefined, fallback: number, name: 'width' | '
 
 const isEmptyTree = (tree: OrbitNode): boolean => {
   return tree.text.trim() === '' && !tree.icon && tree.children.length === 0
-    && !hasMediaSource(tree.image) && !hasMediaSource(tree.video) && !hasMediaSource(tree.embed);
+    && !hasMediaSource(tree.image) && !hasMediaSource(tree.video) && !hasMediaSource(tree.audio) && !hasMediaSource(tree.embed);
 };
 
 const emptyMap = (title: string, message: string, viewport: { width: number; height: number }, tokens: Record<string, string>, responsive?: boolean): string => {
   const { width, height } = viewport;
   const size = responsive ? 'width="100%" height="100%"' : `width="${width}" height="${height}"`;
-  const color = resolveColor(tokens['muted-text'] ?? '#5F6B7D', tokens);
+  const color = escapeXml(resolveColor(tokens['muted-text'] ?? '#5F6B7D', tokens));
   const font = escapeXml(tokens['font-family'] ?? 'sans-serif');
   return `<svg xmlns="http://www.w3.org/2000/svg" ${size} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}">`
     + `<text x="${width / 2}" y="${height / 2}" text-anchor="middle" font-family="${font}" font-size="15" fill="${color}">${escapeXml(message)}</text></svg>`;

@@ -54,7 +54,7 @@ createOrbitMap(element, markdown, {
 | `icon` | The icon these nodes get unless they set their own. |
 | `color` | The color these nodes get unless they set their own. Their children take shades of it. |
 | `tokens` | [Theme tokens](theming.md#custom-properties) for these nodes only, without `--orbit-`: their rim, shadow, glow, label and status colors. |
-| `render(node, element)` | Draws inside the node, the way a picture does. `element` is a 100 × 100 px box, clipped to the node's circle and scaled with it, and the label moves outside, onto a pill that shows the node's icon before its name. Return a function to clean up; it runs when the node leaves the map. |
+| `render(node, element)` | Draws inside the node, the way a picture does. `element` is a 100 × 100 px box, clipped to the node's circle and scaled with it, and the label moves outside, onto a pill that shows the node's icon before its name. While the node is drawn under 36 px across, `element` carries `data-orbit-small`, for CSS to leave out words too small to read there (`[data-orbit-small] .count { display: none }`). Return a function to clean up; it runs when the node leaves the map. |
 | `details(node, element)` | Adds a section to the detail sheet, above the note. These nodes get a "Show details" button. |
 | `actions` | Actions only these nodes offer, after the map's own. |
 | `version` | The version of the fields these nodes keep in their attributes, once the type changes them (1 at first). See [Versions](#versions). |
@@ -100,13 +100,13 @@ registerNodeType('task', {
 ```
 
 - **Nodes say which version they were written for:** `type: task@2`; none means 1. A map upgrades older nodes when it draws them, and the next save writes them as `task@2` with their new fields, changing nothing else in the file.
-- **Nodes written for a newer version** than the type knows are left as they are, and saving keeps everything in them.
+- **Nodes written for a newer version** than the type knows are left as they are, and saving keeps everything in them. They're drawn as plain ideas, without the type's look, content or actions: what the newer version keeps in their attributes may not be what this one draws.
 - **Without a map** (on a server, in a script), `upgradeNodeTypes(document.root, nodeTypes)` does the same, with the types you pass and the registered ones, and returns how many nodes it upgraded.
 - **If `upgrade` throws,** the console says which type failed and the node stays as it was.
 
 ## Actions
 
-Actions are buttons under the node in focus, after Orbit's own (details, picture, video, note, link), and in the node's detail sheet.
+Actions are buttons under the node in focus, after Orbit's own (details, picture, video, sound, note, link), and in the node's detail sheet.
 
 ```js
 createOrbitMap(element, markdown, {
@@ -124,9 +124,9 @@ createOrbitMap(element, markdown, {
 
 | Key | What it does |
 | --- | --- |
-| `id` | The action's name in the `action` event. Use ids other than Orbit's own: `details`, `image`, `video`, `embed`, `note` and `link`. |
+| `id` | The action's name in the `action` event. Use ids other than Orbit's own: `details`, `image`, `video`, `audio`, `embed`, `note` and `link`. |
 | `label` | The button's name, read by screen readers, shown as its tooltip and in the detail sheet. A function gets the node: ``(node) => `Assign ${node.text}` ``. |
-| `icon` | An emoji or short symbol (`'✏️'`), SVG path data on a 24-unit grid (`'M4 20h4L20 8l-4-4L4 16z'`), or one of Orbit's icons: `note`, `link`, `goto`, `info`, `image`, `video`, `embed`, `list`. Without one, the label's first letter. |
+| `icon` | An emoji or short symbol (`'✏️'`), SVG path data on a 24-unit grid (`'M4 20h4L20 8l-4-4L4 16z'`), or one of Orbit's icons: `note`, `link`, `goto`, `info`, `image`, `video`, `audio`, `embed`, `list`. Without one, the label's first letter. |
 | `when(node)` | Which nodes offer it. Default: every node. |
 | `run(node, event)` | What it does. |
 
@@ -226,6 +226,8 @@ Each node's element and label carry hooks for CSS:
 - `data-orbit-status`: the status word, lowercase;
 - `data-orbit-tags`: the tags, separated by spaces.
 
+The node's element (`.orbit-node`) also carries its id, as `data-orbit-node-id`, and the color its planet is drawn with, as `--orbit-node-color`: a CSS color, such as `#f5a3a8`, or a `color-mix()` of one for an idea that takes a shade of its branch's. The theme's rims, shadows and halos mix with it, and so can your own CSS, or a page that picks text to read on the planet.
+
 Page CSS can target these on maps drawn with `createOrbitMap` or React:
 
 ```css
@@ -235,6 +237,11 @@ Page CSS can target these on maps drawn with `createOrbitMap` or React:
 
 .orbit-label[data-orbit-tags~='urgent'] {
   font-weight: 800;
+}
+
+.orbit-node[data-orbit-status='blocked'] .orbit-node__shade {
+  stroke: var(--orbit-node-color);
+  stroke-width: 4;
 }
 ```
 

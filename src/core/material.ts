@@ -12,10 +12,13 @@ import type { OrbitRendererTheme } from './types.js';
 /** Material's baseline color: the `material` and `material-night` themes are built from it. */
 export const MATERIAL_SEED = '#6750A4';
 
-export interface MaterialThemeOptions {
+export interface OrbitMaterialThemeOptions {
   /** Dark surfaces with light text, like `material-night`, instead of light ones. */
   dark?: boolean;
 }
+
+/** @deprecated Use `OrbitMaterialThemeOptions`: this name goes in Orbit 1.0. */
+export type MaterialThemeOptions = OrbitMaterialThemeOptions;
 
 /** The tokens a Material theme takes from its color: everything else comes from `material` or `material-night`. */
 export const MATERIAL_COLOR_TOKENS = [
@@ -43,10 +46,10 @@ const SUCCESS = { hue: 145, chroma: 0.13 };
 
 /**
  * A Material 3 theme built from `seed`, any CSS color Orbit reads (hex,
- * `rgb()`, `oklch()`…). Use it as the `theme` option, or name it for every
- * map: `registerTheme('brand', materialTheme('#0B57D0'))`.
+ * `rgb()`, `oklch()`, a name such as `tomato`…). Use it as the `theme`
+ * option, or name it for every map: `registerTheme('brand', materialTheme('#0B57D0'))`.
  */
-export const materialTheme = (seed: string, options: MaterialThemeOptions = {}): OrbitRendererTheme => {
+export const materialTheme = (seed: string, options: OrbitMaterialThemeOptions = {}): OrbitRendererTheme => {
   const dark = options.dark === true;
   return { preset: dark ? 'material-night' : 'material', tokens: materialColors(seed, dark) };
 };

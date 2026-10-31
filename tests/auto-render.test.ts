@@ -1,5 +1,5 @@
 import { describe, test, it, expect, beforeEach } from 'bun:test';
-import { renderOrbitElement, renderOrbitMarkdownBlocks } from '../src/core/auto-render';
+import { renderOrbitElement, hydrateOrbitBlocks } from '../src/core/auto-render';
 import { useMapSize } from './helpers/renderer';
 
 useMapSize(400, 400);
@@ -47,8 +47,8 @@ describe('renderOrbitElement', () => {
 
   test('preserves pre source for repeated block rendering', () => {
     document.body.innerHTML = '<pre><code class="language-orbit"># Root\n## A</code></pre>';
-    const first = renderOrbitMarkdownBlocks(document);
-    const second = renderOrbitMarkdownBlocks(document);
+    const first = hydrateOrbitBlocks(document);
+    const second = hydrateOrbitBlocks(document);
 
     expect(first).toHaveLength(1);
     expect(second).toHaveLength(1);
@@ -74,10 +74,10 @@ describe('renderOrbitElement', () => {
   });
 });
 
-describe('renderOrbitMarkdownBlocks', () => {
+describe('hydrateOrbitBlocks', () => {
   test('renders all matching orbit blocks under the root', () => {
     document.body.innerHTML = '<div data-orbit="# Root\n## A" class="orbit-mind-map"></div>';
-    const renderers = renderOrbitMarkdownBlocks(document);
+    const renderers = hydrateOrbitBlocks(document);
     expect(renderers).toHaveLength(1);
     expect(document.querySelector('svg')).not.toBeNull();
   });

@@ -138,7 +138,7 @@ describe('renderPrintLayout', () => {
 
   it('draws the picture as asked, or not at all', () => {
     const opening = layOut(MAP);
-    const whole = layOut(MAP, { viewMode: 'all', idPrefix: 'whole' });
+    const whole = layOut(MAP, { view: 'all', idPrefix: 'whole' });
     const focused = layOut(MAP, { focus: 'museums' });
     // The whole map draws the lines between ideas, which the opening view has none of; Museums in focus names its planet.
     expect(whole.querySelectorAll('svg line').length).toBeGreaterThan(0);

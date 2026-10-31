@@ -55,7 +55,17 @@ describe('colors', () => {
     expect(toHex(parseColor('color(srgb 1 0.5 0)')!)).toBe('#ff8000');
     expect(toHex(parseColor('oklab(1 0 0)')!)).toBe('#ffffff');
     expect(toHex(parseColor('oklch(0% 0 0)')!)).toBe('#000000');
-    expect(parseColor('tomato')).toBeNull();
+  });
+
+  test('reads the colors CSS knows by name, in any case', () => {
+    expect(toHex(parseColor('tomato')!)).toBe('#ff6347');
+    expect(toHex(parseColor('RebeccaPurple')!)).toBe('#663399');
+    expect(toHex(parseColor(' NAVY ')!)).toBe('#000080');
+    expect(toHex(parseColor('transparent')!)).toBe('#00000000');
+    expect(parseColor('light blue')).toBeNull();
+    // Names an object has are no colors.
+    expect(parseColor('constructor')).toBeNull();
+    expect(parseColor('__proto__')).toBeNull();
   });
 
   test('reads signed, leading-dot and exponent numbers, as browsers and people write them', () => {
@@ -102,7 +112,14 @@ describe('colors', () => {
     expect(resolveColor('color-mix(in oklab, var(--_orbit-color-1) 100%, white)', tokens)).toBe('#f5a3a8');
     expect(resolveColor('color-mix(in oklab, var(--_orbit-color-1) 0%, black)', tokens)).toBe('#000000');
     expect(resolveColor('var(--orbit-missing, #123456)', tokens)).toBe('#123456');
-    expect(resolveColor('tomato', tokens)).toBe('tomato');
+    expect(resolveColor('tomato', tokens)).toBe('#ff6347');
+    expect(resolveColor('color-mix(in oklab, tomato 100%, var(--_orbit-color-1))', tokens)).toBe('#ff6347');
+  });
+
+  test('writes out the tokens of a mix it can\'t read, so it doesn\'t depend on the page', () => {
+    const tokens = { 'shade-light': '#FFFFFF' };
+    expect(resolveColor('color-mix(in oklab, hsl(10 80% 60%) 78%, var(--_orbit-shade-light))', tokens)).toBe('color-mix(in oklab, hsl(10 80% 60%) 78%, #FFFFFF)');
+    expect(resolveColor('hsl(10 80% 60%)', tokens)).toBe('hsl(10 80% 60%)');
   });
 
   test('measures WCAG contrast', () => {
@@ -118,7 +135,7 @@ describe('colors', () => {
     expect(prefersLightText('#C1E3FC', '#F4F6FF', '#F4F6FF')).toBe(true);
     expect(prefersLightText('', '#ffffff', '#000000')).toBe(false);
     // Text colors it can't read: light text on fills darker than mid-gray.
-    expect(prefersLightText('#222222', 'var(--x)', 'tomato')).toBe(true);
+    expect(prefersLightText('#222222', 'var(--x)', 'currentColor')).toBe(true);
   });
 
   test('splits a color into an opaque value and an opacity', () => {
@@ -198,19 +215,22 @@ describe('label layout', () => {
       truncated: true,
       lines: ['contact_', 'tec_mail_', 'address_…'],
     });
-    // A few letters wouldn't say what the node is: no name until you zoom in.
+    // A few letters wouldn't say what the node is: none inside, and the name on a pill instead…
     expect(insideLabelLayout('planet', 20, 'contact_tec_mail_address_key')).toBeNull();
-    expect(labelPlacement('planet', 20, 'contact_tec_mail_address_key', false)).toBe('hidden');
+    expect(labelPlacement('planet', 20, 'contact_tec_mail_address_key', false)).toBe('outside');
+    // …but a crowded orbit's small planets show none until you zoom in.
+    expect(labelPlacement('planet', 12, 'contact_tec_mail_address_key', false)).toBe('hidden');
   });
 
   test('a long word hyphenated across lines that then fit shows whole, with no ellipsis', () => {
-    const layout = insideLabelLayout('planet', 40, 'Supercalifragilisticexpialidocious');
+    const layout = insideLabelLayout('planet', 40, 'Internationalization');
     expect(layout).toMatchObject({ truncated: false });
     expect(layout!.lines.length).toBeGreaterThan(1);
-    expect(layout!.lines.some((line) => line.endsWith('-'))).toBe(true);
+    // It breaks where English breaks it, and where its two lines come out even: "Internation-alization".
+    expect(layout!.lines[0]).toBe('Internation-');
     expect(layout!.lines.every((line) => !line.endsWith('…'))).toBe(true);
     // Every letter shows: dropping the hyphens the breaks added gives the name back.
-    expect(layout!.lines.map((line) => line.replace(/-$/, '')).join('')).toBe('Supercalifragilisticexpialidocious');
+    expect(layout!.lines.map((line) => line.replace(/-$/, '')).join('')).toBe('Internationalization');
   });
 
   test('a focused node keeps its icon above a title of a few words, wrapped one word to a line', () => {
@@ -223,7 +243,10 @@ describe('label layout', () => {
 
   test('the icon shows above the name when there is room, and goes before the name gets smaller', () => {
     expect(insideLabelLayout('planet', 50, 'Interviews', true)).toMatchObject({ icon: true, fontSize: 13 });
-    expect(insideLabelLayout('planet', 30, 'Interviews', true)).toMatchObject({ icon: false, truncated: false });
+    // While the map moves, the name shrinks to fit whole and the icon makes way…
+    expect(insideLabelLayout('planet', 30, 'Interviews', true, INSIDE_ESTIMATE, false)).toMatchObject({ icon: false, truncated: false });
+    // …and once it's still, breaking the word keeps the name larger, with its icon.
+    expect(insideLabelLayout('planet', 30, 'Interviews', true)).toMatchObject({ icon: true, fontSize: 12, lines: ['Inter-', 'views'] });
   });
 
   test('every line of a name fits the circle where it is drawn, however many lines the fit tried', () => {

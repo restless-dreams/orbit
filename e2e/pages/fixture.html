@@ -43,7 +43,7 @@
     : samples[parameters.get('sample') ?? 'roadmap'].source;
   const map = createOrbitMap(document.getElementById('map'), source, {
     theme,
-    viewMode: parameters.get('view') ?? 'focus',
+    view: parameters.get('view') ?? 'focus',
     transitionDuration: parameters.has('instant') ? 0 : 'auto',
     spin: parameters.has('snap') ? { snap: 'planet' } : undefined,
     editable: parameters.has('editable'),

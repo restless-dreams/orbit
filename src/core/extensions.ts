@@ -26,7 +26,7 @@ export interface OrbitAction {
   /**
    * The icon: an emoji or short symbol (`'✏️'`), SVG path data on a 24-unit
    * grid (`'M4 20h4L20 8l-4-4L4 16z'`), or one of Orbit's icons (`'note'`,
-   * `'link'`, `'goto'`, `'image'`, `'video'`, `'list'`). Default: the
+   * `'link'`, `'goto'`, `'image'`, `'video'`, `'audio'`, `'list'`). Default: the
    * label's first letter.
    */
   icon?: string;
@@ -82,7 +82,8 @@ export interface OrbitNodeType {
    * renames or reshapes its attributes, in place. `from` is the version it
    * was written for. Runs once per node when a map is drawn (or with
    * `upgradeNodeTypes`), and the next save writes the node as upgraded.
-   * Nodes written for a newer version than this one are left as they are.
+   * Nodes written for a newer version than this one are left as they are,
+   * and drawn as plain ideas.
    */
   upgrade?: (node: OrbitNode, from: number) => void;
 }
@@ -187,11 +188,14 @@ export class MapExtensions {
 
   /**
    * The name of the type the node is drawn as: its own `type`, or for a node
-   * that names none, the one `nodeTypeFor` gives it for display.
+   * that names none, the one `nodeTypeFor` gives it for display. A node
+   * written for a newer version of its type than this map knows is drawn as
+   * a plain idea, with none: what that version keeps in its attributes may
+   * not be what this one draws. It keeps its type as written all the same.
    */
   typeName(node: OrbitNode): string | undefined {
     if (node.type) {
-      return node.type;
+      return this.writtenForNewer(node) ? undefined : node.type;
     }
 
     const typeFor = this.typeFor;
@@ -225,6 +229,12 @@ export class MapExtensions {
   /** The node's own type (`type`), never one given for display: what upgrades go by. */
   ownType(node: OrbitNode): OrbitNodeType | undefined {
     return node.type ? this.typeNamed(node.type) : undefined;
+  }
+
+  /** Whether the node was written for a newer version of its own type than the one this map knows. */
+  private writtenForNewer(node: OrbitNode): boolean {
+    const type = node.type ? this.typeNamed(node.type) : undefined;
+    return type !== undefined && (node.typeVersion ?? 1) > (type.version ?? 1);
   }
 
   private typeNamed(name: string): OrbitNodeType | undefined {

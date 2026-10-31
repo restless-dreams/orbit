@@ -7,11 +7,11 @@ import { serializeOrbitMarkdown } from '../src/core/serializer-markdown';
 import { serializeOrbitYAML } from '../src/core/serializer-yaml';
 import { renderToSVGString, MAX_SVG_EXPORT_SIZE } from '../src/core/render-to-svg';
 import { exportWebPage } from '../src/core/web-page/page';
-import { isOrbitThemePreset, themeNames } from '../src/core/themes';
+import { isThemePreset, themeNames } from '../src/core/themes';
 import { THEME_SYNONYMS } from '../src/core/document-options';
 import { didYouMean } from '../src/core/suggest';
 import { OrbitWords } from '../src/core/languages';
-import type { OrbitDocument, OrbitNode, OrbitThemePreset, ParsedOrbitDocument } from '../src/core/types';
+import type { OrbitDocument, OrbitNode, OrbitThemePreset, OrbitParsedDocument } from '../src/core/types';
 import { detectImportFormat, importMap } from '../src/core/other-apps/import';
 import { OrbitImportError } from '../src/core/other-apps/ideas';
 import { exportOPML } from '../src/core/other-apps/opml';
@@ -25,7 +25,7 @@ Usage:
   orbit validate [--json] [--loose] [--tree] <file|->
                                                Check a map and list every problem, with its line
   orbit render [options] <file|->              Render a map to a standalone SVG
-  orbit export --html [options] <file|->       One web page with Orbit, the map and its pictures inside,
+  orbit export --html [options] <file|->       One web page with Orbit, the map, its pictures and sounds inside,
                                                to explore it or present it in any browser, offline
   orbit convert --to <md|yaml|opml> [--out <file>] <file|->
                                                Convert between the markdown and YAML flavors and OPML, and
@@ -70,7 +70,8 @@ Convert options:
                         in media/ next to it, and its other sheets in <file>-2, -3 and on
 
 Use "-" as the file to read from stdin. Output goes to stdout; problems go
-to stderr as file:line: severity: message [code].
+to stderr as file:line: severity: message [code]. render, export and convert
+go on after warnings, but write nothing for a map with an error.
 
 Exit codes: 0 when it worked (for validate, when the map is valid), 1 when the
 map has problems or can't be read, and 2 for a mistake in the command itself.
@@ -102,7 +103,7 @@ const isYamlFile = (file: string): boolean => {
 };
 
 /** A map from a file: YAML for .yaml and .yml files, otherwise the flavor its first lines say. */
-const parseFile = (file: string, source: string, options: { strict?: boolean; untitled?: string } = {}): ParsedOrbitDocument => {
+const parseFile = (file: string, source: string, options: { strict?: boolean; untitled?: string } = {}): OrbitParsedDocument => {
   return isYamlFile(file) ? parseOrbitYAML(source, options) : parseOrbit(source, options);
 };
 
@@ -196,7 +197,7 @@ const readOptions = (command: string, argumentsList: string[], names: string[]):
 
 /** The exit code for a --theme or --view that isn't one, or null when they're fine. */
 const checkLook = (command: string, values: Record<string, string>): number | null => {
-  if (values.theme !== undefined && !isOrbitThemePreset(values.theme)) {
+  if (values.theme !== undefined && !isThemePreset(values.theme)) {
     process.stderr.write(`orbit ${command}: unknown theme "${values.theme}". Themes: ${themeNames().join(', ')}.${didYouMean(values.theme, themeNames(), THEME_SYNONYMS)}\n`);
     return 2;
   }
@@ -210,7 +211,7 @@ const checkLook = (command: string, values: Record<string, string>): number | nu
 };
 
 /** The exit code for a --focus no node of the map has, or null when it's fine. */
-const checkFocus = (command: string, values: Record<string, string>, doc: ParsedOrbitDocument): number | null => {
+const checkFocus = (command: string, values: Record<string, string>, doc: OrbitParsedDocument): number | null => {
   if (values.focus !== undefined) {
     const ids = nodeIds(doc.root);
 
@@ -263,6 +264,11 @@ const convertCommand = (argumentsList: string[]): number => {
   if (format === null) {
     const doc = parseFile(file, new TextDecoder().decode(bytes));
     printDiagnostics(file, doc.diagnostics ?? []);
+
+    if (stopsAtErrors('convert', file, doc.diagnostics ?? [])) {
+      return 1;
+    }
+
     writeOutput(values.out, writeAs(to, doc));
     return 0;
   }
@@ -379,6 +385,11 @@ const renderCommand = (argumentsList: string[]): number => {
   const words = new OrbitWords(values.language);
   const doc = parseFile(file, readInput(file), { untitled: words.text('untitledMap') });
   printDiagnostics(file, doc.diagnostics);
+
+  if (stopsAtErrors('render', file, doc.diagnostics)) {
+    return 1;
+  }
+
   const focus = checkFocus('render', values, doc);
 
   if (focus !== null) {
@@ -390,7 +401,7 @@ const renderCommand = (argumentsList: string[]): number => {
     height,
     language: values.language,
     theme: values.theme as OrbitThemePreset | undefined,
-    viewMode: values.view as 'focus' | 'all' | undefined,
+    view: values.view as 'focus' | 'all' | undefined,
     focus: values.focus,
     // Relative images are next to the map file, unless the document says otherwise.
     baseUrl: baseUrlFor(doc.options.baseUrl, file),
@@ -430,6 +441,11 @@ const exportCommand = (argumentsList: string[]): number => {
   const source = readInput(file);
   const doc = parseFile(file, source, { untitled: words.text('untitledMap') });
   printDiagnostics(file, doc.diagnostics);
+
+  if (stopsAtErrors('export', file, doc.diagnostics)) {
+    return 1;
+  }
+
   const focus = checkFocus('export', values, doc);
 
   if (focus !== null) {
@@ -447,10 +463,10 @@ const exportCommand = (argumentsList: string[]): number => {
     script,
     title: values.title,
     theme: values.theme,
-    viewMode: values.view as 'focus' | 'all' | undefined,
+    view: values.view as 'focus' | 'all' | undefined,
     focus: values.focus,
     language: values.language,
-    media: localPictures(doc, file),
+    media: localMedia(doc, file),
   });
 
   if (values.out) {
@@ -486,18 +502,52 @@ const PICTURE_TYPES: Record<string, string> = {
   '.svg': 'image/svg+xml',
 };
 
+/** The types of live photos' motions a web page can take inside it, by extension: a few seconds of video each. */
+const MOTION_TYPES: Record<string, string> = {
+  '.mp4': 'video/mp4',
+  '.m4v': 'video/mp4',
+  '.mov': 'video/quicktime',
+  '.webm': 'video/webm',
+};
+
+/** The types of sounds a web page can take inside it, by extension. A sound's `.mp4` is its audio alone. */
+const SOUND_TYPES: Record<string, string> = {
+  '.mp3': 'audio/mpeg',
+  '.m4a': 'audio/mp4',
+  '.mp4': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.ogg': 'audio/ogg',
+  '.oga': 'audio/ogg',
+  '.opus': 'audio/ogg',
+  '.wav': 'audio/wav',
+  '.flac': 'audio/flac',
+  '.weba': 'audio/webm',
+};
+
 /**
- * The pictures on this computer that the map shows (its nodes' pictures,
- * videos' thumbnails and pictures in notes), as data URLs by the address the
- * map gives them, to go inside the page. Pictures on the web stay links.
+ * The pictures and sounds on this computer that the map shows (its nodes'
+ * pictures, their live photos' motions and their sounds, videos' thumbnails
+ * and pictures in notes), as data URLs by the address the map gives them, to
+ * go inside the page. Pictures and sounds on the web stay links, and so do
+ * videos.
  */
-const localPictures = (doc: ParsedOrbitDocument, file: string): Record<string, string> => {
+const localMedia = (doc: OrbitParsedDocument, file: string): Record<string, string> => {
   const base = baseUrlFor(doc.options.baseUrl, file) ?? pathToFileURL(`${process.cwd()}/`).href;
   const addresses = new Set<string>();
+  const sounds = new Set<string>();
+  const motions = new Set<string>();
 
   const visit = (node: OrbitNode) => {
     if (node.image?.src) {
       addresses.add(node.image.src);
+    }
+
+    if (node.image?.motion?.src) {
+      motions.add(node.image.motion.src);
+    }
+
+    if (node.audio?.src) {
+      sounds.add(node.audio.src);
     }
 
     if (node.video?.thumbnail) {
@@ -516,19 +566,19 @@ const localPictures = (doc: ParsedOrbitDocument, file: string): Record<string, s
   visit(doc.root);
   const media: Record<string, string> = {};
 
-  for (const address of addresses) {
+  const inline = (address: string, types: Record<string, string>) => {
     let url: URL;
 
     try {
       url = new URL(address, base);
     } catch {
-      continue;
+      return;
     }
 
-    const type = PICTURE_TYPES[extname(url.pathname).toLowerCase()];
+    const type = types[extname(url.pathname).toLowerCase()];
 
     if (url.protocol !== 'file:' || type === undefined) {
-      continue;
+      return;
     }
 
     try {
@@ -536,6 +586,18 @@ const localPictures = (doc: ParsedOrbitDocument, file: string): Record<string, s
     } catch {
       process.stderr.write(`${file}: ${address} isn't there, so the page links to it as written\n`);
     }
+  };
+
+  for (const address of addresses) {
+    inline(address, PICTURE_TYPES);
+  }
+
+  for (const address of sounds) {
+    inline(address, SOUND_TYPES);
+  }
+
+  for (const address of motions) {
+    inline(address, MOTION_TYPES);
   }
 
   return media;
@@ -680,6 +742,22 @@ const validateCommand = (argumentsList: string[]): number => {
   const warnings = report.diagnostics.length;
   process.stdout.write(`OK: ${plural(report.nodes, 'node')}, ${plural(report.depth + 1, 'level')}, ${plural(warnings, 'warning')}\n`);
   return 0;
+};
+
+/**
+ * Whether reading the map found an error, which Orbit couldn't read past or
+ * which says it can't change the map: then the command writes nothing, so it
+ * never puts an empty or partial map where the map was, nor prints one into a
+ * pipe. Warnings are only printed, and the command goes on.
+ */
+const stopsAtErrors = (command: string, file: string, diagnostics: readonly OrbitDiagnostic[]): boolean => {
+  if (!diagnostics.some((diagnostic) => diagnostic.severity === 'error')) {
+    return false;
+  }
+
+  const name = file === '-' ? '<stdin>' : file;
+  process.stderr.write(`orbit ${command}: ${name} has errors (above), so nothing was written: fix them first (orbit validate lists them)\n`);
+  return true;
 };
 
 /** Problems as file:line: severity: message [code], the form editors and agents read. */

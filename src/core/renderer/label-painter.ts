@@ -11,7 +11,7 @@ import type { Scene } from '../engine/scene.js';
 import type { MapExtensions } from '../extensions.js';
 import type { OrbitNode } from '../types.js';
 import { COUNT_POSITION, NodeLabel, showsCount, type LabelPlacement, type NodeView } from '../engine/views.js';
-import { labelOrder, planLabels, type PlannedLabel } from '../engine/labels.js';
+import { labelOrder, planLabels, type Box, type PlannedLabel } from '../engine/labels.js';
 import { worldToScreen } from '../engine/camera.js';
 import { prefersLightText, resolveColor } from '../engine/colors.js';
 import { overlayTransform } from '../browser.js';
@@ -49,10 +49,16 @@ export interface LabelHost {
   /** The node whose text is being typed, which shows the field instead of its name. */
   editedId(): string | null;
 
+  /** Where the field being typed in sits on the screen, which pills keep clear of; null while there's none. */
+  editorBox(): Box | null;
+
   animationsEnabled(): boolean;
   requestPaint(): void;
   nodeView(id: string): NodeView | undefined;
   themeTokens(): Record<string, string>;
+
+  /** The language the map's names are in, which long words in them break by. */
+  language(): string;
 }
 
 export class LabelPainter {
@@ -209,11 +215,13 @@ export class LabelPainter {
     // their parent or shrinking into it, show their names once it lands: hundreds would otherwise be
     // placed again on every frame of it.
     const order = this.host.inFlight() ? this.labelOrder.order.filter((entry) => entry.cluster === undefined || entry.crowded !== true) : this.labelOrder.order;
+    const editor = this.host.editorBox();
     const planned = planLabels(display, order, {
       viewport: this.host.viewport(),
       hasImage: (entry) => this.showsImage(entry.node),
-      // A picture or a type's content fills the node: its icon goes on the pill, before its name.
-      pillIcon: (entry) => (this.showsImage(entry.node) ? this.host.extensions().icon(entry.node) : undefined),
+      // A name on a pill takes its node's icon with it, before the name: a picture or a type's content
+      // filling the node, or a name too long for it, leaves the icon no place inside.
+      pillIcon: (entry) => this.host.extensions().icon(entry.node),
       hasIcon: (entry) => Boolean(this.host.extensions().icon(entry.node)),
       previousSide: (id) => this.labels.get(id)?.direction ?? null,
       inFlight: this.host.inFlight(),
@@ -221,6 +229,9 @@ export class LabelPainter {
       moving,
       isShown: (id) => this.labels.get(id)?.isShown ?? false,
       counts: true,
+      // What's typed shows in full: a pill with no other place shows none rather than going under the field.
+      keepClear: editor ? [editor] : undefined,
+      language: this.host.language(),
     });
     const shown = new Set<string>();
     const editedId = this.host.editedId();
@@ -309,6 +320,7 @@ export class LabelPainter {
       measure: this.fonts.inside(entry.role, entry.node),
       narrower: !moving,
       countWidth: plan.countWidth,
+      language: this.host.language(),
       direction: plan.direction,
       distance: plan.distance,
       offset: plan.offset,

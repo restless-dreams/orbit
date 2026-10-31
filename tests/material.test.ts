@@ -65,5 +65,6 @@ describe('Material themes', () => {
 
   test('say which colors they can read', () => {
     expect(() => materialTheme('brand blue')).toThrow('A Material theme needs a color Orbit can read');
+    expect(materialTheme('Tomato')).toEqual(materialTheme('#ff6347'));
   });
 });

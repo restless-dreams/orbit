@@ -45,7 +45,7 @@ export const startWebPage = (page: Document = document): OrbitSVGRenderer | null
   const map = withMedia(parseOrbit(data.source, { untitled: words.text('untitledMap') }), data.media ?? {});
   const renderer = createOrbitMap(container, map, {
     theme: data.theme,
-    viewMode: data.viewMode,
+    view: data.view ?? data.viewMode,
     focus: data.focus,
     language: data.language,
     strings: data.strings,
@@ -106,6 +106,9 @@ export const startWebPage = (page: Document = document): OrbitSVGRenderer | null
     renderer.setOptions({ interactive: false, showControls: false });
     show();
     showControls();
+    // The Present button hides, so the title takes the focus, and the keys with it: left to the browser, focus drops
+    // onto the body, or in WebKit going full screen stays with the hidden button, which the forward keys skip.
+    title.focus({ preventScroll: true });
     page.documentElement.requestFullscreen?.().catch(() => undefined);
   };
 
@@ -229,7 +232,7 @@ const layOutForPrint = (page: Document, container: HTMLElement | null, map: Orbi
     }
 
     laidOut = true;
-    renderPrintLayout(container, map, { theme: data.theme, viewMode: data.viewMode, focus: data.focus, language: data.language, strings: data.strings });
+    renderPrintLayout(container, map, { theme: data.theme, view: data.view ?? data.viewMode, focus: data.focus, language: data.language, strings: data.strings });
   };
 
   view.addEventListener('beforeprint', layOut);
@@ -241,7 +244,7 @@ const layOutForPrint = (page: Document, container: HTMLElement | null, map: Orbi
   }
 };
 
-/** The map with its pictures swapped for the ones inside the page, wherever the map shows them. */
+/** The map with its pictures, live photos' motions and sounds swapped for the ones inside the page, wherever the map shows them. */
 export const withMedia = (map: OrbitDocument, media: Record<string, string>): OrbitDocument => {
   if (Object.keys(media).length === 0) {
     return map;
@@ -251,11 +254,16 @@ export const withMedia = (map: OrbitDocument, media: Record<string, string>): Or
 
   const visit = (node: OrbitNode) => {
     if (node.image) {
-      node.image = { ...node.image, src: swap(node.image.src) };
+      const motion = node.image.motion;
+      node.image = { ...node.image, src: swap(node.image.src), ...(motion ? { motion: { ...motion, src: swap(motion.src) } } : {}) };
     }
 
     if (node.video?.thumbnail) {
       node.video = { ...node.video, thumbnail: swap(node.video.thumbnail) };
+    }
+
+    if (node.audio) {
+      node.audio = { ...node.audio, src: swap(node.audio.src) };
     }
 
     if (node.note && node.noteFormat !== 'plain') {

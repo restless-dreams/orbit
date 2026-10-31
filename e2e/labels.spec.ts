@@ -1,5 +1,6 @@
-import { expect, test, type Page } from '@playwright/test';
-import { THEMES, openMap } from './helpers';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures';
+import { THEMES, frames, openMap } from './helpers';
 
 // Names are measured in the font they're drawn with: whatever the font,
 // a name inside its node stays inside it, and every label stays on the map.
@@ -182,7 +183,9 @@ test('names stay inside their nodes in a wide font', async ({ page }) => {
   expect(fit.worst).toBeLessThanOrEqual(0.5);
 });
 
-test('names are fitted again when a font finishes loading', async ({ page }) => {
+test('names are fitted again when a font finishes loading', async ({ page, browserName }) => {
+  // WebKit here says the local() face loaded, then measures text in it exactly as in the fallback: no new font arrives.
+  test.skip(browserName === 'webkit', 'Headless WebKit here doesn’t draw with a local() font it says it loaded.');
   await openMap(page, 'sample=languages&instant');
   await page.waitForTimeout(300);
   const before = await fits(page);
@@ -195,7 +198,7 @@ test('names are fitted again when a font finishes loading', async ({ page }) => 
     await face.load();
   });
 
-  await page.waitForTimeout(500);
+  await frames(page, 30);
   const after = await fits(page);
   expect(after.texts).not.toEqual(before.texts);
   expect(after.worst).toBeLessThanOrEqual(0.5);

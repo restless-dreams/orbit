@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { openMap } from './helpers';
 
 // The large map as the website shows it on a phone, 358 by 460 px: the

@@ -110,6 +110,15 @@ describe('editing the map', () => {
     expect(parseOrbit(markdown).root.children.map((child) => child.id)).toEqual(['eat', 'museums', 'plan']);
   });
 
+  test('a node given new text and a link to itself at once keeps the id its link names', () => {
+    const { renderer } = mount('# Trip\n## Food\n');
+    const changed = renderer.updateNode('food', { text: 'Street food', link: '#food' });
+    expect(changed?.id).toBe('food');
+    const read = parseOrbit(renderer.toMarkdown()).root.children[0];
+    // The link still has its target: the node it's on.
+    expect(read).toMatchObject({ id: 'food', text: 'Street food', link: '#food' });
+  });
+
   test('removeNode() removes a branch; the focus moves to what is left', () => {
     const focusChanges: string[] = [];
     const { renderer } = mount(MAP, { onFocusChange: (focused) => focusChanges.push(focused.id) });
@@ -195,6 +204,119 @@ describe('saving edited maps', () => {
     expect(saved).toContain('ideas-1');
     const { renderer } = mount('# Root\n## Ideas <!-- orbit id: ideas-1 -->');
     expect(renderer.updateNode('ideas-1', { text: 'Plans' })?.id).toBe('ideas-1');
+  });
+});
+
+describe('fields of a picture, video, sound or embed Orbit doesn\'t read', () => {
+  const MEDIA = '# Trip\n## Lake\n<!-- orbit\nimage:\n  src: lake.jpg\n  motion:\n    src: lake.mp4\n    still: 0.8\n    loop: true\n  width: 640\n-->\n'
+    + '## Talk\n<!-- orbit\nvideo:\n  src: talk.mp4\n  chapters: 3\n-->\n## Memo\n<!-- orbit\naudio:\n  src: memo.m4a\n  speaker: Ana\n-->\n'
+    + '## Page\n<!-- orbit\nembed:\n  src: https://example.com\n  height: 400\n-->\n';
+
+  test('giving a node its own picture back writes the map back as it was', () => {
+    const { renderer } = mount(MEDIA);
+    const lake = renderer.getDocument()!.root.children[0];
+    renderer.updateNode(lake.id, { image: lake.image });
+    expect(renderer.toMarkdown()).toBe(MEDIA);
+  });
+
+  test('a caption given with the picture\'s other fields keeps the fields Orbit doesn\'t read, its motion\'s too', () => {
+    const { renderer } = mount(MEDIA);
+    const lake = renderer.getDocument()!.root.children[0];
+    renderer.updateNode(lake.id, { image: { ...lake.image!, caption: 'Mist before seven' } });
+    expect(renderer.toMarkdown()).toContain('image:\n  src: lake.jpg\n  motion:\n    src: lake.mp4\n    still: 0.8\n    loop: true\n  width: 640\n  caption: Mist before seven\n');
+  });
+
+  test('a picture an app rebuilds from the fields it knows, for the same file, keeps the fields it didn\'t know', () => {
+    const { renderer } = mount(MEDIA);
+    renderer.updateNode('lake', { image: { src: 'lake.jpg', alt: 'The lake', caption: 'Mist', motion: { src: 'lake.mp4', still: 0.8 } } });
+    expect(renderer.toMarkdown()).toContain('image:\n  src: lake.jpg\n  motion:\n    src: lake.mp4\n    still: 0.8\n    loop: true\n  width: 640\n  alt: The lake\n  caption: Mist\n');
+  });
+
+  test('videos, sounds and embeds keep theirs through a caption', () => {
+    const { renderer } = mount(MEDIA);
+    renderer.updateNode('talk', { video: { src: 'talk.mp4', caption: 'The talk' } });
+    renderer.updateNode('memo', { audio: { src: 'memo.m4a', caption: 'Kickoff' } });
+    renderer.updateNode('page', { embed: { src: 'https://example.com', caption: 'The site' } });
+    const saved = renderer.toMarkdown();
+    expect(saved).toContain('video:\n  src: talk.mp4\n  chapters: 3\n');
+    expect(saved).toContain('audio:\n  src: memo.m4a\n  speaker: Ana\n  caption: Kickoff\n');
+    expect(saved).toContain('embed:\n  src: "https://example.com"\n  height: 400\n');
+    expect(saved).toContain('The talk');
+    expect(saved).toContain('The site');
+  });
+
+  test('a copy made with addNode keeps them', () => {
+    const { renderer } = mount(MEDIA);
+    const tree = renderer.getDocument()!.root;
+    renderer.addNode('trip', { text: 'Lake again', image: tree.children[0].image, audio: tree.children[2].audio });
+    const saved = renderer.toMarkdown();
+    const copy = saved.slice(saved.indexOf('## Lake again'));
+    expect(copy).toContain('image:\n  src: lake.jpg\n  motion:\n    src: lake.mp4\n    still: 0.8\n    loop: true\n  width: 640\n');
+    expect(copy).toContain('audio:\n  src: memo.m4a\n  speaker: Ana\n');
+  });
+
+  test('a picture, video or embed Orbit can\'t read is kept through an edit of its node', () => {
+    const { renderer } = mount('# Trip\n## A\n<!-- orbit\nimage:\n  sources: [a.avif, a.jpg]\n-->\n## B\n<!-- orbit\nvideo:\n  caption: x\n-->\n## C\n<!-- orbit\nembed:\n  caption: y\n-->\n');
+    renderer.updateNode('a', { status: 'done' });
+    renderer.updateNode('b', { status: 'done' });
+    renderer.updateNode('c', { status: 'done' });
+    const saved = renderer.toMarkdown();
+    const nodes = parseOrbit(saved).root.children;
+    expect(nodes.map((each) => [each.status, each.attrs])).toEqual([
+      ['done', { image: { sources: ['a.avif', 'a.jpg'] } }],
+      ['done', { video: { caption: 'x' } }],
+      ['done', { embed: { caption: 'y' } }],
+    ]);
+  });
+
+  test('another file doesn\'t take the fields of the one it replaces', () => {
+    const { renderer } = mount(MEDIA);
+    renderer.updateNode('lake', { image: { src: 'shore.jpg', motion: { src: 'shore.mp4' } } });
+    const saved = renderer.toMarkdown();
+    expect(saved).not.toContain('width: 640');
+    expect(saved).not.toContain('loop: true');
+    expect(saved).toContain('shore.jpg');
+  });
+});
+
+describe('the values addNode() and updateNode() take', () => {
+  test('the format\'s shorthands work as they do in a file', () => {
+    const { renderer } = mount(MAP);
+    const food = renderer.updateNode('food', { image: 'tacos.jpg', audio: ' memo.m4a ', video: 'https://youtu.be/abc', tags: 'local, cheap', collapsed: 'yes' as never, priority: '2' as never });
+    expect(food).toMatchObject({ image: { src: 'tacos.jpg' }, audio: { src: 'memo.m4a' }, video: { src: 'https://youtu.be/abc' }, tags: ['local', 'cheap'], collapsed: true, priority: 2 });
+    const goal = renderer.addNode('trip', { text: 'Savings', type: 'goal@2' });
+    expect(goal).toMatchObject({ type: 'goal', typeVersion: 2 });
+    const saved = renderer.toMarkdown();
+    expect(saved).toContain('tacos.jpg');
+    expect(saved).toContain('memo.m4a');
+    expect(saved).toContain('https://youtu.be/abc');
+    expect(parseOrbit(saved).root.children.find((child) => child.id === 'food')).toMatchObject({ image: { src: 'tacos.jpg' }, audio: { src: 'memo.m4a' }, tags: ['local', 'cheap'] });
+  });
+
+  test('a live photo\'s motion given as its address is its motion, and is saved as one', () => {
+    const { renderer } = mount(MAP);
+    const food = renderer.updateNode('food', { image: { src: 'tacos.jpg', motion: 'tacos-motion.mp4' as never } });
+    expect(food?.image?.motion).toEqual({ src: 'tacos-motion.mp4' });
+    const saved = renderer.toMarkdown();
+    expect(saved).toContain('motion: tacos-motion.mp4');
+    expect(parseOrbit(saved).root.children[0].image?.motion).toEqual({ src: 'tacos-motion.mp4' });
+    expect(renderer.addNode('trip', { text: 'Lake', image: { src: 'lake.jpg', motion: 'lake.mp4' as never } })?.image?.motion).toEqual({ src: 'lake.mp4' });
+  });
+
+  test('a value Orbit can\'t read throws, saying what it takes, and changes nothing', () => {
+    const { renderer } = mount(MAP);
+    const before = renderer.toMarkdown();
+    expect(() => renderer.updateNode('food', { status: 'done', image: { alt: 'Tacos' } as never })).toThrow("A node's image is an address, or an object with a src, like { image: 'summit.jpg' }, but got an object without a src.");
+    expect(() => renderer.updateNode('food', { image: { src: 'tacos.jpg', motion: { still: 1 } as never } })).toThrow("A node's image's motion is an address, or an object with a src");
+    expect(() => renderer.updateNode('food', { tags: { local: true } as never })).toThrow("A node's tags is a list of words, or words separated by commas");
+    expect(() => renderer.updateNode('food', { collapsed: 'maybe' as never })).toThrow('true or false');
+    expect(() => renderer.updateNode('food', { paletteColor: 0 })).toThrow('a whole number from 1');
+    expect(() => renderer.updateNode('food', { noteFormat: 'html' as never })).toThrow("'markdown' or 'plain'");
+    expect(() => renderer.updateNode('food', { attrs: 'owner' as never })).toThrow('an object of attributes');
+    expect(() => renderer.updateNode('food', { video: { src: 'talk.mp4', caption: { text: 'x' } } as never })).toThrow("A node's video's caption is text");
+    // The status before the picture wasn't set either, and an addNode whose child can't be read adds nothing.
+    expect(() => renderer.addNode('trip', { text: 'Hikes', children: [{ text: 'Sintra', audio: 42 as never }] })).toThrow("A node's audio is an address");
+    expect(renderer.toMarkdown()).toBe(before);
   });
 });
 

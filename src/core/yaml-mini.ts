@@ -32,6 +32,17 @@ export type YamlValue = string | number | boolean | null | YamlValue[] | { [k: s
 /** Values named with `&name` while a document is read, for `*name` to repeat. */
 let anchors = new Map<string, YamlValue>();
 
+/**
+ * The most values a document's aliases may repeat, all told: far more than
+ * any map repeats, and far less than a few aliases of aliases make. Each
+ * `*name` copies its value, so anchors built from aliases of anchors grow
+ * ninefold a line: 500 bytes of them would fill any memory.
+ */
+const MOST_ALIASED = 100_000;
+
+/** How many values the aliases of the document being read have repeated so far. */
+let aliased = 0;
+
 /** Where each key of a block map was written: 1-based lines of the text given to the parser. */
 const keyLines = new WeakMap<object, Map<string, number>>();
 /** Where each item of a block list starts. */
@@ -71,13 +82,16 @@ export const yamlItemLine = (list: object, index: number): number | undefined =>
 export const parseYaml = (input: string): YamlValue => {
   const lines = normalizeInput(input);
   const previous = anchors;
+  const previousAliased = aliased;
   anchors = new Map();
+  aliased = 0;
 
   try {
     const [value] = parseBlock(lines, 0, 0);
     return value;
   } finally {
     anchors = previous;
+    aliased = previousAliased;
   }
 };
 
@@ -541,12 +555,43 @@ const closes = (text: string): boolean => {
   return false;
 };
 
+/** How many values `value` holds, itself included, counting no further than past `limit`. */
+const valuesIn = (value: YamlValue, limit: number): number => {
+  const waiting: YamlValue[] = [value];
+  let count = 0;
+
+  while (waiting.length > 0 && count <= limit) {
+    const next = waiting.pop() as YamlValue;
+    count += 1;
+
+    if (Array.isArray(next)) {
+      for (const item of next) {
+        waiting.push(item);
+      }
+    } else if (next !== null && typeof next === 'object') {
+      for (const item of Object.values(next)) {
+        waiting.push(item);
+      }
+    }
+  }
+
+  return count;
+};
+
 const aliasValue = (name: string, line: number): YamlValue => {
   if (!anchors.has(name)) {
     throw new YamlMiniError(`Unknown alias *${name}`, line);
   }
 
-  return JSON.parse(JSON.stringify(anchors.get(name))) as YamlValue;
+  const value = anchors.get(name) as YamlValue;
+  aliased += valuesIn(value, MOST_ALIASED - aliased);
+
+  // Counted before it's copied: the copy is what would fill the memory.
+  if (aliased > MOST_ALIASED) {
+    throw new YamlMiniError(`Aliases repeat more than ${MOST_ALIASED} values: too many to read`, line);
+  }
+
+  return JSON.parse(JSON.stringify(value)) as YamlValue;
 };
 
 const detectChildIndent = (lines: string[], start: number, parentIndent: number, skipComments = true): number | null => {
@@ -927,7 +972,8 @@ const blockScalarSafe = (s: string): boolean => {
   }
 
   // A content line that trims to `---` would close the markdown frontmatter
-  // around the YAML early: findFrontmatter compares trimmed lines.
+  // around the YAML early in versions before 0.4.0, whose findFrontmatter
+  // compares trimmed lines, and they read the maps this one writes.
   if (lines.some((line) => line.trim() === '---')) {
     return false;
   }
@@ -1053,6 +1099,15 @@ const emitArray = (arr: YamlValue[], indent: number): string => {
         } else {
           out += `${pad}  ${writtenKey}: ${formatScalar(v)}\n`;
         }
+      }
+    } else if (Array.isArray(item)) {
+      // A list in a list: in brackets when it's all plain values, as a map's lists are, or else as a block under a lone `-`.
+      if (item.length === 0) {
+        out += `${pad}- []\n`;
+      } else if (item.every((x) => typeof x === 'number' || typeof x === 'boolean' || (typeof x === 'string' && !needsQuotes(x)))) {
+        out += `${pad}- [${item.map((x) => formatScalar(x)).join(', ')}]\n`;
+      } else {
+        out += `${pad}-\n${emitArray(item, indent + 2)}`;
       }
     } else {
       out += `${pad}- ${formatScalar(item)}\n`;

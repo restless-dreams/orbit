@@ -21,6 +21,9 @@ export class AccessibleOutline {
   private currentId: string | null = null;
   private words: OrbitWords;
 
+  /** Nodes whose children are hidden from view, as of the last `update`. */
+  private hidden: ReadonlySet<string> = new Set();
+
   constructor(onSelect: (nodeId: string) => void, words: OrbitWords) {
     this.onSelect = onSelect;
     this.words = words;
@@ -45,7 +48,9 @@ export class AccessibleOutline {
 
   /**
    * Rebuilds the list. Without `interactive`, entries are plain text instead
-   * of buttons. `icon` gives a node's icon, its type's when it has none.
+   * of buttons. `icon` gives a node's icon, its type's when it has none. The
+   * children of the nodes in `hidden` are left out, and their node's entry
+   * says how many there are.
    */
   update(
     tree: OrbitNode,
@@ -53,8 +58,10 @@ export class AccessibleOutline {
     maxDepth: number | undefined,
     interactive: boolean,
     icon: (node: OrbitNode) => string | undefined = (node) => node.icon,
+    hidden: ReadonlySet<string> = new Set(),
   ): void {
     this.icon = icon;
+    this.hidden = new Set(hidden);
     this.entries.clear();
     this.currentId = null;
     const list = document.createElement('ul');
@@ -112,6 +119,12 @@ export class AccessibleOutline {
       entry.textContent += ` (${node.status})`;
     }
 
+    const hidesChildren = this.hidden.has(node.id) && node.children.length > 0;
+
+    if (hidesChildren) {
+      entry.textContent += `, ${this.words.count('hiddenIdeaCount', node.children.length)}`;
+    }
+
     if (!this.entries.has(node.id)) {
       this.entries.set(node.id, entry);
     }
@@ -123,7 +136,7 @@ export class AccessibleOutline {
     }
 
     item.appendChild(entry);
-    const showChildren = maxDepth === undefined || node.level < maxDepth;
+    const showChildren = (maxDepth === undefined || node.level < maxDepth) && !hidesChildren;
 
     if (showChildren && node.children.length > 0) {
       const children = document.createElement('ul');

@@ -1,18 +1,30 @@
+import { warnDeprecated } from './deprecated.js';
 import { parseOrbit } from './dispatch.js';
 import { OrbitSVGRenderer } from './svg-renderer.js';
-import type { OrbitDocument, OrbitMediaOptions, RendererOptions } from './types.js';
+import type { OrbitDocument, OrbitEventMap, OrbitMediaOptions, OrbitRendererOptions } from './types.js';
 import { OrbitParseError, reportParseDiagnostics, type OrbitDiagnostic } from './diagnostics.js';
 import { isThemeName, mergeThemes, themeNames } from './themes.js';
 import { THEME_SYNONYMS } from './document-options.js';
 import { didYouMean } from './suggest.js';
 import { wordsFor, type OrbitWords } from './languages.js';
 
-export interface AutoRenderOptions extends RendererOptions {
+/** What `renderOrbitElement` and `hydrateOrbitBlocks` take: the renderer's options, over each block's own, and these. */
+export interface OrbitAutoRenderOptions extends OrbitRendererOptions {
+  /** The blocks `hydrateOrbitBlocks` brings to life, as a CSS selector. Default: the marked extension's placeholders, `orbit` code blocks and `<orbit-map>` elements. */
   selector?: string;
+
+  /** Each map's height, in px, over its frontmatter's. Default 420. */
   height?: number;
+
+  /** Show the error card on the first problem in a block's source instead of working around it. */
   strict?: boolean;
+
+  /** Classes for each map's container, over its frontmatter's `className`. */
   className?: string;
 }
+
+/** @deprecated Use `OrbitAutoRenderOptions`: this name goes in Orbit 1.0. */
+export type AutoRenderOptions = OrbitAutoRenderOptions;
 
 /** Detail of the `orbit-error` event dispatched on an element whose map couldn't be drawn. */
 export interface OrbitRenderErrorDetail {
@@ -45,23 +57,48 @@ export interface OrbitMapElement extends HTMLElement {
   /** Flies out to the overview of the whole map. */
   overview(): void;
 
-  /** Shows a node's picture or video in the media viewer (see `OrbitSVGRenderer.openMedia`). Returns false when there's nothing to show. */
+  /** Shows a node's picture, video or sound in the media viewer (see `OrbitSVGRenderer.openMedia`). Returns false when there's nothing to show. */
   openMedia(nodeId: string, options?: OrbitMediaOptions): boolean;
 
   /** Closes the media viewer. */
   closeMedia(): void;
 
-  /** Plays the video in the media viewer. Returns false when it shows none it can play. */
+  /** Plays the video or sound in the media viewer. Returns false when it shows none it can play. */
   playMedia(): boolean;
 
-  /** Pauses the video in the media viewer. Returns false when it shows none it can pause. */
+  /** Pauses the video or sound in the media viewer. Returns false when it shows none it can pause. */
   pauseMedia(): boolean;
 
-  /** Moves the video in the media viewer to `seconds` from its start. Returns false when it shows none it can move. */
+  /** Moves the video or sound in the media viewer to `seconds` from its start. Returns false when it shows none it can move. */
   seekMedia(seconds: number): boolean;
 
-  /** Turns on the sound of the video in the media viewer, from a press. Returns false when it shows none it can drive. */
+  /** Turns on the sound of the video or sound in the media viewer, from a press. Returns false when it shows none it can drive. */
   unmuteMedia(): boolean;
+
+  /** Hides the ideas under nodes, to show later (see `OrbitSVGRenderer.hideChildren`). Returns whether any were newly hidden. */
+  hideChildren(ids: string | readonly string[]): boolean;
+
+  /** Shows ideas hidden under `ids`, or under every node (see `OrbitSVGRenderer.revealChildren`). Returns whether any were shown. */
+  revealChildren(ids?: string | readonly string[]): boolean;
+}
+
+/**
+ * The `orbit-*` DOM events a map dispatches on its element, where they
+ * bubble from: one for each of its events (`orbit-focus-change` for
+ * `focus-change`, and so on), with the same detail, and `orbit-error`.
+ */
+export type OrbitDOMEventMap = { [Name in keyof OrbitEventMap as `orbit-${Name}`]: CustomEvent<OrbitEventMap[Name]> } & {
+  'orbit-error': CustomEvent<OrbitRenderErrorDetail>;
+};
+
+// So TypeScript knows <orbit-map> (`document.querySelector('orbit-map')`) and the events' details.
+declare global {
+  interface HTMLElementTagNameMap {
+    'orbit-map': OrbitMapElement;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- an interface merges into the DOM's own; its members are OrbitDOMEventMap's.
+  interface HTMLElementEventMap extends OrbitDOMEventMap {}
 }
 
 const DEFAULT_SELECTOR = '.orbit-mind-map[data-orbit], pre > code.language-orbit, pre.orbit-rendered[data-orbit-source], orbit-map';
@@ -93,8 +130,11 @@ const ELEMENT_STYLES = `
  * `OrbitSVGRenderer.unmount(element)` to release RAF loops and the
  * ResizeObserver. The `<orbit-map>` web component does this automatically.
  */
-export const renderOrbitElement = (element: Element, options: AutoRenderOptions = {}): OrbitSVGRenderer | null => {
+export const renderOrbitElement = (element: Element, options: OrbitAutoRenderOptions = {}): OrbitSVGRenderer | null => {
   if (isOrbitMapElement(element)) {
+    // It draws itself, from its attributes and the options it's brought to life with, which a map it shows already takes now.
+    givenOptions.set(element, options);
+    element.renderer?.setOptions(elementSettings(element));
     element.refresh();
     return element.renderer;
   }
@@ -130,11 +170,14 @@ export const renderOrbitElement = (element: Element, options: AutoRenderOptions 
 };
 
 /**
- * Renders every orbit block under `root` (default: the whole document). Each
- * block is independent: one that fails shows its error card and the rest
- * still render.
+ * Brings every orbit block under `root` (default: the whole document) to
+ * life as a map: the placeholders the marked extension writes, `orbit` code
+ * blocks in rendered markdown, and `<orbit-map>` elements (`selector`
+ * changes which). Call it after inserting rendered HTML. Each block is
+ * independent: one that fails shows its error card and the rest still
+ * render.
  */
-export const renderOrbitMarkdownBlocks = (root?: ParentNode, options: AutoRenderOptions = {}): OrbitSVGRenderer[] => {
+export const hydrateOrbitBlocks = (root?: ParentNode, options: OrbitAutoRenderOptions = {}): OrbitSVGRenderer[] => {
   const searchRoot = root ?? (typeof document === 'undefined' ? undefined : document);
 
   if (!searchRoot) {
@@ -156,6 +199,12 @@ export const renderOrbitMarkdownBlocks = (root?: ParentNode, options: AutoRender
   }
 
   return renderers;
+};
+
+/** @deprecated Use `hydrateOrbitBlocks`, the same function: this name goes in Orbit 1.0. */
+export const renderOrbitMarkdownBlocks = (root?: ParentNode, options: OrbitAutoRenderOptions = {}): OrbitSVGRenderer[] => {
+  warnDeprecated('renderOrbitMarkdownBlocks()', 'hydrateOrbitBlocks()');
+  return hydrateOrbitBlocks(root, options);
 };
 
 /**
@@ -191,6 +240,9 @@ export const defineOrbitMapElement = (tagName = 'orbit-map'): void => {
   customElements.define(tagName, createOrbitMapElementClass());
 };
 
+/** The element's attributes for the map's options, each also as `data-…`. `view-mode` is `view`'s name before 0.4.0. */
+export const ELEMENT_OPTION_ATTRIBUTES = ['view', 'view-mode', 'height', 'palette', 'interactive', 'animation', 'theme', 'max-depth', 'editable', 'editing-keys'] as const;
+
 const createOrbitMapElementClass = (): CustomElementConstructor => {
   // Declared lazily so importing this module never touches HTMLElement on a server.
   return class OrbitMapElementImplementation extends HTMLElement implements OrbitMapElement {
@@ -202,9 +254,8 @@ const createOrbitMapElementClass = (): CustomElementConstructor => {
     #documentHeight: number | undefined;
 
     static get observedAttributes(): string[] {
-      const options = ['view-mode', 'height', 'palette', 'interactive', 'animation', 'theme', 'max-depth', 'editable', 'editing-keys'];
       // `lang` changes the language the map speaks, as on any element.
-      return ['data-orbit', 'source', 'lang', ...options.flatMap((name) => [name, `data-${name}`])];
+      return ['data-orbit', 'source', 'lang', ...ELEMENT_OPTION_ATTRIBUTES.flatMap((name) => [name, `data-${name}`])];
     }
 
     get renderer(): OrbitSVGRenderer | null {
@@ -241,6 +292,14 @@ const createOrbitMapElementClass = (): CustomElementConstructor => {
 
     unmuteMedia(): boolean {
       return this.#renderer?.unmuteMedia() ?? false;
+    }
+
+    hideChildren(ids: string | readonly string[]): boolean {
+      return this.#renderer?.hideChildren(ids) ?? false;
+    }
+
+    revealChildren(ids?: string | readonly string[]): boolean {
+      return this.#renderer?.revealChildren(ids) ?? false;
     }
 
     get source(): string {
@@ -282,7 +341,7 @@ const createOrbitMapElementClass = (): CustomElementConstructor => {
 
       // An absent attribute reads as undefined, which falls back to the
       // document's frontmatter instead of wiping it.
-      this.#renderer.setOptions(readElementOptions(this));
+      this.#renderer.setOptions(elementSettings(this));
     }
 
     refresh(): void {
@@ -310,7 +369,7 @@ const createOrbitMapElementClass = (): CustomElementConstructor => {
       const renderer = this.#renderer;
 
       if (renderer && source.trim()) {
-        const options = readElementOptions(this);
+        const options = elementSettings(this);
         const parsed = parseSource(source, options, wordsFor(options.language, this, options.strings));
 
         if (parsed.doc) {
@@ -330,7 +389,7 @@ const createOrbitMapElementClass = (): CustomElementConstructor => {
         return;
       }
 
-      this.#renderer = renderSource(container, source, readElementOptions(this), this, applyDocument);
+      this.#renderer = renderSource(container, source, elementSettings(this), this, applyDocument);
     }
 
     #ensureShadowRoot(): void {
@@ -376,7 +435,7 @@ const createOrbitMapElementClass = (): CustomElementConstructor => {
 
     /** The `height` attribute wins over the document's frontmatter; author CSS wins over both. */
     #applyHeight(documentHeight: number | undefined): void {
-      const height = readNumber(this.getAttribute('height') ?? this.getAttribute('data-height')) ?? documentHeight;
+      const height = elementSettings(this).height ?? documentHeight;
 
       if (height) {
         this.style.setProperty('--orbit-map-height', `${height}px`);
@@ -394,7 +453,7 @@ const isOrbitMapElement = (element: Element): element is OrbitMapElement => {
 /** Parses a map's source; a document that can't be drawn comes back as an error instead. */
 const parseSource = (
   source: string,
-  options: AutoRenderOptions,
+  options: OrbitAutoRenderOptions,
   words: OrbitWords,
 ): { doc: OrbitDocument; error?: undefined; diagnostics?: undefined } | { doc?: undefined; error: Error | null; diagnostics: OrbitDiagnostic[] } => {
   let doc: OrbitDocument;
@@ -418,9 +477,9 @@ const parseSource = (
 const renderSource = (
   target: HTMLElement,
   source: string,
-  options: AutoRenderOptions,
+  options: OrbitAutoRenderOptions,
   eventTarget: Element,
-  applyDocument: (doc: OrbitDocument, options: AutoRenderOptions) => void,
+  applyDocument: (doc: OrbitDocument, options: OrbitAutoRenderOptions) => void,
 ): OrbitSVGRenderer | null => {
   const words = wordsFor(options.language, eventTarget, options.strings);
   const parsed = parseSource(source, options, words);
@@ -540,7 +599,7 @@ const getRenderTarget = (element: Element): Element => {
   return element;
 };
 
-const readViewMode = (value: string | undefined): RendererOptions['viewMode'] => {
+const readView = (value: string | undefined): OrbitRendererOptions['view'] => {
   return value === 'focus' || value === 'all' ? value : undefined;
 };
 
@@ -557,20 +616,30 @@ const readTheme = (value: unknown): string | undefined => {
   return undefined;
 };
 
-/** Display options from attributes: `view-mode` or `data-view-mode`, and so on. */
-const readElementOptions = (element: Element): AutoRenderOptions => {
+/** Display options from attributes: `view` or `data-view`, and so on. */
+const readElementOptions = (element: Element): OrbitAutoRenderOptions => {
   const attribute = (name: string) => element.getAttribute(name) ?? element.getAttribute(`data-${name}`);
   return {
-    viewMode: readViewMode(attribute('view-mode') || undefined),
+    view: readView(attribute('view') || oldViewAttribute(attribute('view-mode')) || undefined),
     theme: readTheme(attribute('theme')),
     height: readNumber(attribute('height')),
     maxDepth: readNumber(attribute('max-depth')),
     palette: readList(attribute('palette')),
     interactive: readBoolean(attribute('interactive')),
-    orbitAnimation: readBoolean(attribute('animation')),
+    animation: readBoolean(attribute('animation')),
     editable: readBoolean(attribute('editable')),
     editingKeys: readBoolean(attribute('editing-keys')),
   };
+};
+
+/** `view-mode`, the `view` attribute's name before 0.4.0: it keeps working until 1.0, with a warning. */
+const oldViewAttribute = (value: string | null): string | undefined => {
+  if (value === null) {
+    return undefined;
+  }
+
+  warnDeprecated('The <orbit-map> attribute view-mode', 'view');
+  return value;
 };
 
 const readNumber = (value: string | null): number | undefined => {
@@ -606,6 +675,19 @@ const readList = (value: string | null): string[] | undefined => {
   }
 
   return value.split(',').map((item) => item.trim()).filter(Boolean);
+};
+
+/** The options an `<orbit-map>` was brought to life with, by `hydrateOrbitBlocks` or `renderOrbitElement`. */
+const givenOptions = new WeakMap<Element, OrbitAutoRenderOptions>();
+
+/**
+ * An `<orbit-map>`'s options: its attributes, with the options it was brought
+ * to life with over them, as a block's options are over its data attributes.
+ */
+const elementSettings = (element: Element): OrbitAutoRenderOptions => {
+  const own = readElementOptions(element);
+  const given = givenOptions.get(element) ?? {};
+  return { ...own, ...definedOnly(given), theme: mergeThemes(own.theme, given.theme) };
 };
 
 const definedOnly = <T extends object>(options: T): Partial<T> => {

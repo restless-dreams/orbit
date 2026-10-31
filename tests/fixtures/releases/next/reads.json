@@ -7,13 +7,12 @@
     ],
     "document": {
       "options": {
+        "animation": false,
         "baseUrl": "https://example.com/maps/",
         "className": "release-fixture",
         "height": 480,
         "interactive": true,
         "maxDepth": 4,
-        "orbitAnimation": false,
-        "orbitSpeed": 120,
         "palette": [
           "#F8D978",
           "#F5A3A8",
@@ -22,9 +21,10 @@
         ],
         "schemaVersion": 1,
         "showRings": true,
+        "speed": 120,
         "theme": "night",
         "title": "Everything a map can say",
-        "viewMode": "focus"
+        "view": "focus"
       },
       "extra": {
         "cssclasses": [
@@ -230,6 +230,55 @@
                     "caption": "Ten seconds",
                     "provider": "native",
                     "src": "clips/teaser.mp4"
+                  }
+                },
+                "children": []
+              },
+              {
+                "id": "voice-memo",
+                "text": "Voice memo",
+                "attributes": {
+                  "audio": {
+                    "src": "memos/kickoff.m4a"
+                  }
+                },
+                "children": []
+              },
+              {
+                "id": "interview",
+                "text": "Interview",
+                "attributes": {
+                  "audio": {
+                    "caption": "The first interview",
+                    "src": "https://example.com/interview.mp3"
+                  }
+                },
+                "children": []
+              },
+              {
+                "id": "launch-day",
+                "text": "Launch day",
+                "attributes": {
+                  "image": {
+                    "alt": "The team on the stage",
+                    "motion": {
+                      "src": "images/launch.mp4",
+                      "still": 1.5
+                    },
+                    "src": "images/launch.jpg"
+                  }
+                },
+                "children": []
+              },
+              {
+                "id": "crowd",
+                "text": "Crowd",
+                "attributes": {
+                  "image": {
+                    "motion": {
+                      "src": "images/crowd.mp4"
+                    },
+                    "src": "images/crowd.jpg"
                   }
                 },
                 "children": []
@@ -248,13 +297,12 @@
     ],
     "document": {
       "options": {
+        "animation": false,
         "baseUrl": "https://example.com/maps/",
         "className": "release-fixture",
         "height": 480,
         "interactive": true,
         "maxDepth": 4,
-        "orbitAnimation": false,
-        "orbitSpeed": 120,
         "palette": [
           "#F8D978",
           "#F5A3A8",
@@ -263,9 +311,10 @@
         ],
         "schemaVersion": 1,
         "showRings": true,
+        "speed": 120,
         "theme": "night",
         "title": "Everything a map can say",
-        "viewMode": "focus"
+        "view": "focus"
       },
       "extra": {
         "cssclasses": [
@@ -474,6 +523,55 @@
                   }
                 },
                 "children": []
+              },
+              {
+                "id": "voice-memo",
+                "text": "Voice memo",
+                "attributes": {
+                  "audio": {
+                    "src": "memos/kickoff.m4a"
+                  }
+                },
+                "children": []
+              },
+              {
+                "id": "interview",
+                "text": "Interview",
+                "attributes": {
+                  "audio": {
+                    "caption": "The first interview",
+                    "src": "https://example.com/interview.mp3"
+                  }
+                },
+                "children": []
+              },
+              {
+                "id": "launch-day",
+                "text": "Launch day",
+                "attributes": {
+                  "image": {
+                    "alt": "The team on the stage",
+                    "motion": {
+                      "src": "images/launch.mp4",
+                      "still": 1.5
+                    },
+                    "src": "images/launch.jpg"
+                  }
+                },
+                "children": []
+              },
+              {
+                "id": "crowd",
+                "text": "Crowd",
+                "attributes": {
+                  "image": {
+                    "motion": {
+                      "src": "images/crowd.mp4"
+                    },
+                    "src": "images/crowd.jpg"
+                  }
+                },
+                "children": []
               }
             ]
           }
@@ -487,13 +585,12 @@
     ],
     "document": {
       "options": {
+        "animation": true,
         "baseUrl": "https://example.com/maps/",
         "className": "release-fixture",
         "height": 360,
         "interactive": true,
         "maxDepth": 3,
-        "orbitAnimation": true,
-        "orbitSpeed": 60,
         "palette": [
           "#F8D978",
           "#F5A3A8",
@@ -501,9 +598,10 @@
         ],
         "schemaVersion": 1,
         "showRings": false,
+        "speed": 60,
         "theme": "paper",
         "title": "Everything in YAML",
-        "viewMode": "all"
+        "view": "all"
       },
       "extra": {
         "generator": "release-fixtures"
@@ -578,6 +676,10 @@
             "id": "launch",
             "text": "Launch",
             "attributes": {
+              "audio": {
+                "caption": "The launch, in a minute",
+                "src": "memos/launch.m4a"
+              },
               "embed": {
                 "caption": "The demo",
                 "src": "https://example.com/demo"
@@ -595,7 +697,23 @@
                 "thumbnail": "images/thumbnail.jpg"
               }
             },
-            "children": []
+            "children": [
+              {
+                "id": "launch-day",
+                "text": "Launch day",
+                "attributes": {
+                  "image": {
+                    "alt": "The team on the stage",
+                    "motion": {
+                      "src": "images/launch.mp4",
+                      "still": 1.5
+                    },
+                    "src": "images/launch.jpg"
+                  }
+                },
+                "children": []
+              }
+            ]
           }
         ]
       }
@@ -607,13 +725,12 @@
     ],
     "document": {
       "options": {
+        "animation": true,
         "baseUrl": "https://example.com/maps/",
         "className": "release-fixture",
         "height": 360,
         "interactive": true,
         "maxDepth": 3,
-        "orbitAnimation": true,
-        "orbitSpeed": 60,
         "palette": [
           "#F8D978",
           "#F5A3A8",
@@ -621,9 +738,10 @@
         ],
         "schemaVersion": 1,
         "showRings": false,
+        "speed": 60,
         "theme": "paper",
         "title": "Everything in YAML",
-        "viewMode": "all"
+        "view": "all"
       },
       "extra": {
         "generator": "release-fixtures"
@@ -698,6 +816,10 @@
             "id": "launch",
             "text": "Launch",
             "attributes": {
+              "audio": {
+                "caption": "The launch, in a minute",
+                "src": "memos/launch.m4a"
+              },
               "embed": {
                 "caption": "The demo",
                 "src": "https://example.com/demo"
@@ -714,7 +836,23 @@
                 "thumbnail": "images/thumbnail.jpg"
               }
             },
-            "children": []
+            "children": [
+              {
+                "id": "launch-day",
+                "text": "Launch day",
+                "attributes": {
+                  "image": {
+                    "alt": "The team on the stage",
+                    "motion": {
+                      "src": "images/launch.mp4",
+                      "still": 1.5
+                    },
+                    "src": "images/launch.jpg"
+                  }
+                },
+                "children": []
+              }
+            ]
           }
         ]
       }
@@ -763,7 +901,16 @@
               {
                 "id": "pasteis-de-nata",
                 "text": "Pastéis de nata",
-                "attributes": {},
+                "attributes": {
+                  "image": {
+                    "caption": "Still warm",
+                    "motion": {
+                      "src": "images/nata.mp4",
+                      "still": 1.2
+                    },
+                    "src": "images/nata.jpg"
+                  }
+                },
                 "children": []
               },
               {
@@ -801,7 +948,13 @@
               {
                 "id": "gulbenkian",
                 "text": "Gulbenkian",
-                "attributes": {},
+                "attributes": {
+                  "image": {
+                    "alt": "The garden pond",
+                    "caption": "The garden",
+                    "src": "images/gulbenkian.jpg"
+                  }
+                },
                 "children": []
               }
             ]

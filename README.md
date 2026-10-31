@@ -6,14 +6,14 @@ Mind maps written in markdown and explored like a solar system.
 
 ![A map of a product roadmap: the orbit spins, the camera flies into a branch and out to the overview of the whole map](docs/media/tour.webp)
 
-**[Website](https://orbit.hyuchia.com)** · [Playground](https://orbit.hyuchia.com/playground) · [Guide](docs/guide.md) · [Map format](docs/format.md) · [Recipes](docs/recipes.md) · [Theming](docs/theming.md) · [Extending](docs/extending.md) · [Editing](docs/editing.md) · [Map tools for AI](docs/map-tools.md) · [Maps from other apps](docs/import-export.md) · [Pictures and videos](docs/media.md) · [Languages](docs/languages.md) · [Accessibility](docs/accessibility.md) · [Coding agents](docs/agents.md) · [API reference](docs/api/README.md)
+**[Website](https://orbit.hyuchia.com)** · [Playground](https://orbit.hyuchia.com/playground) · [Guide](docs/guide.md) · [Map format](docs/format.md) · [Recipes](docs/recipes.md) · [Theming](docs/theming.md) · [Extending](docs/extending.md) · [Editing](docs/editing.md) · [Map tools for AI](docs/map-tools.md) · [Maps from other apps](docs/import-export.md) · [Pictures, videos and sounds](docs/media.md) · [Languages](docs/languages.md) · [Accessibility](docs/accessibility.md) · [Coding agents](docs/agents.md) · [API reference](docs/api/README.md)
 
 - Real-markdown authoring: headers and bullet lists nest the tree.
 - YAML alternative for app-generated maps.
 - Explorable: zoom into a node to enter it and out to leave, flick the orbit to spin it, pan and zoom the overview. Every move is animated so you never lose your place.
 - Readable at any size: labels stay crisp, sized for reading and in high contrast.
 - Fourteen themes, from pastel paper and a field of stars to flat, Material and liquid glass, each restylable with CSS custom properties, and Material themes built from any color.
-- First-class pictures, videos, embeds and multi-line notes per node: pictures and videos open over the whole window, to zoom into and to play, and the rest in a built-in detail sheet, unless you handle `onAction` yourself.
+- First-class pictures, live photos, videos, sounds, embeds and multi-line notes per node: pictures, videos and sounds open over the whole window, to zoom into and to play (a live photo plays its motion over its picture), and the rest in a built-in detail sheet, unless you handle `onAction` yourself.
 - Built on the map: a + in the orbit adds ideas, typed right inside their planet, and nodes can be renamed, dragged and saved back as markdown.
 - Ready for AI: tools any model calls to read a map and change it, for Anthropic, OpenAI, Gemini, MCP and the providers that follow OpenAI's API, with every change animated on the map.
 - Keyboard and screen-reader friendly: one tab stop, arrow-key navigation, a list view of the whole map, and announcements as you move, in English, Spanish or any language you add.
@@ -26,7 +26,7 @@ Mind maps written in markdown and explored like a solar system.
 npm install @restless-dreams/orbit
 ```
 
-React and marked are optional peers, needed only for their integrations: `npm install react react-dom` for `@restless-dreams/orbit/react`, and `npm install marked` for `@restless-dreams/orbit/marked`.
+React and marked are optional peers, needed only for their integrations: `npm install react react-dom` (React 18 or 19) for `@restless-dreams/orbit/react`, and `npm install marked` (marked 12 to 18) for `@restless-dreams/orbit/marked`. The rest of Orbit, the command line included, needs neither.
 
 ## Quick start
 
@@ -160,10 +160,14 @@ Point your agent at `node_modules/@restless-dreams/orbit/llms-full.txt`, the doc
 
 Orbit is made for current browsers, and draws in older ones down to Chromium 99, which some phones' WebViews still run, with plainer versions of the few effects that need newer CSS ([which ones](docs/guide.md#browsers)).
 
+## Compatibility
+
+Orbit follows semantic versioning: while it's 0.x, a minor may change what maps, options or code rely on, and announces it, deprecating what it can. Maps have a format version of their own, and every version reads the maps earlier ones wrote. [Compatibility](docs/compatibility.md) lists what's public and how changes are made.
+
 ## Contributing
 
 With [Bun](https://bun.sh) installed, `bun install`, then `bun run verify` runs the linter, the type checks, the tests and the build. [CONTRIBUTING.md](CONTRIBUTING.md) has the rest, [RELEASE.md](RELEASE.md) how releases are made, and [docs/architecture.md](docs/architecture.md) how Orbit is put together.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Orbit includes the hyphenation patterns of the [hyph-utf8 package](https://www.hyphenation.org/tex) for American English (Copyright (C) 1990, 2004, 2005 Gerard D.C. Kuiken; copying and distribution are permitted in any medium without royalty provided the copyright notice and this notice are preserved) and Spanish (Copyright (C) 1993, 1997 Javier Bezos, 2001-2019 Javier Bezos, CervanTeX; MIT license), with their notices in `src/core/hyphenation/`.

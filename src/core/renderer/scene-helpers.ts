@@ -77,12 +77,14 @@ export const visiblePart = (display: Display): Display => {
     }
   }
 
+  const hiddenPlaces = display.hiddenPlaces?.filter((place) => place.opacity > 0.01);
   return {
     nodes,
     rings: display.rings.filter((ring) => ring.opacity > 0.01),
     links: display.links.filter((link) => link.opacity > 0.01),
     camera: display.camera,
     addSlot: display.addSlot && display.addSlot.opacity > 0.01 ? display.addSlot : undefined,
+    hiddenPlaces: hiddenPlaces?.length ? hiddenPlaces : undefined,
   };
 };
 
@@ -131,5 +133,6 @@ export const renameNodes = (display: Display, renamed: ReadonlyMap<string, strin
       const toId = rename(link.toId);
       return { ...link, id: `${fromId}->${toId}`, fromId, toId };
     }),
+    hiddenPlaces: display.hiddenPlaces?.map((place) => ({ ...place, id: rename(place.id), parentId: rename(place.parentId) })),
   };
 };

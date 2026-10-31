@@ -100,6 +100,15 @@ describe('reading HTML', () => {
     expect(textContent(parseHtml('<p>Hi<script>alert(1)</script><style>p { color: red }</style> there</p>'))).toBe('Hi there');
   });
 
+  test('finds end tags in any case, in time that grows with the note, not its square', () => {
+    expect(textContent(parseHtml('<p>Hi<SCRIPT>alert(1)</Script><Style>p {}</STYLE> there</p>'))).toBe('Hi there');
+    // 100,000 empty styles (1.4 MB): lowercasing the whole note for each took minutes.
+    const note = '<b>x</b>' + '<style></style>'.repeat(100_000) + '<i>y</i>';
+    const started = performance.now();
+    expect(textContent(parseHtml(note))).toBe('xy');
+    expect(performance.now() - started).toBeLessThan(10_000);
+  });
+
   test('reads a lone "<" as text, and lowercases names', () => {
     const fragment = parseHtml('<P>1 < 2</P>');
     expect(childElement(fragment, 'p')).toBeDefined();

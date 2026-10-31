@@ -2,7 +2,8 @@ import { describe, expect, it } from 'bun:test';
 import { parseOrbitMarkdown } from '../src/core/parser-markdown';
 import { parseOrbitYAML } from '../src/core/parser-yaml';
 import type { OrbitNode } from '../src/core/types';
-import { findIndexedLinkedNode, findLinkedNode, indexNodes } from '../src/core/node-links';
+import { findIndexedLinkedNode, findLinkedNode, indexNodes, nodeLinksOf } from '../src/core/node-links';
+import { isLinkedTo } from '../src/core/editing';
 
 /** The tree as nested titles, for comparing structure at a glance. */
 const outline = (node: OrbitNode): unknown => {
@@ -280,6 +281,21 @@ describe('links between nodes', () => {
       line: 5,
       severity: 'warning',
     }]);
+  });
+
+  it('link-like text in code or a comment isn\'t a link, and isn\'t reported', () => {
+    const doc = parseOrbitMarkdown('# Plan\n## Build\nWrite `[label](#target)` for a link.\n\n```\n[step](#step-two)\n```\n\nAfter [Research](#research).\n## Research\n## Draft');
+    expect(doc.diagnostics).toEqual([]);
+    expect(nodeLinksOf(doc.root.children[0])).toEqual(['#research']);
+    const yaml = parseOrbitYAML('nodes:\n  - text: Plan\n    children:\n      - text: Build\n        note: "~~~\\n[the draft](#draft)\\n~~~\\nAfter [it](#draft). <!-- Was [it](#gone). -->"\n      - Draft\n      - Notes\n');
+    expect(yaml.diagnostics).toEqual([]);
+    expect(nodeLinksOf(yaml.root.children[0])).toEqual(['#draft']);
+    // A broken link is reported on its line, not on code that mentions it before.
+    const broken = parseOrbitMarkdown('# Plan\n## Build\nWrite `[it](#gone)` for a link.\n\nThen [it](#gone).\n## Research');
+    expect(broken.diagnostics.map((diagnostic) => [diagnostic.code, diagnostic.line])).toEqual([['unknown-link-target', 5]]);
+    // An idea only mentioned in code keeps no id for it when it's renamed.
+    const mention = parseOrbitMarkdown('# Plan\n## Build\nWrite `[Notes](#notes)`.\n## Notes');
+    expect(isLinkedTo(mention.root, mention.root.children[1])).toBe(false);
   });
 
   it('a plain note\'s #id mentions are not links, and not reported', () => {

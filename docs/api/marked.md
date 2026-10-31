@@ -49,28 +49,6 @@ The tokenizer and renderer that `orbitMarked()` wraps.
 
 ***
 
-### hydrateOrbitBlocks()
-
-```ts
-function hydrateOrbitBlocks(root?, options?): OrbitSVGRenderer[];
-```
-
-Turns every orbit placeholder under `root` (default: the whole document)
-into a live map. Call it after inserting the rendered HTML.
-
-#### Parameters
-
-| Parameter | Type |
-| ------ | ------ |
-| `root?` | `ParentNode` |
-| `options?` | [`AutoRenderOptions`](index.md#autorenderoptions) |
-
-#### Returns
-
-[`OrbitSVGRenderer`](index.md#orbitsvgrenderer)[]
-
-***
-
 ### orbitMarked()
 
 ```ts
@@ -104,3 +82,9 @@ its own marked instance, so the global `marked` is left untouched.
 #### Returns
 
 `Promise`\<`string`\>
+
+## References
+
+### hydrateOrbitBlocks
+
+Re-exports [hydrateOrbitBlocks](index.md#hydrateorbitblocks)

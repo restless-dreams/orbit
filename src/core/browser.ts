@@ -49,3 +49,15 @@ export const overlayTransform = (x: number, y: number, centering: string): strin
   const position = `translate3d(${x}px, ${y}px, 0)`;
   return browser.translates ? position : `${position} translate(${centering})`;
 };
+
+/** The element with focus, inside shadow roots too. */
+export const focusedElement = (host: Node): HTMLElement | SVGElement | null => {
+  const root = host.getRootNode() as Document | ShadowRoot;
+  let active: Element | null = root.activeElement ?? host.ownerDocument?.activeElement ?? null;
+
+  while (active?.shadowRoot?.activeElement) {
+    active = active.shadowRoot.activeElement;
+  }
+
+  return active instanceof HTMLElement || active instanceof SVGElement ? active : null;
+};

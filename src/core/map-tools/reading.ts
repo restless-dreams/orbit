@@ -51,7 +51,7 @@ const attributesOf = (node: OrbitNode): string[] => {
     details.push(`link: ${node.link}`);
   }
 
-  for (const media of ['image', 'video', 'embed'] as const) {
+  for (const media of ['image', 'video', 'audio', 'embed'] as const) {
     if (node[media]) {
       details.push(media);
     }
@@ -162,7 +162,7 @@ export const nodeDetails = (root: OrbitNode, node: OrbitNode, path: OrbitNode[])
     ['Tags', node.tags && node.tags.length > 0 ? node.tags.join(', ') : undefined],
     ['Color', node.color],
     ['Link', node.link],
-    ['Picture', node.image && mediaLine(node.image.src, { alt: node.image.alt, caption: node.image.caption })],
+    ['Picture', node.image && mediaLine(node.image.src, { alt: node.image.alt, caption: node.image.caption, 'live photo': node.image.motion?.src })],
     ['Video', node.video && mediaLine(node.video.src, { caption: node.video.caption })],
     ['Embedded page', node.embed && mediaLine(node.embed.src, { caption: node.embed.caption })],
     ['Type', node.type],

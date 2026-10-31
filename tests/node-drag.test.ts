@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import type { OrbitEdit, OrbitNodeDragEvent, RendererOptions } from '../src/core/types';
+import type { OrbitEdit, OrbitNodeDragEvent, OrbitRendererOptions } from '../src/core/types';
 import { buildFocusScene } from '../src/core/engine/scene';
 import { nodeUnder, orbitPlaceAt, unreachableIds } from '../src/core/engine/node-drag';
 import type { Display, DisplayNode } from '../src/core/engine/display';
@@ -62,7 +62,7 @@ const childIds = (renderer: Parameters<typeof internals>[0], id: string): string
 };
 
 /** An editable map with a short long press, recording its drag and edit events. */
-const editableMap = (options: RendererOptions = {}) => {
+const editableMap = (options: OrbitRendererOptions = {}) => {
   const drags: OrbitNodeDragEvent[] = [];
   const edits: OrbitEdit[] = [];
   const mounted = mount(MAP, {
@@ -340,5 +340,64 @@ describe('dragging a node somewhere else', () => {
     move(host, museums);
     release(host, museums);
     expect(childIds(renderer, 'museums')).toEqual(['beaches']);
+  });
+});
+
+describe('drops from elsewhere', () => {
+  test('the node drawn at a point: the sun, a planet, a moon a little past its edge; nothing in empty space or outside the map', () => {
+    const { renderer } = mount(MAP);
+    const sun = drawnAt(renderer, 'trip');
+    const museums = drawnAt(renderer, 'museums');
+    expect(renderer.getNodeAt(sun.x, sun.y)?.id).toBe('trip');
+    expect(renderer.getNodeAt(museums.x, museums.y)?.id).toBe('museums');
+
+    // Tacos is Food's moon: small, so it catches a little past its edge, on the side away from Food.
+    const food = drawnAt(renderer, 'food');
+    const tacos = drawnAt(renderer, 'tacos');
+    const reach = internals(renderer).display!.nodes.get('tacos')!.radius * internals(renderer).display!.camera.scale + 6;
+    const away = Math.atan2(tacos.y - food.y, tacos.x - food.x);
+    expect(renderer.getNodeAt(tacos.x + Math.cos(away) * reach, tacos.y + Math.sin(away) * reach)?.id).toBe('tacos');
+
+    expect(renderer.getNodeAt(4, 4)).toBeNull();
+    expect(renderer.getNodeAt(-10, sun.y)).toBeNull();
+    expect(renderer.getNodeAt(VIEWPORT.width + 10, sun.y)).toBeNull();
+    expect(renderer.getNodeAt(Number.NaN, sun.y)).toBeNull();
+  });
+
+  test('in the overview, the node drawn there', () => {
+    const { renderer } = mount(MAP);
+    renderer.setViewMode('all');
+    const beaches = drawnAt(renderer, 'beaches');
+    expect(renderer.getNodeAt(beaches.x, beaches.y)?.id).toBe('beaches');
+  });
+
+  test('a node lights up as a drag lights its target, at once, and goes out with null', () => {
+    const { host, renderer } = mount(MAP);
+    renderer.setDropTarget('museums');
+    expect(node(host, 'museums').classList.contains('orbit-node--drop-target')).toBe(true);
+
+    renderer.setDropTarget('food');
+    expect(node(host, 'museums').classList.contains('orbit-node--drop-target')).toBe(false);
+    expect(node(host, 'food').classList.contains('orbit-node--drop-target')).toBe(true);
+
+    renderer.setDropTarget(null);
+    expect(host.querySelector('.orbit-node--drop-target')).toBeNull();
+  });
+
+  test('a node dragged on the map shows its own target instead, and another map puts the light out', async () => {
+    const { host, renderer } = editableMap();
+    renderer.setDropTarget('beaches');
+    const start = await lift(host, renderer, 'museums');
+    move(host, { x: start.x + 20, y: start.y });
+    expect(node(host, 'beaches').classList.contains('orbit-node--drop-target')).toBe(false);
+
+    const food = drawnAt(renderer, 'food');
+    move(host, food);
+    expect(node(host, 'food').classList.contains('orbit-node--drop-target')).toBe(true);
+    release(host, food);
+    expect(childIds(renderer, 'food')).toEqual(['tacos', 'museums']);
+
+    renderer.render('# Holiday\n\n## Beaches\n## Hikes');
+    expect(host.querySelector('.orbit-node--drop-target')).toBeNull();
   });
 });

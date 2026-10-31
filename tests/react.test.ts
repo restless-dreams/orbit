@@ -35,7 +35,7 @@ describe('OrbitMindMap React wrapper', () => {
         onFocusChange: () => undefined,
         showActionButtons: true,
         showDetailSheet: false,
-        mediaViewer: false,
+        showMediaViewer: false,
         noteRenderer: (note) => `<p>${note}</p>`,
         baseUrl: 'https://example.com/',
       }),
@@ -144,7 +144,7 @@ describe('OrbitMindMap in the DOM', () => {
   it('lets props override the document', async () => {
     const ref = createRef<OrbitMindMapRef>();
     const doc = parseOrbit('---\nview: all\n---\n# Root\n## A');
-    const view = await mount(createElement(OrbitMindMap, { ref, document: doc, viewMode: 'focus' }));
+    const view = await mount(createElement(OrbitMindMap, { ref, document: doc, view: 'focus' }));
     expect(ref.current?.renderer?.getViewMode()).toBe('focus');
     await view.unmount();
   });
@@ -222,11 +222,11 @@ describe('OrbitMindMap in the DOM', () => {
     const ref = createRef<OrbitMindMapRef>();
     const tree = parseOrbit('# Root\n![A picture](https://example.com/a.jpg)\n## A').root;
     const calls: string[] = [];
-    const app = (name: string, mediaViewer?: boolean) => createElement(OrbitMindMap, {
+    const app = (name: string, showMediaViewer?: boolean) => createElement(OrbitMindMap, {
       ref,
       data: tree,
       transitionDuration: 0,
-      mediaViewer,
+      showMediaViewer,
       onMediaOpen: (event) => calls.push(`${name} opened ${event.node.id} ${event.kind}`),
       onMediaClose: (event) => calls.push(`${name} closed ${event.node.id}`),
     });

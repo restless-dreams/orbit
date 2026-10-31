@@ -3,9 +3,9 @@
  * the shapes each provider's API takes them in.
  */
 
-import { schemaOf, type Fields, type MapToolSchema } from './input.js';
+import { schemaOf, type Fields, type OrbitMapToolSchema } from './input.js';
 
-export type MapToolName =
+export type OrbitMapToolName =
   | 'read_map'
   | 'find_nodes'
   | 'read_node'
@@ -16,40 +16,52 @@ export type MapToolName =
   | 'remove_node'
   | 'show_node';
 
-/** A tool as `MapTools.definitions` lists it: the shape MCP uses, and the data to build any other. */
-export type MapToolDefinition = {
-  name: MapToolName;
+/** @deprecated Use `OrbitMapToolName`: this name goes in Orbit 1.0. */
+export type MapToolName = OrbitMapToolName;
+
+/** A tool as `OrbitMapTools.definitions` lists it: the shape MCP uses, and the data to build any other. */
+export type OrbitMapToolDefinition = {
+  name: OrbitMapToolName;
   description: string;
 
   /** The tool's input, as JSON Schema. */
-  inputSchema: MapToolSchema;
+  inputSchema: OrbitMapToolSchema;
 
   /** Hints for clients that ask before running some tools: whether it only reads, and whether it can remove or overwrite what's there. */
   annotations: { readOnlyHint: boolean; destructiveHint: boolean };
 };
 
+/** @deprecated Use `OrbitMapToolDefinition`: this name goes in Orbit 1.0. */
+export type MapToolDefinition = OrbitMapToolDefinition;
+
 /** The tools in the shape each provider's API takes them. */
-export type MapToolFormats = {
+export type OrbitMapToolFormats = {
   /** Anthropic's Messages API (`tools`). */
-  anthropic: { name: string; description: string; input_schema: MapToolSchema }[];
+  anthropic: { name: string; description: string; input_schema: OrbitMapToolSchema }[];
 
   /** OpenAI's Responses API (`tools`). */
-  openai: { type: 'function'; name: string; description: string; parameters: MapToolSchema; strict: false }[];
+  openai: { type: 'function'; name: string; description: string; parameters: OrbitMapToolSchema; strict: false }[];
 
   /** OpenAI's Chat Completions API (`tools`), which most other providers and local servers take too. */
-  'openai-chat': { type: 'function'; function: { name: string; description: string; parameters: MapToolSchema } }[];
+  'openai-chat': { type: 'function'; function: { name: string; description: string; parameters: OrbitMapToolSchema } }[];
 
   /** Google's Gemini API (`config.tools` in `@google/genai`). */
-  gemini: { functionDeclarations: { name: string; description: string; parametersJsonSchema: MapToolSchema }[] }[];
+  gemini: { functionDeclarations: { name: string; description: string; parametersJsonSchema: OrbitMapToolSchema }[] }[];
 };
 
-export type MapToolProvider = keyof MapToolFormats;
+/** @deprecated Use `OrbitMapToolFormats`: this name goes in Orbit 1.0. */
+export type MapToolFormats = OrbitMapToolFormats;
 
-const PROVIDERS: readonly MapToolProvider[] = ['anthropic', 'openai', 'openai-chat', 'gemini'];
+export type OrbitMapToolProvider = keyof OrbitMapToolFormats;
+
+/** @deprecated Use `OrbitMapToolProvider`: this name goes in Orbit 1.0. */
+export type MapToolProvider = OrbitMapToolProvider;
+
+const PROVIDERS: readonly OrbitMapToolProvider[] = ['anthropic', 'openai', 'openai-chat', 'gemini'];
 
 /** A tool, before it's written as a definition. */
 export interface ToolSpec {
-  name: MapToolName;
+  name: OrbitMapToolName;
   description: string;
   fields: Fields;
 
@@ -61,7 +73,7 @@ export interface ToolSpec {
 }
 
 /** The attributes `update_node` sets and `clear` removes. */
-export const ATTRIBUTES = ['note', 'status', 'priority', 'tags', 'icon', 'color', 'link', 'image', 'video', 'embed', 'collapsed'] as const;
+export const ATTRIBUTES = ['note', 'status', 'priority', 'tags', 'icon', 'color', 'link', 'image', 'video', 'audio', 'embed', 'collapsed'] as const;
 
 export type ToolAttribute = (typeof ATTRIBUTES)[number];
 
@@ -145,6 +157,14 @@ export const TOOL_SPECS: readonly ToolSpec[] = [
           caption: { type: 'string', description: 'A caption.' },
         },
       },
+      audio: {
+        type: 'record',
+        description: 'A sound the node plays: a voice memo, music or a recording.',
+        fields: {
+          src: { type: 'string', required: true, description: 'The sound\'s address: a file such as an .mp3 or .m4a.' },
+          caption: { type: 'string', description: 'A caption.' },
+        },
+      },
       embed: {
         type: 'record',
         description: 'A web page shown in a frame in the node\'s details.',
@@ -209,7 +229,7 @@ export const TOOL_SPECS: readonly ToolSpec[] = [
   },
 ];
 
-export const definitionOf = (spec: ToolSpec): MapToolDefinition => {
+export const definitionOf = (spec: ToolSpec): OrbitMapToolDefinition => {
   return {
     name: spec.name,
     description: spec.description,
@@ -219,19 +239,19 @@ export const definitionOf = (spec: ToolSpec): MapToolDefinition => {
 };
 
 /** The definitions in the shape `provider`'s API takes. */
-export const formatDefinitions = <Provider extends MapToolProvider>(definitions: readonly MapToolDefinition[], provider: Provider): MapToolFormats[Provider] => {
+export const formatDefinitions = <Provider extends OrbitMapToolProvider>(definitions: readonly OrbitMapToolDefinition[], provider: Provider): OrbitMapToolFormats[Provider] => {
   const tools = definitions.map(({ name, description, inputSchema }) => ({ name, description, schema: structuredCopy(inputSchema) }));
 
-  switch (provider as MapToolProvider) {
+  switch (provider as OrbitMapToolProvider) {
     case 'anthropic':
-      return tools.map(({ name, description, schema }) => ({ name, description, input_schema: schema })) as MapToolFormats[Provider];
+      return tools.map(({ name, description, schema }) => ({ name, description, input_schema: schema })) as OrbitMapToolFormats[Provider];
     case 'openai':
       // Strict mode would make every field required: models would send each one, and couldn't leave any out.
-      return tools.map(({ name, description, schema }) => ({ type: 'function', name, description, parameters: schema, strict: false })) as MapToolFormats[Provider];
+      return tools.map(({ name, description, schema }) => ({ type: 'function', name, description, parameters: schema, strict: false })) as OrbitMapToolFormats[Provider];
     case 'openai-chat':
-      return tools.map(({ name, description, schema }) => ({ type: 'function', function: { name, description, parameters: schema } })) as MapToolFormats[Provider];
+      return tools.map(({ name, description, schema }) => ({ type: 'function', function: { name, description, parameters: schema } })) as OrbitMapToolFormats[Provider];
     case 'gemini':
-      return [{ functionDeclarations: tools.map(({ name, description, schema }) => ({ name, description, parametersJsonSchema: schema })) }] as MapToolFormats[Provider];
+      return [{ functionDeclarations: tools.map(({ name, description, schema }) => ({ name, description, parametersJsonSchema: schema })) }] as OrbitMapToolFormats[Provider];
     default:
       throw new TypeError(`Map tools come in the shapes of ${PROVIDERS.map((name) => `"${name}"`).join(', ')}, not ${JSON.stringify(provider)}. For any other, build them from tools.definitions: each has a name, a description and an inputSchema (JSON Schema).`);
   }

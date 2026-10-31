@@ -7,7 +7,7 @@ import { renderToSVGString } from '../src/core/render-to-svg';
 import { serializeOrbitMarkdown } from '../src/core/serializer-markdown';
 import { serializeOrbitYAML } from '../src/core/serializer-yaml';
 import type { OrbitActionDetail } from '../src/core/types';
-import { click, mount, node, useMapSize } from './helpers/renderer';
+import { click, manualClock, mount, node, useMapSize } from './helpers/renderer';
 
 useMapSize(600, 400);
 
@@ -212,11 +212,33 @@ describe('types for display only', () => {
     expect(node(host, 'ship').dataset.orbitType).toBeUndefined();
   });
 
+  test('a node drawn too small to read words in carries data-orbit-small, for its type to leave them out', () => {
+    const clock = manualClock();
+
+    try {
+      const { host, renderer } = mount(RINGS, { nodeTypes: { ring }, nodeTypeFor: rings, transitionDuration: 0, zoom: { minimum: 0.1 } });
+      renderer.overview();
+      clock.advance(1000);
+      const content = () => host.querySelector<HTMLElement>('.orbit-node-content[data-orbit-for="build"]')!;
+      expect(content().hasAttribute('data-orbit-small')).toBe(false);
+      // Zoomed out, the node is drawn under 36 px across…
+      renderer.zoomBy(0.6);
+      clock.advance(1000);
+      expect(content().hasAttribute('data-orbit-small')).toBe(true);
+      // …and back in, it isn't.
+      renderer.zoomBy(2);
+      clock.advance(1000);
+      expect(content().hasAttribute('data-orbit-small')).toBe(false);
+    } finally {
+      clock.restore();
+    }
+  });
+
   test('the icon of a node drawn with content moves onto its pill', () => {
     const { host } = mount(RINGS, { nodeTypes: { ring }, nodeTypeFor: rings });
     const label = host.querySelector<HTMLElement>('.orbit-label[data-orbit-for="build"]')!;
     expect(label.classList.contains('orbit-label--outside')).toBe(true);
-    expect(label.querySelector('.orbit-label__text')?.textContent).toBe('🧪 Build');
+    expect(label.querySelector('.orbit-label__text')?.textContent).toBe('🧪\u00a0Build');
   });
 
   test('a type given for display is never written to the map, nor upgraded', () => {
@@ -240,6 +262,19 @@ describe('types for display only', () => {
     on = false;
     renderer.render(renderer.getDocument()!);
     expect(host.querySelector('.orbit-node-content[data-orbit-for="build"]')).toBeNull();
+  });
+
+  test('a node drawn as another type with content of its own gets that type\'s content, not the old one\'s', () => {
+    let drawnAs = 'ring';
+    const gauge: OrbitNodeType = { label: 'Gauge', render: (_shown, element) => { element.textContent = 'gauge'; } };
+    const { host, renderer } = mount(RINGS, { nodeTypes: { ring, gauge }, nodeTypeFor: (shown) => (rings(shown) ? drawnAs : undefined) });
+    expect(host.querySelector('.orbit-node-content[data-orbit-for="build"]')?.textContent).toBe('ring');
+    // The same node, unchanged, answered as another type that draws too.
+    drawnAs = 'gauge';
+    renderer.render(renderer.getDocument()!);
+    const content = host.querySelector<HTMLElement>('.orbit-node-content[data-orbit-for="build"]');
+    expect(content?.textContent).toBe('gauge');
+    expect(content?.dataset.orbitType).toBe('gauge');
   });
 
   test('a node whose answer changes with an edit elsewhere on the map is drawn again as its new type', () => {

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, spyOn } from 'bun:test';
 import { OrbitSVGRenderer } from '../../src/core/svg-renderer';
 import { parseOrbit } from '../../src/core/dispatch';
-import type { RendererOptions } from '../../src/core/types';
+import type { OrbitRendererOptions } from '../../src/core/types';
 
 interface Size {
   width: number;
@@ -27,7 +27,7 @@ export const useMapSize = (width = 600, height = 400): void => {
  * Renders `source` into a fresh container. Flights are off unless the
  * options turn them on, so each navigation lands at once.
  */
-export const mount = (source: string, options: RendererOptions = {}): { host: HTMLElement; renderer: OrbitSVGRenderer } => {
+export const mount = (source: string, options: OrbitRendererOptions = {}): { host: HTMLElement; renderer: OrbitSVGRenderer } => {
   const host = document.createElement('div');
   document.body.appendChild(host);
   const renderer = new OrbitSVGRenderer(host, { transitionDuration: 0, ...options });

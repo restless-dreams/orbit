@@ -18,6 +18,7 @@ import { emitYaml, type YamlValue } from './yaml-mini.js';
 import { nodesWithExplicitIds } from './utils.js';
 import { parseOrbit } from './dispatch.js';
 import { UNTITLED_ROOT_ID } from './parser-markdown.js';
+import { optionsToWrite } from './format-upgrades.js';
 
 /** Where a node is written: as a heading of a level, a list item at a column, or as the made-up root. */
 type Context =
@@ -110,7 +111,7 @@ const readsAs = (text: string, expected: OrbitDocument): boolean => {
   const expectedIds = nodesWithExplicitIds(expected.root);
   const same = (left: OrbitNode, right: OrbitNode): boolean =>
     left.id === right.id
-    && JSON.stringify(describe(left, false, readIds.has(left))) === JSON.stringify(describe(right, false, expectedIds.has(right)))
+    && JSON.stringify(describe(left, false, readIds.has(left), false)) === JSON.stringify(describe(right, false, expectedIds.has(right), false))
     && left.children.length === right.children.length
     && left.children.every((child, index) => same(child, right.children[index]));
   return same(read.root, expected.root);
@@ -150,7 +151,7 @@ class Patcher {
     this.coarse = coarse;
     this.lines = source.lines;
     this.records = source.records;
-    this.writing = { explicitIds: nodesWithExplicitIds(document.root) };
+    this.writing = { explicitIds: nodesWithExplicitIds(document.root), iconsInComments: nodesWithIconsInComments(source) };
   }
 
   write(): string[] {
@@ -207,7 +208,10 @@ class Patcher {
     return changes.title || changes.attributes || changes.media;
   }
 
-  /** The options to write: the document's, with the made-up root's new name as its title when it has no heading. */
+  /**
+   * The options to write: the document's, with the made-up root's new name
+   * as its title when it has no heading, and the version it's written for.
+   */
   private options(): OrbitDocumentOptions {
     const options = { ...this.document.options };
     const root = this.document.root;
@@ -217,7 +221,7 @@ class Patcher {
       options.title = root.text;
     }
 
-    return options;
+    return optionsToWrite(options);
   }
 
   private record(node: OrbitNode): NodeRecord {
@@ -387,8 +391,9 @@ class Patcher {
 
   private changes(node: OrbitNode, record: NodeRecord, runs: Run[]): Changes {
     const listItem = record.shape.kind === 'item';
-    const before = describe(asNode(record.fields), listItem, record.explicitId);
-    const after = describe(node, listItem, this.writing.explicitIds.has(node));
+    const iconInComment = this.writing.iconsInComments?.has(node) ?? false;
+    const before = describe(asNode(record.fields), listItem, record.explicitId, iconInComment);
+    const after = describe(node, listItem, this.writing.explicitIds.has(node), iconInComment);
     const changes: Changes = {
       title: before.title !== after.title,
       attributes: before.attributes !== after.attributes,
@@ -612,7 +617,8 @@ class Patcher {
 
     const node = this.current;
     const box = node?.status ? CHECKBOXES[node.status] : undefined;
-    const before = titleLine(asNode({ ...record.fields, status: node?.status }), true, { explicitIds: new Set() }).title;
+    const was = asNode({ ...record.fields, status: node?.status });
+    const before = titleLine(was, true, { explicitIds: new Set(), iconsInComments: node && this.writing.iconsInComments?.has(node) ? new Set([was]) : undefined }).title;
 
     if (!node || before !== pieces.title) {
       return pieces.title;
@@ -837,6 +843,34 @@ const ATX = /^( {0,3})(#{1,6})([ \t]+)(.*)$/;
 const CHECKBOX = /^\s*\[( |x|X|\/)\]\s+/;
 const ITEM = /^([ \t]*)([-*+]|\d{1,9}[.)])([ \t]+)(.*)$/;
 const INLINE_COMMENT = /\s*<!--\s*orbit:?\s[\s\S]*-->\s*$/i;
+/** An `icon` key in an orbit comment's attributes. */
+const ICON_KEY = /(^|[\s,{])icon\s*:/;
+
+/**
+ * The nodes whose file writes their icon in an `<!-- orbit -->` comment, on
+ * their title's line or in a block of their own: an edit keeps it there.
+ */
+const nodesWithIconsInComments = (source: DocumentSource): Set<OrbitNode> => {
+  const nodes = new Set<OrbitNode>();
+
+  source.lines.forEach((line, index) => {
+    const node = source.owners[index];
+
+    if (!node?.icon) {
+      return;
+    }
+
+    const role = source.roles[index];
+    const comment = role === 'attributes' ? line : role === 'title' ? INLINE_COMMENT.exec(line)?.[0] : undefined;
+
+    if (comment && ICON_KEY.test(comment)) {
+      nodes.add(node);
+    }
+  });
+
+  return nodes;
+};
+
 /** Other comments at the end of a title: hidden, and kept when the title changes. */
 const TRAILING_COMMENTS = /(?:\s*(?<!\\)<!--[\s\S]*?-->)+\s*$/;
 
@@ -963,8 +997,8 @@ const asNode = (fields: NodeFields): OrbitNode => {
 };
 
 /** What Orbit would write for a node's title, attributes, media and note, to compare before and after an edit. */
-const describe = (node: OrbitNode, listItem: boolean, explicitId: boolean): { title: string; attributes: string; media: string; note: string } => {
-  const writing = { explicitIds: explicitId ? new Set([node]) : new Set<OrbitNode>() };
+const describe = (node: OrbitNode, listItem: boolean, explicitId: boolean, iconInComment: boolean): { title: string; attributes: string; media: string; note: string } => {
+  const writing = { explicitIds: explicitId ? new Set([node]) : new Set<OrbitNode>(), iconsInComments: iconInComment ? new Set([node]) : undefined };
   const { title, attributes } = titleLine(node, listItem, writing);
   // The note as text, not as written: writing it decides whether to quote it, which reads it again (slow on big maps).
   return { title, attributes: JSON.stringify(attributes), media: renderMedia(node), note: node.note ?? '' };

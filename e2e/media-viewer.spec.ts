@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { openMap } from './helpers';
 
 type TouchEventType = 'touchStart' | 'touchMove' | 'touchEnd' | 'touchCancel';
@@ -9,7 +10,7 @@ type TouchEventType = 'touchStart' | 'touchMove' | 'touchEnd' | 'touchCancel';
  * answers the messages Orbit sends it as the real one does, and keeps them.
  */
 const YOUTUBE_PLAYER = `<!doctype html>
-<html><body style="margin:0;height:100vh;display:grid;place-items:center;background:#111;color:#eee;font:16px sans-serif">
+<html><head><meta charset="utf-8"></head><body style="margin:0;height:100vh;display:grid;place-items:center;background:#111;color:#eee;font:16px sans-serif">
 <p>YouTube’s player</p>
 <script>
   window.received = [];
@@ -99,14 +100,14 @@ const onPicture = (box: { x: number; y: number; width: number; height: number },
 
 /** Opens the viewer on the summit's picture, waiting for it to load. */
 const viewSummit = async (page: Page, isMobile: boolean): Promise<void> => {
-  await press(page.getByRole('button', { name: 'View image' }), isMobile);
+  await press(page.getByRole('button', { name: 'View picture' }), isMobile);
   await expect(viewer(page)).toBeVisible();
   await expect(picture(page)).toHaveJSProperty('complete', true);
   await expect(page.locator('.orbit-viewer__status')).toBeHidden();
 };
 
 test.describe('opening the viewer', () => {
-  test('"View image" shows the picture fitted to the window, over the whole page', async ({ page, isMobile }) => {
+  test('"View picture" shows the picture fitted to the window, over the whole page', async ({ page, isMobile }) => {
     await openTrip(page);
     await viewSummit(page, isMobile);
     const viewport = page.viewportSize()!;
@@ -127,7 +128,7 @@ test.describe('opening the viewer', () => {
     await press(page.getByRole('button', { name: 'Read note' }), isMobile);
     const sheet = page.locator('dialog.orbit-sheet[open]');
     await expect(sheet).toBeVisible();
-    await press(sheet.getByRole('button', { name: 'View image: Sunrise from the summit' }), isMobile);
+    await press(sheet.getByRole('button', { name: 'View picture: Sunrise from the summit' }), isMobile);
     await expect(viewer(page)).toBeVisible();
     await expect(picture(page)).toHaveAttribute('src', /mountain\.jpg$/);
     await page.keyboard.press('Escape');
@@ -180,7 +181,7 @@ test.describe('pictures with a mouse', () => {
 
   test('the arrows step through the map’s pictures and videos; Esc closes and gives focus back', async ({ page }) => {
     await openTrip(page);
-    const button = page.getByRole('button', { name: 'View image' });
+    const button = page.getByRole('button', { name: 'View picture' });
     await button.focus();
     await page.keyboard.press('Enter');
     await expect(viewer(page)).toBeVisible();
@@ -208,6 +209,8 @@ test.describe('pictures with a mouse', () => {
 });
 
 test.describe('pictures by touch', () => {
+  test.skip(({ browserName }) => browserName !== 'chromium', 'The fingers come through Chromium’s DevTools protocol.');
+
   /**
    * Two fingers, or one, through the browser's own touch input. Turning it
    * on makes the pointer coarse, and the buttons bigger: turn it on before
@@ -353,6 +356,8 @@ test.describe('on a map that isn’t interactive', () => {
 });
 
 test.describe('how it looks', () => {
+  test.skip(({ browserName }) => browserName !== 'chromium', 'The screenshots are Chromium’s.');
+
   for (const theme of ['paper', 'night']) {
     test(`a picture in the ${theme} theme`, async ({ page, isMobile }) => {
       await openTrip(page, `theme=${theme}`);

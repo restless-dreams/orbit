@@ -6,11 +6,12 @@
  * it's the map laid out for paper (print-layout.ts) instead.
  */
 
-import { parseOrbit } from '../dispatch.js';
+import { documentOf } from '../dispatch.js';
 import { serializeOrbitMarkdown } from '../serializer-markdown.js';
+import { currentOptions } from '../renderer/options.js';
 import { OrbitWords, type OrbitStrings } from '../languages.js';
-import { expandTheme, isOrbitThemePreset, themeTokens, type OrbitThemeTokens } from '../themes.js';
-import type { OrbitDocument, OrbitRendererTheme, ViewMode } from '../types.js';
+import { expandTheme, isThemePreset, themeObjectTokens, themeTokens, type OrbitThemeTokens } from '../themes.js';
+import type { OrbitDocument, OrbitNode, OrbitRendererTheme, OrbitViewMode } from '../types.js';
 
 export interface OrbitWebPageOptions {
   /**
@@ -26,7 +27,10 @@ export interface OrbitWebPageOptions {
   theme?: string | OrbitRendererTheme;
 
   /** How the map opens: `focus` (default) or `all`, the overview. */
-  viewMode?: ViewMode;
+  view?: OrbitViewMode;
+
+  /** @deprecated Use `view`, as the renderer and a document name it: this name goes in Orbit 1.0. */
+  viewMode?: OrbitViewMode;
 
   /** The node in focus when the map opens, by id. Default: the root. */
   focus?: string;
@@ -38,10 +42,14 @@ export interface OrbitWebPageOptions {
   strings?: Partial<OrbitStrings>;
 
   /**
-   * Pictures to put inside the page, by the address the map gives them:
-   * `{ 'photos/summit.jpg': 'data:image/jpeg;base64,…' }`. A node's picture,
-   * a video's thumbnail and pictures in notes are swapped for them, so they
-   * show wherever the page goes.
+   * Pictures and sounds to put inside the page, by the address the map
+   * gives them: `{ 'photos/summit.jpg': 'data:image/jpeg;base64,…',
+   * 'memos/idea.m4a': 'data:audio/mp4;base64,…' }`. A node's picture and
+   * sound, a video's thumbnail and pictures in notes are swapped for them,
+   * so they show, and play, wherever the page goes. So is a live photo's
+   * motion (`'photos/summit.mp4': 'data:video/mp4;base64,…'`), a few seconds
+   * long. Videos stay out: they're too big to carry as text, and their
+   * thumbnails stand in for them.
    */
   media?: Record<string, string>;
 }
@@ -55,7 +63,11 @@ export interface WebPageData {
   source: string;
 
   theme?: string | OrbitRendererTheme;
-  viewMode?: ViewMode;
+  view?: OrbitViewMode;
+
+  /** What pages made before 0.4.0 called `view`. */
+  viewMode?: OrbitViewMode;
+
   focus?: string;
   language?: string;
   strings?: Partial<OrbitStrings>;
@@ -74,15 +86,16 @@ export interface WebPageData {
  * const html = exportWebPage(markdown, { script, theme: 'night' });
  * ```
  */
-export const exportWebPage = (input: string | OrbitDocument, options: OrbitWebPageOptions): string => {
-  const document = typeof input === 'string' ? parseOrbit(input) : input;
-  const source = typeof input === 'string' ? input : serializeOrbitMarkdown(input);
+export const exportWebPage = (input: string | OrbitDocument | OrbitNode, given: OrbitWebPageOptions): string => {
+  const options = currentOptions(given);
+  const document = documentOf(input);
+  const source = typeof input === 'string' ? input : serializeOrbitMarkdown(document);
   const words = new OrbitWords(options.language, options.strings);
   const title = options.title ?? (document.options.title || document.root.text || 'Orbit');
   const data: WebPageData = {
     source,
     theme: options.theme,
-    viewMode: options.viewMode,
+    view: options.view,
     focus: options.focus,
     language: options.language,
     strings: options.strings,
@@ -98,7 +111,7 @@ export const exportWebPage = (input: string | OrbitDocument, options: OrbitWebPa
 <link rel="icon" href="${ORBIT_ICON}">
 <title>${escapeText(title)}</title>
 <style>
-${pageStyles(theme)}
+${styleCss(pageStyles(theme))}
 </style>
 </head>
 <body>
@@ -106,7 +119,7 @@ ${pageStyles(theme)}
   <div class="page__map" id="page-map" aria-label="${escapeAttribute(title)}"></div>
   <button class="page__present" type="button" data-present><span aria-hidden="true">▶</span> ${escapeText(words.text('present'))}</button>
   <section class="page__caption" id="page-caption" aria-live="polite" hidden>
-    <h1 class="page__title" id="page-title"></h1>
+    <h1 class="page__title" id="page-title" tabindex="-1"></h1>
     <div class="page__note" id="page-note"></div>
   </section>
   <nav class="page__controls" id="page-controls" hidden>
@@ -145,12 +158,49 @@ const pageColors = (tokens: OrbitThemeTokens): string => {
   ].join(' ');
 };
 
-/** The tokens a theme option stands for: a built-in theme's, with the option's own on top. */
+/**
+ * The tokens a theme option stands for: a built-in theme's, with the
+ * option's own on top, the ones the live map takes, where they stay in
+ * their own declaration (`staysInDeclaration`).
+ */
 const tokensOf = (theme: string | OrbitRendererTheme | undefined): OrbitThemeTokens => {
   const expanded = expandTheme(theme);
   const preset = typeof expanded === 'string' ? expanded : expanded?.preset;
-  const base = themeTokens(isOrbitThemePreset(preset) ? preset : 'paper');
-  return typeof expanded === 'object' && expanded?.tokens ? { ...base, ...expanded.tokens } as OrbitThemeTokens : base;
+  const base = themeTokens(isThemePreset(preset) ? preset : 'paper');
+  const own = Object.entries(themeObjectTokens(typeof expanded === 'object' ? expanded : undefined)).filter(([, value]) => staysInDeclaration(value));
+  return { ...base, ...Object.fromEntries(own) } as OrbitThemeTokens;
+};
+
+/**
+ * Whether a theme's value can go into the page's style as it is: a color
+ * or a shadow written plainly, in letters, digits, spaces and
+ * `# % . , + - / ( ) _`, its parentheses closed, with nothing to load. The
+ * live map sets each value with `style.setProperty`, which keeps it to its
+ * own property. In a style's text, a `;` or `}` would end its declaration
+ * or rule, and an escape, a comment, or an unclosed quote or parenthesis
+ * would run on over what comes after it, so a value with any of them keeps
+ * the built-in theme's, as the print layout's fonts do.
+ */
+const staysInDeclaration = (value: string): boolean => {
+  if (!/^[\w\s#%.,+\-/()]*$/.test(value) || /url\(/i.test(value)) {
+    return false;
+  }
+
+  let depth = 0;
+
+  for (const character of value) {
+    if (character === '(') {
+      depth += 1;
+    } else if (character === ')') {
+      depth -= 1;
+
+      if (depth < 0) {
+        return false;
+      }
+    }
+  }
+
+  return depth === 0;
 };
 
 const pageStyles = (theme: string | OrbitRendererTheme | undefined): string => {
@@ -178,6 +228,7 @@ body { font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; 
   border: 1px solid var(--page-border); border-radius: 16px; background: var(--page-card); color: var(--page-text); box-shadow: var(--page-shadow);
 }
 .page__title { margin: 0; font-size: 20px; line-height: 1.3; }
+.page__title:focus { outline: none; }
 .page__note:not(:empty) { margin-top: 8px; }
 .page__note p { margin: 0 0 8px; }
 .page__note img { max-width: 100%; border-radius: 8px; }
@@ -193,6 +244,11 @@ body { font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; 
   .page { display: none; }
   .page__print { display: block; }
 }`;
+};
+
+/** CSS inside a style element: `<` written as the CSS escape `\\3c `, so nothing in it, a theme's colors included, can end the element. */
+const styleCss = (css: string): string => {
+  return css.replace(/</g, '\\3c ');
 };
 
 /** JSON inside a script element: `<` written as `\\u003c`, so nothing in it can end the element or open a comment. */

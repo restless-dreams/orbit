@@ -35,6 +35,15 @@ jobs:
     strategy:
       matrix:
         node: [20, 22, 24]
+        peers: [react react-dom marked]
+        include:
+          # The oldest versions the peer ranges allow, on the oldest Node.
+          - node: 20
+            peers: react@18.0.0 react-dom@18.0.0 marked@12.0.0
+          # The core alone: the CLI, the renderer and the web page need none of the peers.
+          - node: 20
+            peers: ''
+            smoke: --without-peers
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -49,10 +58,24 @@ jobs:
           cd smoke
           npm init -y > /dev/null
           npm pkg set type=module
-          npm install ../orbit.tgz react react-dom marked
+          npm install ../orbit.tgz ${{ matrix.peers }}
       - name: Exercise every entry point and the CLI
         working-directory: smoke
-        run: node smoke-test.mjs
+        run: node smoke-test.mjs ${{ matrix.smoke }}
+
+  older-peers:
+    # The React wrapper's and the marked extension's tests on the oldest React
+    # and marked the peer ranges allow. React 18.3 is the first with act() in
+    # react, which the tests use; the smoke job renders on 18.0.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun add --dev react@18.3.1 react-dom@18.3.1 marked@12.0.0
+      - run: bun test tests/react.test.ts tests/marked.test.ts
 
   browser:
     # The Playwright image pins the browser and fonts, so screenshots match
@@ -73,8 +96,26 @@ jobs:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
       - run: bun run build
-      - name: Spin, zoom, navigation and screenshots in Chromium (desktop and phone)
+      - name: Keep Chromium 99 between runs
+        uses: actions/cache@v4
+        with:
+          path: /root/.cache/orbit
+          key: older-chromium-961656
+      - name: Draw maps in Chromium 99, the oldest WebView Orbit for Android draws them in
+        run: bun run check:older-chromium
+        env:
+          HOME: /root
+      - name: Spin, zoom and navigation in Chromium (desktop and phone), Firefox and WebKit, and screenshots in Chromium
         run: node node_modules/@playwright/test/cli.js test
+        env:
+          HOME: /root
+      # Advisory for now: the budgets were set on a 24-core desktop, with three times the headroom, and GitHub's
+      # runners are slower per core, so a limit may sit close here without anything getting slower. The step prints
+      # each measured value against its budget, in its log and in the run's summary. Once the first few runs have
+      # given real numbers, set the desktop budgets from them and make the step blocking (RELEASE.md).
+      - name: Orbit's own script time in flights, zooms, pans and the first draw, against its budgets
+        run: node scripts/bench-animations.mjs --budgets --runs=3
+        continue-on-error: true
         env:
           HOME: /root
       - uses: actions/upload-artifact@v4

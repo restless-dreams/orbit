@@ -25,7 +25,7 @@ describe('parser-yaml', () => {
     const src = `title: Demo\nview: focus\nnodes:\n  - text: A\n    icon: 🚀\n    children:\n      - text: B\n        color: red`;
     const doc = parseOrbitYAML(src);
     expect(doc.options.title).toBe('Demo');
-    expect(doc.options.viewMode).toBe('focus');
+    expect(doc.options.view).toBe('focus');
     expect(doc.root.text).toBe('A');
     expect(doc.root.icon).toBe('🚀');
     expect(doc.root.children[0].text).toBe('B');

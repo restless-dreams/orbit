@@ -1,12 +1,12 @@
-import type { OrbitDocumentOptions, OrbitNode, ParsedOrbitDocument } from './types.js';
+import type { OrbitDocumentOptions, OrbitNode, OrbitParsedDocument } from './types.js';
 import { parseYaml, YamlMiniError } from './yaml-mini.js';
 import { ensureUniqueNodeIds, nodeSlug, setParent } from './utils.js';
 import { detectVideoProvider } from './media.js';
 import { DiagnosticCollector } from './diagnostics.js';
 import { findFrontmatter, firstContentLineIndex, lineOfKey, normalizeSource, sharedIndentation } from './source.js';
 import { assignNodeAttribute, NODE_ATTRIBUTE_KEYS } from './node-attributes.js';
-import { applyDocumentOption, DOCUMENT_OPTION_KEYS, unknownOptionMessage } from './document-options.js';
-import { checkNodeLinks, type LinkLine } from './node-links.js';
+import { applyDocumentOption, DOCUMENT_OPTION_KEYS, unknownOptionMessage, withOldOptionNames } from './document-options.js';
+import { checkNodeLinks, CODE_OR_COMMENT, type LinkLine } from './node-links.js';
 import { encodingOf, setDocumentSource, SourceRecorder, type LineRole, type NodeShape } from './document-source.js';
 import { nodesWithExplicitIds } from './utils.js';
 import { upgradeFormat } from './format-upgrades.js';
@@ -15,7 +15,7 @@ export { OrbitParseError } from './diagnostics.js';
 
 export { SUPPORTED_SCHEMA_VERSION } from './format-upgrades.js';
 
-export interface ParseOptions {
+export interface OrbitParseOptions {
   /**
    * Throw an `OrbitParseError` on the first problem instead of recording a
    * diagnostic and carrying on. Off by default; `orbit validate` turns it on.
@@ -29,6 +29,9 @@ export interface ParseOptions {
    */
   untitled?: string;
 }
+
+/** @deprecated Use `OrbitParseOptions`: this name goes in Orbit 1.0. */
+export type ParseOptions = OrbitParseOptions;
 
 /** Text of the generated root when a document has no single top-level heading or title. */
 export const UNTITLED_ROOT_TEXT = 'Untitled map';
@@ -263,7 +266,7 @@ const LINK_LINE = /^\[([^\]]*)\]\(([^)]+)\)$/;
 
 // Public API
 
-export const parseOrbitMarkdown = (input: string, options: ParseOptions = {}): ParsedOrbitDocument => {
+export const parseOrbitMarkdown = (input: string, options: OrbitParseOptions = {}): OrbitParsedDocument => {
   const diagnostics = new DiagnosticCollector(options.strict ?? false);
   const rawLines = normalizeSource(input).split('\n');
   const { options: docOptions, extra, bodyStartIndex } = readFrontmatter(rawLines, diagnostics);
@@ -280,7 +283,7 @@ export const parseOrbitMarkdown = (input: string, options: ParseOptions = {}): P
   fixLevels(root, 0);
   ensureUniqueNodeIds(root);
   checkNodeLinks(root, diagnostics, noteLinkLines(root, rawLines));
-  const document: ParsedOrbitDocument = { root, options: docOptions, warnings: diagnostics.warnings, diagnostics: diagnostics.diagnostics };
+  const document: OrbitParsedDocument = { root, options: withOldOptionNames(docOptions), warnings: diagnostics.warnings, diagnostics: diagnostics.diagnostics };
 
   if (Object.keys(extra).length > 0) {
     document.extra = extra;
@@ -1409,7 +1412,11 @@ const reconstructMediaSource = (block: MediaBlock): string => {
 
 // Shared helpers
 
-/** Where a link in a node's note is: the first line from the node's title up to the next node's that has it. */
+/**
+ * Where a link in a node's note is: the first line from the node's title up
+ * to the next node's that has it outside code and comments, as the note
+ * shows it.
+ */
 const noteLinkLines = (root: OrbitNode, rawLines: string[]): LinkLine => {
   const titles: number[] = [];
 
@@ -1432,14 +1439,10 @@ const noteLinkLines = (root: OrbitNode, rawLines: string[]): LinkLine => {
     }
 
     const end = titles.find((line) => line > start) ?? rawLines.length + 1;
-
-    for (let line = start; line < end; line += 1) {
-      if (rawLines[line - 1].includes(`](${href})`)) {
-        return line;
-      }
-    }
-
-    return start;
+    // Code and comments blanked out, line breaks and all else where it was.
+    const shown = rawLines.slice(start - 1, end - 1).join('\n').replace(CODE_OR_COMMENT, (match) => match.replace(/[^\n]/g, ' ')).split('\n');
+    const index = shown.findIndex((line) => line.includes(`](${href})`));
+    return index === -1 ? start : start + index;
   };
 };
 

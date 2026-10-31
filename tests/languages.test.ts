@@ -4,7 +4,7 @@ import { parseOrbit } from '../src/core/dispatch';
 import { renderToSVGString } from '../src/core/render-to-svg';
 import { defineOrbitMapElement } from '../src/core/auto-render';
 import { OrbitWords, languageOf, languageTags, registerLanguage, type OrbitStrings } from '../src/core/languages';
-import type { RendererOptions } from '../src/core/types';
+import type { OrbitRendererOptions } from '../src/core/types';
 import { node, useMapSize } from './helpers/renderer';
 
 useMapSize(600, 400);
@@ -15,7 +15,7 @@ beforeEach(() => {
 });
 
 /** A map drawn inside an element in `lang`, like a page in that language. */
-const mountIn = (lang: string | null, source: string, options: RendererOptions = {}): { host: HTMLElement; page: HTMLElement; renderer: OrbitSVGRenderer } => {
+const mountIn = (lang: string | null, source: string, options: OrbitRendererOptions = {}): { host: HTMLElement; page: HTMLElement; renderer: OrbitSVGRenderer } => {
   const page = document.createElement('main');
 
   if (lang !== null) {
@@ -196,6 +196,18 @@ describe('a map in Spanish', () => {
     expect(node(host, 'launch-plan').getAttribute('aria-label')).toBe('Launch plan, 3 ideas, tiene nota e imagen');
   });
 
+  test('a status a file writes as todo, active, done or blocked is said in the map’s language; any other word as written', () => {
+    const source = '# Plan\n## Draft <!-- orbit status: active -->\n## Review <!-- orbit status: review -->\n## Ship <!-- orbit status: Done -->';
+    const { host: spanish } = mountIn('es', source);
+    expect(node(spanish, 'draft').getAttribute('aria-label')).toBe('Draft, estado: En curso');
+    expect(node(spanish, 'review').getAttribute('aria-label')).toBe('Review, estado: review');
+    expect(node(spanish, 'ship').getAttribute('aria-label')).toBe('Ship, estado: Hecho');
+    const { host: english } = mountIn('en', source);
+    expect(node(english, 'draft').getAttribute('aria-label')).toBe('Draft, status: In progress');
+    expect(new OrbitWords('es').statusName('todo')).toBe('Por hacer');
+    expect(new OrbitWords('en').statusName('blocked')).toBe('Blocked');
+  });
+
   test('the language option wins over the page’s, and changing it writes everything again', () => {
     const { host, renderer } = mountIn('es', MAP, { language: 'en' });
     expect(label(host, '.orbit-controls__zoom button')).toBe('Zoom in');
@@ -205,6 +217,24 @@ describe('a map in Spanish', () => {
     expect(node(host, 'launch-plan').getAttribute('aria-label')).toContain('tiene nota e imagen');
     renderer.setOptions({ strings: { zoomIn: 'Más cerca' } });
     expect(label(host, '.orbit-controls__zoom button')).toBe('Más cerca');
+  });
+
+  test('a language the options ask for is said on the map, so screen readers read its words in it', () => {
+    const { host, renderer } = mountIn('en', MAP, { language: 'es' });
+    const map = host.querySelector('.orbit') as HTMLElement;
+    const zoomIn = host.querySelector('.orbit-controls__zoom button');
+    expect(map.lang).toBe('es');
+    // Its buttons, outline, detail sheet and media viewer are all inside it.
+    expect(languageOf(zoomIn)).toBe('es');
+    renderer.setOptions({ language: 'es-MX' });
+    expect(map.lang).toBe('es-MX');
+    // A language Orbit has no words for is read as the English its words are in.
+    renderer.setOptions({ language: 'fr' });
+    expect(map.lang).toBe('en');
+    // Without the option, the map speaks its page's language, and leaves saying so to the page.
+    renderer.setOptions({ language: undefined });
+    expect(map.hasAttribute('lang')).toBe(false);
+    expect(languageOf(zoomIn)).toBe('en');
   });
 
   test('the empty map, its announcements and the + speak Spanish', () => {

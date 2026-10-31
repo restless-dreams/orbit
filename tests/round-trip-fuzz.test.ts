@@ -4,7 +4,8 @@ import { parseOrbitYAML } from '../src/core/parser-yaml';
 import { serializeOrbitMarkdown } from '../src/core/serializer-markdown';
 import { serializeOrbitYAML } from '../src/core/serializer-yaml';
 import type { OrbitDocument, OrbitNode } from '../src/core/types';
-import { ensureUniqueNodeIds } from '../src/core/utils';
+import { ensureUniqueNodeIds, setParent } from '../src/core/utils';
+import { emitYaml, parseYaml, type YamlValue } from '../src/core/yaml-mini';
 
 /**
  * Property test: parse(serialize(doc)) preserves the tree, for generated
@@ -192,6 +193,7 @@ const CUSTOM: Record<string, unknown>[] = [
   { quote: 'say "hi", then go' },
   { path: 'a: b # c' },
   { 'review-by': '2026-10-31' },
+  { grid: [[1, 2], ['a', 'b c'], []] },
 ];
 
 const genRichNode = (rnd: () => number, level: number, path: string): OrbitNode => {
@@ -324,3 +326,136 @@ describe('round trips with every attribute', () => {
   });
 });
 
+
+/*
+ * A map written for a newer version of the format, with what this version
+ * can't read (a view it doesn't know, ideas with a map for children), comes
+ * back as written, and keeps all of it through edits made in code, reading
+ * back as edited.
+ */
+describe('a newer format\'s YAML through edits', () => {
+  const SEEDS = Number(process.env.ORBIT_FUZZ_SEEDS ?? 60);
+
+  /**
+   * A generated map rewritten for version 2: some ideas without children
+   * get a map of them, each with a mark of its own, and some are written
+   * with their children before their fields, as other apps may write them.
+   */
+  const newerMap = (seed: number): { text: string; marks: string[] } => {
+    const rnd = mulberry32(seed);
+    const map = parseYaml(serializeOrbitYAML(genRichDocument(seed))) as Record<string, YamlValue>;
+    const marks: string[] = [];
+
+    const mark = (entry: YamlValue): void => {
+      if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+        return;
+      }
+
+      if (Array.isArray(entry.children)) {
+        entry.children.forEach(mark);
+      } else if (rnd() < 0.4) {
+        entry.children = { newer: `mark-${marks.length}` };
+        marks.push(`mark-${marks.length}`);
+      }
+
+      if (entry.children !== undefined && rnd() < 0.3) {
+        const { children, ...fields } = entry;
+
+        for (const key of Object.keys(entry)) {
+          delete entry[key];
+        }
+
+        Object.assign(entry, { children }, fields);
+      }
+    };
+
+    (map.nodes as YamlValue[]).forEach(mark);
+    const options = { schemaVersion: 2, view: 'radial', title: 'Generated' };
+    return { text: emitYaml(rnd() < 0.5 ? { ...options, ...map } : { ...map, ...options }), marks };
+  };
+
+  /** Which ideas hold which mark: the map as written, walked beside the tree read from it. */
+  const marksOf = (text: string, root: OrbitNode): Map<OrbitNode, string> => {
+    const marked = new Map<OrbitNode, string>();
+
+    const walk = (entry: YamlValue, node: OrbitNode): void => {
+      const children = (entry as Record<string, YamlValue>).children;
+
+      if (Array.isArray(children)) {
+        children.forEach((child, index) => walk(child, node.children[index]));
+      } else if (children !== null && typeof children === 'object') {
+        marked.set(node, String(children.newer));
+      }
+    };
+
+    walk(((parseYaml(text) as Record<string, YamlValue>).nodes as YamlValue[])[0], root);
+    return marked;
+  };
+
+  const nodesOf = (root: OrbitNode): OrbitNode[] => {
+    return [root, ...root.children.flatMap(nodesOf)];
+  };
+
+  /** Edits as a page makes them in code: renamed ideas, a status, a caption, ideas removed, added and moved. */
+  const edit = (root: OrbitNode, rnd: () => number, seed: number): void => {
+    for (let step = 0; step < 4; step++) {
+      const all = nodesOf(root);
+      const node = pick(rnd, all);
+      const parent = node.parent;
+      const choice = rnd();
+
+      if (choice < 0.25) {
+        node.text = `${node.text} edited`;
+      } else if (choice < 0.4) {
+        node.status = 'done';
+      } else if (choice < 0.5 && node.image) {
+        node.image.caption = 'new caption';
+      } else if (choice < 0.65 && parent) {
+        parent.children.splice(parent.children.indexOf(node), 1);
+      } else if (choice < 0.8 && node.children.length > 0) {
+        const added: OrbitNode = { id: `added-${seed}-${step}`, text: `Added ${step}`, level: node.level + 1, children: [] };
+        setParent(added, node);
+        node.children.splice(Math.floor(rnd() * (node.children.length + 1)), 0, added);
+      } else if (parent) {
+        // Under another idea with ideas of its own: a marked one has none.
+        const inside = new Set(nodesOf(node));
+        const target = pick(rnd, all.filter((candidate) => candidate.children.length > 0 && !inside.has(candidate)));
+
+        if (target) {
+          parent.children.splice(parent.children.indexOf(node), 1);
+          target.children.splice(Math.floor(rnd() * (target.children.length + 1)), 0, node);
+          setParent(node, target);
+        }
+      }
+    }
+  };
+
+  it(`keeps what this version can't read through edits, in ${SEEDS} generated maps`, () => {
+    for (let seed = 1; seed <= SEEDS; seed++) {
+      const { text, marks } = newerMap(seed * 49979687);
+      const document = parseOrbitYAML(text);
+      const marked = marksOf(text, document.root);
+      expect({ seed, saved: serializeOrbitYAML(document), marks: marked.size }).toEqual({ seed, saved: text, marks: marks.length });
+      edit(document.root, mulberry32(seed), seed);
+
+      if (seed % 3 === 0) {
+        document.options.title = 'Edited';
+      }
+
+      const saved = serializeOrbitYAML(document);
+      const back = parseOrbitYAML(saved);
+      const stillThere = new Set(nodesOf(document.root));
+      expect({
+        seed,
+        view: (parseYaml(saved) as Record<string, YamlValue>).view,
+        marks: [...marksOf(saved, back.root).values()].sort(),
+        tree: richSnapshot(back.root),
+      }).toEqual({
+        seed,
+        view: 'radial',
+        marks: [...marked].filter(([node]) => stillThere.has(node)).map(([, mark]) => mark).sort(),
+        tree: richSnapshot(document.root),
+      });
+    }
+  });
+});

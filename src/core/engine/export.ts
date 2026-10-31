@@ -35,7 +35,10 @@ export interface ExportOptions {
   /** Size the SVG to its container (100% wide and tall) instead of in pixels. */
   responsive?: boolean;
 
-  /** Prefix for the SVG's ids; give each SVG inlined in one page its own. */
+  /**
+   * Prefix for the SVG's ids. Without one, they're made from the drawing,
+   * so SVGs of different drawings can share a page.
+   */
   idPrefix?: string;
 
   /** The map's node types and status words, for icons, status colors and type tokens. */
@@ -51,6 +54,16 @@ export interface ExportOptions {
 const ROLE_ORDER = { moon: 0, node: 1, planet: 1, sun: 2 } as const;
 const FONT_SIZE = { sun: 16, planet: 13, node: 12, moon: 13 } as const;
 const LINES = { sun: 3, planet: 2, node: 2, moon: 2 } as const;
+
+/**
+ * Where an idea hidden for later lands once it's shown (`hideChildren`), as
+ * `.orbit-hidden-place` in orbit.scss draws it: a faint disc in the idea's
+ * color, with a dotted rim 2 px wide on screen. Change both together.
+ */
+const HIDDEN_PLACE = { fillOpacity: 0.24, strokeOpacity: 0.85, strokeWidth: 2, dash: '0.1 6' } as const;
+
+/** The prefix an export's ids are drawn with until they get the drawing's own (`withOwnIds`). */
+const DRAWING_PREFIX = 'orbit-export';
 
 /** Theme values read as plain colors, numbers and mixes. */
 class ThemeReader {
@@ -114,7 +127,7 @@ export const exportDisplay = (display: Display | null, options: ExportOptions): 
   const theme = new ThemeReader(options.tokens);
   const width = Math.round(viewport.width);
   const height = Math.round(viewport.height);
-  const prefix = escapeXml(options.idPrefix ?? 'orbit-export');
+  const prefix = escapeXml(options.idPrefix ?? DRAWING_PREFIX);
   const untitled = options.words?.text('untitled') ?? 'Untitled';
   const size = options.responsive ? 'width="100%" height="100%" preserveAspectRatio="xMidYMid meet"' : `width="${width}" height="${height}"`;
   const parts: string[] = [
@@ -182,6 +195,19 @@ export const exportDisplay = (display: Display | null, options: ExportOptions): 
       const unitY = (end.y - start.y) / length;
       const stroke = theme.tinted(link.color, 'link-stroke', 'link-tint');
       body.push(`<line x1="${round(start.x + unitX * fromRadius)}" y1="${round(start.y + unitY * fromRadius)}" x2="${round(end.x - unitX * toRadius)}" y2="${round(end.y - unitY * toRadius)}" ${paint('stroke', stroke, linkOpacity)} stroke-width="${linkWidth}"${linkDash} stroke-linecap="round"/>`);
+    }
+
+    // The places hidden ideas keep in their sun's orbit: over the rings and under the nodes, as on the map.
+    for (const hidden of display.hiddenPlaces ?? []) {
+      if (hidden.opacity <= 0.01) {
+        continue;
+      }
+
+      const center = place(hidden);
+      const color = theme.color(hidden.color);
+      const fill = paint('fill', color, HIDDEN_PLACE.fillOpacity * hidden.opacity);
+      const stroke = paint('stroke', color, HIDDEN_PLACE.strokeOpacity * hidden.opacity);
+      body.push(`<circle cx="${round(center.x)}" cy="${round(center.y)}" r="${round(hidden.radius * camera.scale)}" ${fill} ${stroke} stroke-width="${HIDDEN_PLACE.strokeWidth}" stroke-dasharray="${HIDDEN_PLACE.dash}" stroke-linecap="round"/>`);
     }
 
     const nodes = Array.from(display.nodes.values())
@@ -271,18 +297,44 @@ export const exportDisplay = (display: Display | null, options: ExportOptions): 
       viewport,
       hasImage: (entry) => pictures.has(entry.id),
       hasIcon: (entry) => Boolean(iconOf(entry)),
-      // A picture fills the node: its icon goes on the pill, as on the live map.
-      pillIcon: (entry) => (pictures.has(entry.id) ? iconOf(entry) : undefined),
+      // A name on a pill takes its node's icon with it, as on the live map.
+      pillIcon: iconOf,
       measures,
+      language: options.words?.asked,
     });
 
     for (const plan of planned) {
-      body.push(...exportLabel(plan, fills.get(plan.entry.id) ?? '#ffffff', themeFor(plan.entry), iconOf(plan.entry), measures, untitled));
+      body.push(...exportLabel(plan, fills.get(plan.entry.id) ?? '#ffffff', themeFor(plan.entry), iconOf(plan.entry), measures, untitled, options.words?.asked ?? 'en'));
     }
   }
 
   parts.push(`<defs>${definitions.join('')}</defs>`, ...body, '</svg>');
-  return parts.join('');
+  const svg = parts.join('');
+  return options.idPrefix === undefined ? withOwnIds(svg) : svg;
+};
+
+/**
+ * The SVG with ids made from the drawing itself (`orbit-export-<hash>-…`),
+ * so SVGs of different maps inlined in one page don't share any, and one
+ * drawing always gets the same ones. Only the ids and the `url(#…)` values
+ * that name them change: text from the map can't hold a `"`, so none of it
+ * matches.
+ */
+const withOwnIds = (svg: string): string => {
+  const prefix = `${DRAWING_PREFIX}-${fingerprint(svg)}`;
+  return svg.replace(/( id="|="url\(#)orbit-export-/g, `$1${prefix}-`);
+};
+
+/** A short fingerprint of `text` that's the same every time: its 32-bit FNV-1a hash, in hex. */
+const fingerprint = (text: string): string => {
+  let hash = 0x811c9dc5;
+
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+
+  return (hash >>> 0).toString(16).padStart(8, '0');
 };
 
 /** The sphere shading, with the stops the stylesheet colors from the theme. */
@@ -324,7 +376,7 @@ const halo = (center: { x: number; y: number }, radius: number, own: string, the
   return [`<circle cx="${round(center.x)}" cy="${round(center.y)}" r="${round(radius * theme.number('sun-halo-size', 1.15))}" fill="none" ${paint('stroke', stroke, opacity)} stroke-width="${width}"${dash}/>`];
 };
 
-/** Status dot, content marker and video badge, placed as on the live map. */
+/** Status dot, content marker, and video and sound badges, placed as on the live map. */
 const badges = (node: DisplayNode, center: { x: number; y: number }, radius: number, theme: ThemeReader, extensions?: MapExtensions): string[] => {
   const parts: string[] = [];
   const stroke = paint('stroke', theme.token('badge-stroke', '#ffffff'));
@@ -342,20 +394,34 @@ const badges = (node: DisplayNode, center: { x: number; y: number }, radius: num
     return parts;
   }
 
-  if (hasMediaSource(node.node.video)) {
+  const hasVideo = hasMediaSource(node.node.video);
+  const hasSound = hasMediaSource(node.node.audio);
+  const size = 0.3 * radius;
+
+  if (hasVideo) {
     const x = center.x + 0.62 * radius;
     const y = center.y + 0.62 * radius;
-    const size = 0.3 * radius;
     parts.push(`<circle cx="${round(x)}" cy="${round(y)}" r="${round(size)}" fill="#0f172a" fill-opacity="0.62"/>`);
     parts.push(`<path d="M${round(x - 0.32 * size)} ${round(y - 0.48 * size)} L${round(x + 0.52 * size)} ${round(y)} L${round(x - 0.32 * size)} ${round(y + 0.48 * size)} Z" fill="#ffffff"/>`);
-  } else if (node.node.note || hasMediaSource(node.node.image) || hasMediaSource(node.node.embed) || node.node.link || extensions?.nodeType(node.node)?.details) {
+  }
+
+  if (hasSound) {
+    const x = center.x + (hasVideo ? -0.72 : 0.72) * radius;
+    const y = center.y + 0.72 * radius;
+    const badge = 0.17 * radius;
+    const bar = (offset: number, half: number) => `M${round(x + offset * badge)} ${round(y - half * badge)} V${round(y + half * badge)}`;
+    parts.push(`<circle cx="${round(x)}" cy="${round(y)}" r="${round(badge)}" ${paint('fill', theme.token('note-indicator', '#1b2333'))} ${stroke} stroke-width="${round(0.04 * radius)}"/>`);
+    parts.push(`<path d="${bar(-0.42, 0.2)} ${bar(0, 0.46)} ${bar(0.42, 0.2)}" fill="none" stroke="#ffffff" stroke-width="${round(0.22 * badge)}" stroke-linecap="round"/>`);
+  }
+
+  if (!hasVideo && !hasSound && (node.node.note || hasMediaSource(node.node.image) || hasMediaSource(node.node.embed) || node.node.link || extensions?.nodeType(node.node)?.details)) {
     parts.push(`<circle cx="${round(center.x + 0.72 * radius)}" cy="${round(center.y + 0.72 * radius)}" r="${round(0.13 * radius)}" ${paint('fill', theme.token('note-indicator', '#1b2333'))} ${stroke} stroke-width="${round(0.04 * radius)}"/>`);
   }
 
   return parts;
 };
 
-const exportLabel = (plan: PlannedLabel, fill: string, theme: ThemeReader, icon: string | undefined, measures: LabelMeasures, untitled: string): string[] => {
+const exportLabel = (plan: PlannedLabel, fill: string, theme: ThemeReader, icon: string | undefined, measures: LabelMeasures, untitled: string, language: string): string[] => {
   const { entry, x, y, screenRadius } = plan;
   const text = entry.node.text || untitled;
   const isSun = entry.role === 'sun';
@@ -364,13 +430,13 @@ const exportLabel = (plan: PlannedLabel, fill: string, theme: ThemeReader, icon:
   const letterSpacing = theme.value('label-letter-spacing', '0').trim();
   const spacing = letterSpacing === '0' || letterSpacing === '' || letterSpacing === 'normal' ? '' : ` letter-spacing="${escapeXml(letterSpacing)}"`;
   const opacity = plan.opacity >= 0.999 ? '' : ` opacity="${round(plan.opacity)}"`;
-  const inside = plan.placement === 'inside' ? insideLabelLayout(entry.role, screenRadius, text, Boolean(icon), measures.inside(entry.role, entry.node)) : null;
+  const inside = plan.placement === 'inside' ? insideLabelLayout(entry.role, screenRadius, text, Boolean(icon), measures.inside(entry.role, entry.node), true, 0, language) : null;
 
   if (plan.placement === 'outside') {
     const fontSize = 11.5;
     const lineCount = plan.lines;
     const pill = measures.pill(entry.role, entry.node);
-    // The pill's own text: the name, after the node's icon when a picture fills the node.
+    // The pill's own text: the name, after the node's icon when it has one.
     const pillText = plan.text || untitled;
     const box = outsideLabelBox(pillText, { x, y }, screenRadius, plan.direction, isSun ? 280 : 160, plan.offset, lineCount, pill);
     const width = box.right - box.left;

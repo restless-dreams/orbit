@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { parseOrbitMarkdown } from '../src/core/parser-markdown';
+import { serializeOrbitMarkdown } from '../src/core/serializer-markdown';
 
 describe('parser-markdown header trees', () => {
   it('h1 only', () => {
@@ -439,13 +440,23 @@ describe('parser-markdown rules that look like frontmatter', () => {
     expect(doc.diagnostics?.[0]).toMatchObject({ code: 'invalid-frontmatter', line: 1 });
     expect(() => parseOrbitMarkdown('---\ntitle: Plan\n# Map', { strict: true })).toThrow('no closing "---"');
   });
+
+  it('an indented --- in a frontmatter value doesn\'t close it', () => {
+    const text = '---\ntitle: Plan\nsummary: |\n  Before the rule\n  ---\n  After it\n---\n# Plan\n## Next\n';
+    const doc = parseOrbitMarkdown(text);
+    expect(doc.extra).toEqual({ summary: 'Before the rule\n---\nAfter it' });
+    expect(doc.root.children.map((child) => child.text)).toEqual(['Next']);
+    expect(serializeOrbitMarkdown(doc)).toBe(text);
+    // Only a --- at the start of its line closes it, as in other apps that read frontmatter.
+    expect(parseOrbitMarkdown('---\ntitle: Plan\n  ---\n# Map').diagnostics?.[0]).toMatchObject({ code: 'invalid-frontmatter', line: 1 });
+  });
 });
 
 describe('parser-markdown document frontmatter', () => {
   it('frontmatter sets renderer options', () => {
     const src = `---\nview: focus\npalette: ["#FFD93D", "#FF6B6B"]\nshowRings: false\nbaseUrl: /assets/\n---\n# A`;
     const doc = parseOrbitMarkdown(src);
-    expect(doc.options.viewMode).toBe('focus');
+    expect(doc.options.view).toBe('focus');
     expect(doc.options.palette).toEqual(['#FFD93D', '#FF6B6B']);
     expect(doc.options.showRings).toBe(false);
     expect(doc.options.baseUrl).toBe('/assets/');
