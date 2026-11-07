@@ -49,7 +49,8 @@ export interface OrbitWebPageOptions {
    * so they show, and play, wherever the page goes. So is a live photo's
    * motion (`'photos/summit.mp4': 'data:video/mp4;base64,…'`), a few seconds
    * long. Videos stay out: they're too big to carry as text, and their
-   * thumbnails stand in for them.
+   * thumbnails stand in for them. So do an idea's files: the page lists
+   * them, by name, kind and size, and says they stayed with the map.
    */
   media?: Record<string, string>;
 }
@@ -155,6 +156,9 @@ const pageColors = (tokens: OrbitThemeTokens): string => {
     `--page-muted: ${tokens['sheet-muted-text']};`,
     `--page-border: ${tokens['sheet-border']};`,
     `--page-shadow: ${tokens['sheet-shadow']};`,
+    `--page-chip: ${tokens['chip-background']};`,
+    `--page-accent: ${tokens['control-active-background']};`,
+    `--page-on-accent: ${tokens['control-active-text']};`,
   ].join(' ');
 };
 
@@ -230,7 +234,12 @@ body { font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; 
 .page__title { margin: 0; font-size: 20px; line-height: 1.3; }
 .page__title:focus { outline: none; }
 .page__note:not(:empty) { margin-top: 8px; }
-.page__note p { margin: 0 0 8px; }
+.page__note {
+  --_orbit-sheet-text: var(--page-text); --_orbit-sheet-muted-text: var(--page-muted); --_orbit-sheet-border: var(--page-border);
+  --_orbit-chip-background: var(--page-chip); --_orbit-control-active-background: var(--page-accent); --_orbit-control-active-text: var(--page-on-accent);
+}
+.page__note p, .page__note ul, .page__note ol, .page__note .orbit-note__table { margin: 0 0 8px; }
+.page__note li > ul, .page__note li > ol { margin-bottom: 0; }
 .page__note img { max-width: 100%; border-radius: 8px; }
 .page__note a { color: inherit; }
 .page--presenting .page__present { display: none; }

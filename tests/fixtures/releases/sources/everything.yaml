@@ -23,7 +23,14 @@ nodes:
       - text: Research
         status: done
         priority: 2
+        due: "2026-11-20"
         tags: [ux, q3]
+        files:
+          - src: media/interviews.xlsx
+            name: Interviews (all 24).xlsx
+            type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+            size: 91200
+          - media/consent.pdf
         children: [Interviews, Survey]
       - text: Build
         id: build-phase
@@ -35,6 +42,7 @@ nodes:
           - text: Frontend
             link: "#research"
             paletteColor: 2
+            due: 2026-11-21 09:30
           - text: Backend
             noteFormat: plain
             note: Plain text.

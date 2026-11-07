@@ -8,12 +8,19 @@ import type { OrbitNode } from '../types.js';
 import type { OrbitWords } from '../languages.js';
 import { overlayTransform } from '../browser.js';
 
+/** An idea's date as the outline shows it, after its name: in the attention color when it's `overdue`. */
+export interface OutlineDate {
+  text: string;
+  overdue: boolean;
+}
+
 export class AccessibleOutline {
   readonly element: HTMLElement;
   readonly live: HTMLDivElement;
   private readonly onSelect: (nodeId: string) => void;
   private visible = false;
   private icon: (node: OrbitNode) => string | undefined = (node) => node.icon;
+  private date: (node: OrbitNode) => OutlineDate | null = () => null;
 
   /** Each node's entry, so moving between nodes only moves the current marker. */
   private readonly entries = new Map<string, HTMLElement>();
@@ -48,9 +55,9 @@ export class AccessibleOutline {
 
   /**
    * Rebuilds the list. Without `interactive`, entries are plain text instead
-   * of buttons. `icon` gives a node's icon, its type's when it has none. The
-   * children of the nodes in `hidden` are left out, and their node's entry
-   * says how many there are.
+   * of buttons. `icon` gives a node's icon, its type's when it has none, and
+   * `date` its date, as of now. The children of the nodes in `hidden` are
+   * left out, and their node's entry says how many there are.
    */
   update(
     tree: OrbitNode,
@@ -59,8 +66,10 @@ export class AccessibleOutline {
     interactive: boolean,
     icon: (node: OrbitNode) => string | undefined = (node) => node.icon,
     hidden: ReadonlySet<string> = new Set(),
+    date: (node: OrbitNode) => OutlineDate | null = () => null,
   ): void {
     this.icon = icon;
+    this.date = date;
     this.hidden = new Set(hidden);
     this.entries.clear();
     this.currentId = null;
@@ -123,6 +132,23 @@ export class AccessibleOutline {
 
     if (hidesChildren) {
       entry.textContent += `, ${this.words.count('hiddenIdeaCount', node.children.length)}`;
+    }
+
+    const date = this.date(node);
+
+    if (date) {
+      // The name, cut short where it must, then the date, whole: a comma between them for screen readers.
+      const name = document.createElement('span');
+      name.className = 'orbit-outline__name';
+      name.textContent = entry.textContent;
+      const comma = document.createElement('span');
+      comma.className = 'orbit-visually-hidden';
+      comma.textContent = ', ';
+      const shown = document.createElement('span');
+      shown.className = date.overdue ? 'orbit-outline__date orbit-outline__date--overdue' : 'orbit-outline__date';
+      shown.textContent = date.text;
+      entry.classList.add('orbit-outline__dated');
+      entry.replaceChildren(name, comma, shown);
     }
 
     if (!this.entries.has(node.id)) {

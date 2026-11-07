@@ -22,15 +22,20 @@ import type {
   OrbitEditorEvent,
   OrbitEventMap,
   OrbitEventName,
+  OrbitFileOpenDetail,
+  OrbitFileOpenEvent,
   OrbitMediaEvent,
   OrbitMediaOptions,
   OrbitMediaState,
   OrbitNode,
+  OrbitNodeCircle,
   OrbitNodeContextEvent,
   OrbitNodeDragEvent,
   OrbitNewNode,
   OrbitNodeInput,
   OrbitRendererTheme,
+  OrbitSpotlightEvent,
+  OrbitSpotlightOptions,
   OrbitThemePreset,
   RendererOptions,
   ViewMode,
@@ -74,6 +79,7 @@ import {
   HiddenPlacesView,
   COUNT_HEIGHT,
   COUNT_POSITION,
+  DATE_CHIP_INSET,
   createDefinitions,
   describeNode,
   insideFontSize,
@@ -82,6 +88,7 @@ import {
   insideLabelWidth,
   measureCount,
   showsCount,
+  showsDateChip,
   svgElement,
   placeShading,
   readShadeCircle,
@@ -92,7 +99,7 @@ import { exportDisplay } from './engine/export.js';
 import { LabelFonts, onMeasurementsReset } from './engine/text-measure.js';
 import { resolveColor } from './engine/colors.js';
 import { Controls } from './ui/controls.js';
-import { AccessibleOutline, Tooltip } from './ui/outline.js';
+import { AccessibleOutline, Tooltip, type OutlineDate } from './ui/outline.js';
 import { DetailSheet, type DetailSection } from './ui/detail-sheet.js';
 import { MediaViewer, galleryItems, showsMedia, type MediaItem, type MediaKind } from './ui/media-viewer.js';
 import type { PlaybackState } from './ui/media-players.js';
@@ -100,17 +107,23 @@ import { ActionBar, actionRows, type ActionRows, type LinkDescription } from './
 import { InlineEditor, type EditorPlacement } from './ui/inline-editor.js';
 import { findLinkedNode, isNodeLink } from './node-links.js';
 import { MapExtensions, actionLabel, guarded, upgradeTypes } from './extensions.js';
-import { noteToPlainText } from './ui/note-markdown.js';
+import { noteToPlainText, setNoteCheckbox } from './ui/note-markdown.js';
 import { OrbitWords, languageOf } from './languages.js';
+import { datesIn, isOverdue, nextDateChange, nodeDue, type OrbitDue } from './dates.js';
 import { RingsAndLinks } from './renderer/rings-and-links.js';
 import { LabelPainter } from './renderer/label-painter.js';
 import { NodePainter } from './renderer/node-painter.js';
 import { ContentPainter } from './renderer/content-painter.js';
+import { SpotlightScrim, circleOnScreen, sameCircle, spotlightCamera, spotlightShare, type ScreenCircle } from './renderer/spotlight.js';
 import { currentOptions, mergeRendererOptions, resolveInsets, spinSettings, type ResolvedRendererOptions } from './renderer/options.js';
 import { SLOT_STOP, createEmptyState, fillEmptyState, isAddSlot, isApplePlatform, isFocusVisible, nodeIdFrom, reportListenerError, scrollsAround } from './renderer/dom.js';
 import { clockwiseFromTop, closeInSize, innerOrbitEdge, orderedPlanets, overlayPlacement, renameNodes, visiblePart, withArrival, type Arrival } from './renderer/scene-helpers.js';
 import { definedEntries, expectObject, isEmptyTree, isOrbitDocument, newIdeaText, parentIds, sameTree, sameValues, transplantSource } from './renderer/trees.js';
 
+/** How long after a date's moment the map shows it again (ms), so the clock it wakes to has surely passed it. */
+const DATE_TIMER_MARGIN = 250;
+/** The longest a map waits to look at its dates again (ms): a day, well within what a timer can wait. */
+const DATE_TIMER_LIMIT = 86_400_000;
 /** Zoom (relative to the fitted view) past which zooming toward a planet or moon enters it. */
 const ENTER_ZOOM = 1.75;
 /**
@@ -246,7 +259,7 @@ interface NodeDrag {
 }
 
 /** Orbit's own buttons; any other action is one of yours. */
-const CONTENT_ACTIONS = new Set<string>(['details', 'image', 'video', 'audio', 'embed', 'note', 'link']);
+const CONTENT_ACTIONS = new Set<string>(['details', 'image', 'video', 'audio', 'embed', 'note', 'link', 'files']);
 
 interface CameraFlight {
   path: CameraPath;
@@ -255,6 +268,39 @@ interface CameraFlight {
   startedAt: number;
   duration: number;
 }
+
+/** A node brought up close (`spotlight`), until the camera is back in its place. */
+interface Spotlit {
+  id: string;
+
+  /** The node as last drawn, for the events after it leaves the map. */
+  node: OrbitNode;
+
+  share: number;
+  insets: Insets;
+
+  /** Where the camera goes back to: where it was, or the fitted view, fitted again for the room there is then. */
+  back: { camera: Camera; fitted: boolean };
+
+  /**
+   * The flight under way: to the node from `from`, its end worked out on
+   * each frame so the node lands where it is then; or back, from `from` to
+   * `to`, once `endSpotlight` lets it go.
+   */
+  flight: { from: Camera; to: Camera | null; startedAt: number; duration: number } | null;
+
+  /** Flying back: the map is the reader's again once it lands. */
+  ending: boolean;
+
+  /** The circle last reported. */
+  reported: ScreenCircle | null;
+
+  /** Whether the node was said to rest where it was last reported. */
+  rested: boolean;
+}
+
+/** How long a flight to a node up close and back takes: Orbit's camera flights, a little longer, for the bigger change. */
+const spotlightFlightDuration = (pathLength: number): number => Math.min(900, Math.max(420, pathLength * 520));
 
 /** Whether node `id` is in `after` where it is in `before`: under the same nodes, from the root down. */
 const inPlace = (before: OrbitNode, after: OrbitNode, id: string): boolean => {
@@ -342,6 +388,16 @@ export class OrbitSVGRenderer {
   /** Every node's color, from `getNodeColor`'s first call until the map or its options change. */
   private nodeColors: Map<string, string> | null = null;
 
+  /**
+   * The moment the map shows its dates for (`due`): whether each is past,
+   * and how its planet writes it ("Today", "Fri"). Set as a map is drawn
+   * or edited, and again when the dates next look different (`dateTimer`)
+   * and when the page comes back into view, whose timers may have slept.
+   */
+  private dateNow = new Date();
+
+  private dateTimer: ReturnType<typeof setTimeout> | null = null;
+
   private taskTokens: Record<string, string> | null = null;
 
   /** Whether any of the map is on screen; off screen, the drift rests. */
@@ -398,6 +454,11 @@ export class OrbitSVGRenderer {
 
   private cameraFlight: CameraFlight | null = null;
   private wheelZoom: { remaining: number; anchor: Point } | null = null;
+
+  /** A node brought up close (`spotlight`), and the scrim around it. */
+  private spotlit: Spotlit | null = null;
+
+  private readonly scrim = new SpotlightScrim();
   private display: Display | null = null;
   private restingDisplay: { scene: Scene; rotation: number; display: Display } | null = null;
 
@@ -522,12 +583,14 @@ export class OrbitSVGRenderer {
     this.nodePainter = new NodePainter(this.root, this.definitions, this.ids, this.layers, {
       extensions: () => this.extensions,
       words: () => this.words,
+      dateNow: () => this.dateNow,
       baseUrl: () => this.options.baseUrl,
       scene: () => this.scene,
       inFlight: () => this.transition !== null,
       spinResting: () => this.spinPhysics.mode === 'idle',
       driftRunning: () => this.ambientRunning,
       editedId: () => this.editedId(),
+      spotlitId: () => this.spotlit?.id ?? null,
       hidesChildren: (id) => this.hiding.has(id),
       drag: () => {
         const drag = this.nodeDrag;
@@ -561,6 +624,7 @@ export class OrbitSVGRenderer {
       extensions: () => this.extensions,
       viewport: () => this.viewport,
       changedIds: () => this.changedIds,
+      spotlitId: () => this.spotlit?.id ?? null,
     });
     this.labelLayer = document.createElement('div');
     this.labelLayer.className = 'orbit__labels';
@@ -571,15 +635,18 @@ export class OrbitSVGRenderer {
       viewport: () => this.viewport,
       restingScene: () => (this.transition ? null : this.scene),
       inFlight: () => this.transition !== null,
-      cameraMoving: () => this.cameraFlight !== null || this.wheelZoom !== null || this.glide.isMoving || this.dragging,
+      cameraMoving: () => this.cameraFlight !== null || this.wheelZoom !== null || this.glide.isMoving || this.dragging || Boolean(this.spotlit?.flight),
       changedIds: () => this.changedIds,
       editedId: () => this.editedId(),
+      spotlitId: () => this.spotlit?.id ?? null,
       editorBox: () => this.editor.box(),
       animationsEnabled: () => this.animationsEnabled(),
       requestPaint: () => this.clock.requestPaint(),
       nodeView: (id) => this.nodePainter.view(id),
       themeTokens: () => this.exportTokens(),
       language: () => this.words.asked,
+      words: () => this.words,
+      dateNow: () => this.dateNow,
     });
     this.overlayLayer = document.createElement('div');
     this.overlayLayer.className = 'orbit__overlay';
@@ -656,7 +723,8 @@ export class OrbitSVGRenderer {
     });
 
     this.input = new InputController(this.root, {
-      isInteractive: () => this.options.interactive !== false,
+      // A node up close takes the map out of the reader's hands until it's back in its place.
+      isInteractive: () => this.options.interactive !== false && this.spotlit === null,
       longPressDelay: () => {
         const delay = this.options.longPressDelay;
         return typeof delay === 'number' && Number.isFinite(delay) && delay > 0 ? delay : 500;
@@ -729,6 +797,7 @@ export class OrbitSVGRenderer {
     });
 
     this.svg.addEventListener('click', this.handleClick);
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
     this.svg.addEventListener('contextmenu', this.handleContextMenu);
     this.svg.addEventListener('keydown', this.handleKeyDown);
     this.svg.addEventListener('pointerover', this.handlePointerOver);
@@ -1033,6 +1102,106 @@ export class OrbitSVGRenderer {
   revealChildren(ids?: string | readonly string[]): boolean {
     const chosen = ids === undefined ? Array.from(this.hiding) : typeof ids === 'string' ? [ids] : ids;
     return this.changeHiding(chosen, false);
+  }
+
+  /**
+   * Brings node `id` up close, for something of the page's own to lie over
+   * it, such as a surface to draw on: the camera flies until the node fills
+   * `share` of the room `insets` leave, across, along the room's shorter
+   * side; the rest of the map dims under the sheet's backdrop; and the
+   * node's name, icon, badges and its type's content step aside, leaving its
+   * color and its picture. While it's up close the map takes no gestures or
+   * keys, nor a press anywhere over it, and the orbit doesn't drift. The
+   * camera holds the node where it lands whatever changes under it, an edit
+   * to the node included, and `spotlight` events say where its circle is on
+   * screen (see `OrbitSpotlightEvent`). `endSpotlight` takes it back.
+   *
+   * Bringing another node up close meanwhile flies there, and the camera
+   * still goes back where it was in the end. Returns false when the current
+   * view doesn't draw the node.
+   */
+  spotlight(id: string, options: OrbitSpotlightOptions = {}): boolean {
+    if (!this.tree || !this.scene || this.destroyed) {
+      return false;
+    }
+
+    // A flight between views lands first: the node comes up close in the view it lands on.
+    this.completeTransition();
+    const entry = this.scene.nodes.get(id);
+
+    if (!entry) {
+      return false;
+    }
+
+    this.stopEditing(true);
+
+    if (this.nodeDrag) {
+      this.dragNode(this.viewportCenter(), 'cancel');
+    }
+
+    this.stopMotion();
+    this.spinPhysics.stop();
+    this.hoveredId = null;
+    this.tooltip.hide();
+    const previous = this.spotlit;
+    const from = { ...(this.display?.camera ?? this.camera) };
+    const insets = resolveInsets(options.insets);
+    const share = spotlightShare(options.share);
+    const shown = this.display?.nodes.get(id) ?? entry;
+    const to = spotlightCamera(shown, this.viewport, insets, share);
+
+    this.spotlit = {
+      id,
+      node: entry.node,
+      share,
+      insets,
+      back: previous?.back ?? { camera: { ...this.camera }, fitted: this.isFitted() },
+      flight: { from, to: null, startedAt: this.now(), duration: this.spotlightDuration(from, to) },
+      ending: false,
+      reported: previous?.reported ?? null,
+      rested: false,
+    };
+
+    this.root.classList.add('orbit--spotlight');
+
+    if (this.scrim.element.parentNode !== this.root) {
+      this.root.appendChild(this.scrim.element);
+    }
+
+    // Names are placed again for the first frame, the node's own left out, then ride along with the flight.
+    this.labelPainter.refit();
+    this.syncAmbientMotion();
+    this.clock.add(this.spotlightTask);
+    this.paint();
+    return true;
+  }
+
+  /**
+   * Takes back the node `spotlight` brought up close: the camera flies back
+   * where it was (or to the view fitted for the room there is now, if that's
+   * where it was), the map brightens, the node's name and badges come back,
+   * and the map takes input again as it lands, when `spotlight` fires with
+   * `end`. Nothing happens when no node is up close.
+   */
+  endSpotlight(): void {
+    const spot = this.spotlit;
+
+    if (!spot || spot.ending) {
+      return;
+    }
+
+    this.letSpotlightGo(spot);
+    this.paint();
+  }
+
+  /**
+   * Where node `id` is drawn on screen now: its circle's center, in px from
+   * the map's top left, and its radius in px. Null when the current view
+   * doesn't draw it.
+   */
+  getNodeCircle(id: string): OrbitNodeCircle | null {
+    const entry = this.display?.nodes.get(id);
+    return entry && this.display ? circleOnScreen(this.display.camera, this.viewport, entry) : null;
   }
 
   /**
@@ -1391,8 +1560,17 @@ export class OrbitSVGRenderer {
 
     this.destroyed = true;
     this.editing = null;
+    this.spotlit = null;
+    this.scrim.remove();
     this.editor.hide();
     this.clock.stop();
+
+    if (this.dateTimer !== null) {
+      clearTimeout(this.dateTimer);
+      this.dateTimer = null;
+    }
+
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     this.input.detach();
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
@@ -1519,11 +1697,59 @@ export class OrbitSVGRenderer {
     this.focusPath = path.length > 0 ? path.map((node) => node.id) : [tree.id];
     this.actionBar.reset();
     this.labelPainter.forgetLightText();
+    this.watchDates();
     this.updateEmbedding();
     this.updateControls();
     this.updateOutline();
     this.rebuild(firstRender || !this.scene ? 'enter' : 'morph');
   }
+
+  /**
+   * Shows the map's dates as of now, and sets a timer for when they next
+   * look different: a date becomes past, or a new day turns "Tomorrow" into
+   * "Today". A day at most, then it looks again.
+   */
+  private watchDates(): void {
+    this.dateNow = new Date();
+
+    if (this.dateTimer !== null) {
+      clearTimeout(this.dateTimer);
+      this.dateTimer = null;
+    }
+
+    const next = this.tree && !this.destroyed ? nextDateChange(datesIn(this.tree), this.dateNow) : null;
+
+    if (next) {
+      // A little after the moment, so it has surely come by the clock the timer wakes to.
+      const wait = Math.min(Math.max(next.getTime() - this.dateNow.getTime(), 0) + DATE_TIMER_MARGIN, DATE_TIMER_LIMIT);
+      this.dateTimer = setTimeout(() => this.datesChanged(), wait);
+    }
+  }
+
+  /** Shows the dates again, as they are now: planets' chips, what screen readers hear, and the outline. */
+  private readonly datesChanged = (): void => {
+    if (!this.tree || this.destroyed) {
+      return;
+    }
+
+    this.watchDates();
+    this.labelPainter.refit();
+
+    for (const [, view] of this.nodePainter.entries()) {
+      if (view.node.due !== undefined) {
+        this.nameNode(view.node.id);
+      }
+    }
+
+    this.updateOutline();
+  };
+
+  /** A page that comes back into view shows its dates as they are now: timers sleep in a hidden page. */
+  private readonly handleVisibilityChange = (): void => {
+    if (document.visibilityState === 'visible') {
+      this.datesChanged();
+    }
+  };
 
   /** Whether `tree`, with the document's `options`, is the map as drawn now, in another object. */
   private isSameMap(tree: OrbitNode, options: OrbitDocumentOptions | null): boolean {
@@ -1832,6 +2058,10 @@ export class OrbitSVGRenderer {
       this.hiding.add(to);
     }
 
+    if (this.spotlit?.id === from) {
+      this.spotlit.id = to;
+    }
+
     this.renamedIds.set(from, to);
   }
 
@@ -1866,7 +2096,7 @@ export class OrbitSVGRenderer {
   /** Writes again what a node on the map is called for assistive technology: its words, or its ideas hidden or shown. */
   private nameNode(id: string): void {
     const view = this.nodePainter.view(id);
-    view?.element.setAttribute('aria-label', describeNode(view.node, this.hiding.has(id), this.extensions, this.words));
+    view?.element.setAttribute('aria-label', describeNode(view.node, this.hiding.has(id), this.extensions, this.words, this.dateNow));
   }
 
   /**
@@ -2204,8 +2434,10 @@ export class OrbitSVGRenderer {
 
     if (!labelBelow) {
       const countWidth = showsCount('sun', radius, sun.hiddenChildren) ? measureCount(sun.hiddenChildren, this.labelFonts.count()) : 0;
-      const name = insideLabelLayout('sun', radius, sun.node.text, Boolean(this.extensions.icon(sun.node)), this.labelFonts.inside('sun', sun.node), true, countWidth, this.words.asked);
-      const onRim = radius - size - ACTION_RIM_INSET;
+      const dated = showsDateChip('sun', radius) && nodeDue(sun.node.due) !== null;
+      const name = insideLabelLayout('sun', radius, sun.node.text, Boolean(this.extensions.icon(sun.node)), this.labelFonts.inside('sun', sun.node), true, countWidth, this.words.asked, dated);
+      // Above the sun's date, which sits inside it at the bottom.
+      const onRim = Math.min(radius - size - ACTION_RIM_INSET, dated ? radius - DATE_CHIP_INSET - COUNT_HEIGHT / 2 - ACTION_CLEARANCE - size : Infinity);
 
       if (onRim >= (name ? insideLabelReach(name) : 0) + ACTION_CLEARANCE && reach(onRim) <= clear) {
         return { x: point.x, y: point.y + onRim, wrap: 0 };
@@ -2264,6 +2496,8 @@ export class OrbitSVGRenderer {
       return false;
     }
 
+    // The page takes the map somewhere else: a node up close is let go of where it is.
+    this.dropSpotlight();
     const focusChanged = path[path.length - 1].id !== this.focusId;
     const modeChanged = mode !== this.viewMode;
     this.focusPath = path.map((node) => node.id);
@@ -2696,7 +2930,10 @@ export class OrbitSVGRenderer {
       return;
     }
 
-    const settled = this.currentDisplay(this.now());
+    const now = this.now();
+    // A flight back from a node up close that's done gives the map back before this frame is drawn.
+    const ended = this.landSpotlight(now);
+    const settled = this.heldInSpotlight(this.currentDisplay(now), now);
     const display = this.withCarried(settled);
     this.display = display;
     const worldTransform = cameraTransform(display.camera, this.viewport);
@@ -2726,6 +2963,14 @@ export class OrbitSVGRenderer {
 
     if (this.tooltip.isVisible) {
       this.positionTooltip();
+    }
+
+    // Last: what's said about a node up close may start something new.
+    this.paintSpotlight(display, now);
+
+    if (ended) {
+      const entry = display.nodes.get(ended.id);
+      this.emitSpotlight('end', ended, entry ? circleOnScreen(display.camera, this.viewport, entry) : ended.reported ?? { x: 0, y: 0, radius: 0 });
     }
   }
 
@@ -2776,7 +3021,7 @@ export class OrbitSVGRenderer {
 
     const entry = display.nodes.get(session.nodeId);
     const shown = entry && entry.opacity > 0.5;
-    this.editor.place(shown ? this.editorPlacement(worldToScreen(camera, this.viewport, entry), entry.radius * camera.scale, entry.role, this.labelPainter.usesLightText(entry), false, entry.hiddenChildren) : null);
+    this.editor.place(shown ? this.editorPlacement(worldToScreen(camera, this.viewport, entry), entry.radius * camera.scale, entry.role, this.labelPainter.usesLightText(entry), false, entry.hiddenChildren, nodeDue(entry.node.due) !== null) : null);
   }
 
   /**
@@ -2784,12 +3029,16 @@ export class OrbitSVGRenderer {
    * small to hold it, or a + too small to type in (a phone's map shrinks over
    * its keyboard), gets a field floating over it at a readable size, so the
    * text never runs past its edge. Over a node with a "+N" (`hiddenChildren`
-   * it doesn't draw), the field rises as it grows, as names do, to keep clear
-   * of the count.
+   * it doesn't draw) or a date (`dated`), the field rises as it grows, as
+   * names do, to keep clear of them.
    */
-  private editorPlacement(point: Point, screenRadius: number, role: NodeRole, light: boolean, slot: boolean, hiddenChildren = 0): EditorPlacement {
+  private editorPlacement(point: Point, screenRadius: number, role: NodeRole, light: boolean, slot: boolean, hiddenChildren = 0, dated = false): EditorPlacement {
     const floating = screenRadius < 32;
     const width = floating ? Math.max(140, insideLabelWidth(role, screenRadius)) : insideLabelWidth(role, screenRadius);
+    const lowest = Math.min(
+      showsCount(role, screenRadius, hiddenChildren) ? COUNT_POSITION * screenRadius - COUNT_HEIGHT / 2 : Infinity,
+      dated && showsDateChip(role, screenRadius) ? screenRadius - DATE_CHIP_INSET - COUNT_HEIGHT / 2 : Infinity,
+    );
     return {
       x: point.x,
       y: point.y,
@@ -2800,14 +3049,15 @@ export class OrbitSVGRenderer {
       light: light && !floating,
       slot,
       floating,
-      lowest: !floating && showsCount(role, screenRadius, hiddenChildren) ? COUNT_POSITION * screenRadius - COUNT_HEIGHT / 2 : undefined,
+      lowest: !floating && lowest < Infinity ? lowest : undefined,
     };
   }
 
   private paintOverlay(display: Display): void {
     const { camera } = display;
     const scene = this.scene;
-    const sun = this.viewMode === 'focus' && !this.transition && scene ? display.nodes.get(scene.focusId) : undefined;
+    // The focused node's buttons step aside while a node is up close, and come back with the map.
+    const sun = this.viewMode === 'focus' && !this.transition && !this.spotlit && scene ? display.nodes.get(scene.focusId) : undefined;
 
     const place = sun && scene && this.showsActions() && this.zoomLevel() < 1.5 ? this.actionsPlace(scene, sun, camera) : null;
 
@@ -2877,7 +3127,7 @@ export class OrbitSVGRenderer {
   /** The outline, and the pictures and videos the viewer steps through, follow the map. */
   private updateOutline(): void {
     if (this.tree) {
-      this.outline.update(this.tree, this.focusId, this.options.maxDepth, this.options.interactive !== false, (node) => this.extensions.icon(node), this.hiding);
+      this.outline.update(this.tree, this.focusId, this.options.maxDepth, this.options.interactive !== false, (node) => this.extensions.icon(node), this.hiding, (node) => this.outlineDate(node));
     }
 
     this.viewer.refresh();
@@ -2932,7 +3182,9 @@ export class OrbitSVGRenderer {
     const note = node.note ? noteToPlainText(node.note.slice(0, 400)).replace(/\s+/g, ' ').trim() : '';
     const clipped = placement === 'hidden' || node.text.length > 24;
 
-    if (!clipped && !note && !node.status && !typeLabel) {
+    const due = nodeDue(node.due);
+
+    if (!clipped && !note && !node.status && !typeLabel && !due) {
       this.tooltip.hide();
       return;
     }
@@ -2940,10 +3192,30 @@ export class OrbitSVGRenderer {
     const details = [
       typeLabel ?? '',
       node.status ? this.words.text('statusLabel', { status: this.words.statusName(node.status) }) : '',
+      due ? this.dateLabel(due, node.status) : '',
       note.length > 140 ? `${note.slice(0, 139)}…` : note,
     ].filter(Boolean);
     const point = this.tooltipAnchor(entry);
     this.tooltip.show([this.extensions.icon(node), node.text || this.words.text('untitled')].filter(Boolean).join(' '), details.join(' · '), point.x, point.y);
+  }
+
+  /** An idea's date as the outline shows it: "Fri, Nov 20, 9:30 AM", or "Overdue: …" once it's past and the idea isn't done. */
+  private outlineDate(node: OrbitNode): OutlineDate | null {
+    const due = nodeDue(node.due);
+
+    if (!due) {
+      return null;
+    }
+
+    const overdue = isOverdue(due, node.status, this.dateNow, (word) => this.extensions.status(word).tone === 'done');
+    const date = this.words.mediumDate(due, this.dateNow);
+    return { text: overdue ? this.words.text('overdueLabel', { date }) : date, overdue };
+  }
+
+  /** An idea's date as the tooltip says it: "Date: Fri, Nov 20, 9:30 AM", or "Overdue: …" once it's past and the idea isn't done. */
+  private dateLabel(due: OrbitDue, status: string | undefined): string {
+    const overdue = isOverdue(due, status, this.dateNow, (word) => this.extensions.status(word).tone === 'done');
+    return this.words.text(overdue ? 'overdueLabel' : 'dateLabel', { date: this.words.mediumDate(due, this.dateNow) });
   }
 
   private positionTooltip(): void {
@@ -2968,7 +3240,7 @@ export class OrbitSVGRenderer {
   // Interaction: nodes, keyboard, hover
 
   private readonly handleClick = (event: MouseEvent): void => {
-    if (this.options.interactive === false || event.detail > 1) {
+    if (this.options.interactive === false || this.spotlit || event.detail > 1) {
       return;
     }
 
@@ -2988,7 +3260,7 @@ export class OrbitSVGRenderer {
   private readonly handleContextMenu = (event: MouseEvent): void => {
     const id = nodeIdFrom(event.target);
 
-    if (!id || this.options.interactive === false) {
+    if (!id || this.options.interactive === false || this.spotlit) {
       return;
     }
 
@@ -3424,7 +3696,7 @@ export class OrbitSVGRenderer {
   }
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
-    if (this.options.interactive === false || this.viewer.isOpen || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
+    if (this.options.interactive === false || this.spotlit || this.viewer.isOpen || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
       return;
     }
 
@@ -3822,6 +4094,7 @@ export class OrbitSVGRenderer {
       && this.cameraFlight === null
       && this.wheelZoom === null
       && !this.glide.isMoving
+      && this.spotlit === null
       && this.hoveredId === null
       && this.keyboardFocusId === null
       && this.onScreen
@@ -3977,7 +4250,7 @@ export class OrbitSVGRenderer {
 
   /** Zooming into a planet or moon enters it; zooming out of a view leaves it. */
   private checkZoomNavigation(anchor: Point): void {
-    if (this.viewMode !== 'focus' || !this.scene || this.transition) {
+    if (this.viewMode !== 'focus' || !this.scene || this.transition || this.spotlit) {
       return;
     }
 
@@ -4136,7 +4409,8 @@ export class OrbitSVGRenderer {
   }
 
   private flyCamera(target: Camera, anchor: Point): void {
-    if (!this.scene || this.transition) {
+    // A node up close has the camera until it's back in its place.
+    if (!this.scene || this.transition || this.spotlit) {
       return;
     }
 
@@ -4180,6 +4454,183 @@ export class OrbitSVGRenderer {
   private afterCameraFlight(anchor: Point): void {
     this.checkZoomNavigation(anchor);
     this.settleZoom();
+  }
+
+  // A node up close (see `spotlight`)
+
+  /** How long the camera takes to fly from `from` to `to` for a node up close: at once with flights off. */
+  private spotlightDuration(from: Camera, to: Camera): number {
+    if (!this.animationsEnabled()) {
+      return 0;
+    }
+
+    const setting = this.options.transitionDuration;
+    return typeof setting === 'number' ? Math.max(0, setting) : spotlightFlightDuration(smoothZoomPath(from, to, this.viewport).length);
+  }
+
+  /** Starts the flight back from the node up close, from where the camera is now. */
+  private letSpotlightGo(spot: Spotlit): void {
+    const from = { ...(this.display?.camera ?? this.camera) };
+    const to = spot.back.fitted && this.scene ? { ...this.scene.frame } : this.clampCamera(spot.back.camera);
+    spot.ending = true;
+    spot.flight = { from, to, startedAt: this.now(), duration: this.spotlightDuration(from, to) };
+    this.clock.add(this.spotlightTask);
+  }
+
+  /** Keeps frames coming while the camera flies to a node up close or back. */
+  private readonly spotlightTask: FrameTask = () => Boolean(this.spotlit?.flight);
+
+  /** How far along the flight to or from a node up close is, from 0 to 1; 1 when there's none. */
+  private spotlightProgress(spot: Spotlit, now: number): number {
+    const flight = spot.flight;
+
+    if (!flight || flight.duration <= 0) {
+      return 1;
+    }
+
+    return Math.min(1, Math.max(0, (now - flight.startedAt) / flight.duration));
+  }
+
+  /**
+   * The display as a node up close has the camera: on its way to the node or
+   * back, or holding the node where it landed, whatever moves under it.
+   */
+  private heldInSpotlight(display: Display, now: number): Display {
+    const spot = this.spotlit;
+
+    if (!spot) {
+      return display;
+    }
+
+    const entry = display.nodes.get(spot.id);
+
+    if (entry) {
+      spot.node = entry.node;
+    }
+
+    const flight = spot.flight;
+    const held = entry && !spot.ending ? spotlightCamera(entry, this.viewport, spot.insets, spot.share) : null;
+    let camera: Camera | null = held;
+
+    if (flight) {
+      const to = flight.to ?? held;
+      const progress = this.spotlightProgress(spot, now);
+      camera = to && (progress >= 1 ? to : smoothZoomPath(flight.from, to, this.viewport).at(easeInOutCubic(progress)));
+    }
+
+    if (!camera) {
+      return display;
+    }
+
+    this.camera = camera;
+    return { ...display, camera };
+  }
+
+  /**
+   * The scrim around a node up close, and what's said about its circle: as it
+   * moves in a flight, once it rests, and as the flight back lands. A node
+   * that left the view is let go of.
+   */
+  private paintSpotlight(display: Display, now: number): void {
+    const spot = this.spotlit;
+
+    if (!spot) {
+      return;
+    }
+
+    const entry = display.nodes.get(spot.id);
+    const circle = entry ? circleOnScreen(display.camera, this.viewport, entry) : null;
+    const progress = this.spotlightProgress(spot, now);
+    const shown = spot.ending ? 1 - progress : progress;
+    this.scrim.update(this.viewport, circle, shown, this.prefersReducedMotion());
+
+    if (spot.ending) {
+      if (circle && !sameCircle(circle, spot.reported)) {
+        spot.reported = circle;
+        this.emitSpotlight('move', spot, circle);
+      }
+
+      return;
+    }
+
+    if (!circle) {
+      // Its node is gone from the view, an edit or another map took it away: the camera goes back, at once with flights off.
+      this.letSpotlightGo(spot);
+
+      if (spot.flight?.duration === 0) {
+        this.finishSpotlight(spot);
+        this.emitSpotlight('end', spot, spot.reported ?? { x: 0, y: 0, radius: 0 });
+      } else {
+        this.clock.requestPaint();
+      }
+
+      return;
+    }
+
+    if (spot.flight && progress < 1) {
+      if (!sameCircle(circle, spot.reported)) {
+        spot.reported = circle;
+        this.emitSpotlight('move', spot, circle);
+      }
+
+      return;
+    }
+
+    spot.flight = null;
+
+    if (!spot.rested || !sameCircle(circle, spot.reported)) {
+      spot.reported = circle;
+      spot.rested = true;
+      this.emitSpotlight('rest', spot, circle);
+    }
+  }
+
+  /** The flight back from a node up close that's done, if it is: the map is the reader's again, and it's said once this frame is drawn. */
+  private landSpotlight(now: number): Spotlit | null {
+    const spot = this.spotlit;
+
+    if (!spot?.ending || this.spotlightProgress(spot, now) < 1) {
+      return null;
+    }
+
+    if (spot.flight?.to) {
+      this.camera = spot.flight.to;
+    }
+
+    this.finishSpotlight(spot);
+    return spot;
+  }
+
+  /** The map is the reader's again: no scrim, the node's name and badges back, the orbit free to drift. */
+  private finishSpotlight(spot: Spotlit): void {
+    if (this.spotlit !== spot) {
+      return;
+    }
+
+    this.spotlit = null;
+    this.scrim.remove();
+    this.root.classList.remove('orbit--spotlight');
+    // The node's name comes back where it is now.
+    this.labelPainter.refit();
+    this.tabStopsChanged = true;
+    this.clock.requestPaint();
+    this.syncAmbientMotion();
+  }
+
+  /** Lets go of a node up close at once, without flying back: another view or another map takes the camera. */
+  private dropSpotlight(): void {
+    const spot = this.spotlit;
+
+    if (spot) {
+      this.finishSpotlight(spot);
+      this.emitSpotlight('end', spot, spot.reported ?? { x: 0, y: 0, radius: 0 });
+    }
+  }
+
+  private emitSpotlight(phase: OrbitSpotlightEvent['phase'], spot: Spotlit, circle: ScreenCircle): void {
+    const event: OrbitSpotlightEvent = { phase, node: spot.node, x: circle.x, y: circle.y, radius: circle.radius };
+    this.callback(this.options.onSpotlight, event);
+    this.emit('spotlight', event);
   }
 
   /** Whether the page around the map scrolls; if so, a plain wheel scrolls the page instead of zooming. */
@@ -4342,7 +4793,9 @@ export class OrbitSVGRenderer {
       noteRenderer: this.options.noteRenderer,
       resolveLink: (href) => this.findLinked(href),
       onFollowLink: (linked) => this.followNodeLink(linked),
+      onCheck: this.options.editable && this.options.interactive !== false ? (shown, line, checked) => this.checkNote(shown, line, checked) : undefined,
       onViewMedia: this.options.showMediaViewer === false ? undefined : (shown, kind, event, startAt) => this.viewFromSheet(shown, kind, event, startAt),
+      onOpenFile: this.options.openFiles === false ? undefined : (shown, index, event) => this.openFile(shown, index, event),
       extensions: {
         icon: (shown) => this.extensions.icon(shown),
         typeLabel: (shown) => this.extensions.nodeType(shown)?.label,
@@ -4353,9 +4806,95 @@ export class OrbitSVGRenderer {
         actions: (shown) => this.extensions.actions(shown).map((action) => ({ id: action.id, label: actionLabel(action, shown), icon: action.icon })),
         runAction: (shown, action, event) => this.runAction(shown, action, event),
         status: (word) => this.extensions.status(word),
+        date: (shown) => this.sheetDate(shown),
       },
       words: this.words,
     });
+  }
+
+  /**
+   * A box of a checklist in a node's note checked or unchecked in the detail
+   * sheet: that one character of the note changes, as an edit like any
+   * other, which fires `edit`. When the note has changed since the sheet
+   * showed it, or the map can't be changed now, the sheet shows the node as
+   * it is instead.
+   */
+  private checkNote(shown: OrbitNode, line: number, checked: boolean): void {
+    const node = this.tree ? findNodeById(this.tree, shown.id) : null;
+    const editable = this.options.editable && this.options.interactive !== false;
+    const note = node?.note !== undefined && editable ? setNoteCheckbox(node.note, line, checked) : null;
+
+    if (node && note !== null) {
+      if (note === node.note) {
+        return;
+      }
+
+      try {
+        this.updateNode(node.id, { note });
+        return;
+      } catch (error) {
+        console.warn('[orbit] The checkbox could not change the note.', error);
+      }
+    }
+
+    if (node) {
+      this.openDetails(node, 'note');
+    } else {
+      this.sheet.close();
+    }
+  }
+
+  /**
+   * One of a node's files pressed in the detail sheet: `onFileOpen` and the
+   * `file-open` event may take it, else its address opens in a new tab, as
+   * a link does. The sheet stays: a file opened in a tab is beside it.
+   */
+  private openFile(node: OrbitNode, index: number, sourceEvent: MouseEvent | KeyboardEvent): void {
+    const file = node.files?.[index];
+
+    if (!file) {
+      return;
+    }
+
+    const event: OrbitFileOpenEvent = { node, file, index, sourceEvent };
+
+    if (this.callback(this.options.onFileOpen, event) === false) {
+      return;
+    }
+
+    let prevented = false;
+    const detail: OrbitFileOpenDetail = {
+      ...event,
+      preventDefault: () => {
+        prevented = true;
+      },
+      get defaultPrevented() {
+        return prevented;
+      },
+    };
+
+    if (!this.emit('file-open', detail, true) || prevented) {
+      return;
+    }
+
+    const url = guardUrl(file.src, 'file');
+
+    if (url && typeof window !== 'undefined') {
+      window.open(resolveUrl(url, this.options.baseUrl), '_blank', 'noopener');
+    }
+  }
+
+  /** A node's date as the detail sheet shows it, as of now. */
+  private sheetDate(node: OrbitNode): { text: string; overdue: boolean } | null {
+    const due = nodeDue(node.due);
+
+    if (!due) {
+      return null;
+    }
+
+    // Read when the sheet shows the node, so a sheet opened later says what's past then.
+    const now = new Date();
+    return { text: this.words.mediumDate(due, now), overdue: isOverdue(due, node.status, now, (word) => this.extensions.status(word).tone === 'done') };
   }
 
   /** The media viewer opened, stepped, or closed: the drift rests behind it, and the page hears of it. */

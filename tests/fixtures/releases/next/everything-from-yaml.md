@@ -22,7 +22,18 @@ generator: release-fixtures
 A note in a block scalar,
 over two lines.
 
-## Research #ux #q3 <!-- orbit status: done, priority: 2 -->
+## Research #ux #q3
+<!-- orbit
+status: done
+priority: 2
+due: "2026-11-20"
+files:
+  - src: media/interviews.xlsx
+    name: Interviews (all 24).xlsx
+    type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+    size: 91200
+  - src: media/consent.pdf
+-->
 - Interviews
 - Survey
 
@@ -34,7 +45,7 @@ type: "milestone@2"
 id: build-phase
 owner: Ana
 -->
-- [Frontend](#research) <!-- orbit paletteColor: 2 -->
+- [Frontend](#research) <!-- orbit paletteColor: 2, due: "2026-11-21 09:30" -->
 - Backend <!-- orbit noteFormat: plain -->
   Plain text.
 

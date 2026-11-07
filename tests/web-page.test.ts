@@ -154,6 +154,20 @@ describe('the page', () => {
     clock.restore();
   });
 
+  it('shows a note\'s table and checklist in its caption, the boxes unable to change, and gives them the theme\'s colors', () => {
+    const html = exportWebPage('# Trip\n## Packing\n> - [ ] Boots\n> - [x] Hat\n\n| Item | Cost |\n|---|---|\n| Hotel | 300 |\n', { script: '', theme: 'night' });
+    expect(html).toContain(`--page-accent: ${themeTokens('night')['control-active-background']};`);
+    expect(html).toContain('--_orbit-control-active-background: var(--page-accent);');
+    const { text, key } = openPage(html);
+    (document.querySelector('[data-present]') as HTMLButtonElement).click();
+    key('ArrowRight');
+    expect(text('page-title')).toBe('Packing');
+    const note = document.getElementById('page-note')!;
+    expect(Array.from(note.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'), (box) => [box.checked, box.disabled])).toEqual([[false, true], [true, true]]);
+    expect(note.querySelector('.orbit-note__table td')?.textContent).toBe('Hotel');
+    key('Escape');
+  });
+
   it('lays the map out for print before printing, once, with the pictures inside the page', () => {
     openPage(exportWebPage(MAP, { script: '', theme: 'night', language: 'es', media: { 'photos/summit.jpg': PICTURE } }));
     const print = document.getElementById('page-print')!;

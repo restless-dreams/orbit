@@ -51,3 +51,12 @@ test('the detail sheet', async ({ page }) => {
   await expect(page.locator('dialog.orbit-sheet[open]')).toBeVisible();
   await expect(page).toHaveScreenshot('detail-sheet.png');
 });
+
+for (const theme of ['paper', 'night']) {
+  test(`a note's checklist and table, ${theme} theme`, async ({ page }) => {
+    await openMap(page, `sample=planning&focus=before-we-go&theme=${theme}&instant&editable`);
+    await page.getByRole('button', { name: 'Read note' }).click();
+    await expect(page.locator('dialog.orbit-sheet[open]')).toBeVisible();
+    await expect(page).toHaveScreenshot(`note-checklist-table-${theme}.png`);
+  });
+}

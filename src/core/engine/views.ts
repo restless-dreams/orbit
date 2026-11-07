@@ -16,6 +16,9 @@ import { breakUnits, graphemes, wordPieces, type TextUnit } from '../text-layout
 import { hyphenationPoints } from '../hyphenation/hyphenation.js';
 import { COUNT_ESTIMATE, INSIDE_ESTIMATE, onMeasurementsReset, type TextMeasure } from './text-measure.js';
 import { OrbitWords } from '../languages.js';
+import { isOverdue, nodeDue } from '../dates.js';
+import { nodeFiles } from '../files.js';
+import { statusTone } from '../ui/detail-sheet.js';
 
 
 export const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
@@ -152,7 +155,7 @@ const ENGLISH = new OrbitWords('en');
  * without one). A node whose ideas are `hidden` for later (`hideChildren`)
  * says how many are hidden, as the outline does, instead of how many it holds.
  */
-export const describeNode = (node: OrbitNode, hidden: boolean, extensions?: MapExtensions, words: OrbitWords = ENGLISH): string => {
+export const describeNode = (node: OrbitNode, hidden: boolean, extensions?: MapExtensions, words: OrbitWords = ENGLISH, now: Date = new Date()): string => {
   const type = extensions?.nodeType(node);
   const parts = [[extensions ? extensions.icon(node) : node.icon, node.text || words.text('untitled')].filter(Boolean).join(' ')];
 
@@ -162,6 +165,16 @@ export const describeNode = (node: OrbitNode, hidden: boolean, extensions?: MapE
 
   if (node.status) {
     parts.push(words.text('status', { status: words.statusName(node.status) }));
+  }
+
+  const due = nodeDue(node.due);
+
+  if (due) {
+    parts.push(words.text('date', { date: words.fullDate(due) }));
+
+    if (isOverdue(due, node.status, now, (status) => (extensions ? extensions.status(status).tone : statusTone(status)) === 'done')) {
+      parts.push(words.text('overdue'));
+    }
   }
 
   if (node.children.length > 0) {
@@ -176,6 +189,7 @@ export const describeNode = (node: OrbitNode, hidden: boolean, extensions?: MapE
     hasMediaSource(node.audio) ? words.text('hasAudio') : '',
     hasMediaSource(node.embed) ? words.text('hasEmbed') : '',
     node.link ? words.text('hasLink') : '',
+    nodeFiles(node).length > 0 ? words.count('fileCount', nodeFiles(node).length) : '',
   ].filter(Boolean);
 
   if (content.length > 0) {
@@ -187,6 +201,55 @@ export const describeNode = (node: OrbitNode, hidden: boolean, extensions?: MapE
 
 /** A sound's badge: three bars of a sound wave, drawn as strokes in the badge's unit circle. */
 export const SOUND_WAVE = 'M-0.42 -0.2 V0.2 M0 -0.46 V0.46 M0.42 -0.2 V0.2';
+
+/** A files badge's paperclip, the icon's, drawn as a stroke in the badge's unit circle. */
+export const PAPERCLIP = 'M0.496 -0.183L-0.145 0.581A0.263 0.263 0 0 1 -0.547 0.243L0.195 -0.641A0.184 0.184 0 0 1 0.477 -0.405L-0.198 0.399A0.105 0.105 0 0 1 -0.359 0.264L0.147 -0.339';
+
+/** How wide (badge units) a files badge's count is, for each figure: the pill grows right by this much. */
+const FILE_COUNT_FIGURE = 0.78;
+
+/**
+ * Where a files badge is, in its node's units: at the upper left, across
+ * from the status dot, and a little bigger, as tall as a "+N" on a
+ * planet: it has a paperclip and a count to show.
+ */
+export const FILES_BADGE = { x: -0.72, y: -0.72, scale: 0.2 } as const;
+
+/**
+ * Where a files badge goes when a sound's badge (0.17 across) is at the
+ * upper left already, as on a node with a video and a date: right of it,
+ * clear of it, and along the rim, where names don't reach.
+ */
+export const filesBesideSound = (): { x: number; y: number } => {
+  const x = FILES_BADGE.x + 0.17 + FILES_BADGE.scale + 0.03;
+  return { x, y: -Math.sqrt(FILES_BADGE.x ** 2 + FILES_BADGE.y ** 2 - x ** 2) };
+};
+
+/**
+ * A node's files badge: a paperclip in the note marker's colors, and from
+ * two files on, their count beside it in a pill that grows to the right,
+ * along the rim, away from the planet's edge. Drawn in the badge's own
+ * units (a circle of radius 1), which `transform` places on the node.
+ */
+/** How much wider (badge units) a files badge is than its circle: room for the count, from two files on. */
+export const filesBadgeWidth = (count: number): number => {
+  return count > 1 ? String(count).length * FILE_COUNT_FIGURE + 0.35 : 0;
+};
+
+export const filesBadge = (count: number, transform: string): SVGGElement => {
+  const badge = svgElement('g', { class: 'orbit-node__files', transform });
+  const pill = filesBadgeWidth(count);
+  badge.appendChild(svgElement('rect', { x: '-1', y: '-1', width: String(2 + pill), height: '2', rx: '1' }));
+  badge.appendChild(svgElement('path', { d: PAPERCLIP }));
+
+  if (count > 1) {
+    const text = svgElement('text', { x: String(0.8 + pill / 2), y: '0', 'text-anchor': 'middle', 'dominant-baseline': 'central' });
+    text.textContent = String(count);
+    badge.appendChild(text);
+  }
+
+  return badge;
+};
 
 /** Bodies smaller than this on screen (px) are drawn flat: there a shadow is a smudge. */
 const SMALL_BODY_RADIUS = 12;
@@ -267,6 +330,13 @@ export class NodeView {
   /** Shows a picture (an image, or a video's thumbnail) rather than a plain color. */
   hasImage = false;
 
+  /**
+   * How far right of the node's center its badge at the lower right starts,
+   * as a share of its radius: a note's marker, a sound's badge or a video's
+   * play button; null without one. The node's date keeps left of it.
+   */
+  readonly lowerRightBadge: number | null;
+
   /** Shows a status, a note's marker, a play button or a sound's badge: a crowded orbit's planet with one stays a body down to the usual size (see `speckRadius`). */
   private readonly hasBadges: boolean;
 
@@ -296,6 +366,7 @@ export class NodeView {
   private transform = '';
   private opacity = '';
   private editing = false;
+  private spotlit = false;
   private lifted = false;
   private dropTarget = false;
   private flat = false;
@@ -360,9 +431,11 @@ export class NodeView {
       this.body.appendChild(play);
     }
 
-    // A sound's badge, in the note marker's colors and as big as a status's dot, where the marker goes: across from a video's play button when the node has one.
+    // A sound's badge, in the note marker's colors and as big as a status's dot, where the marker goes: across from a video's play
+    // button when the node has one, at the lower left, or at the upper left when the node's date is at the bottom between them.
     if (hasSound) {
-      const sound = svgElement('g', { class: 'orbit-node__sound', transform: `translate(${hasVideo ? '-0.72' : '0.72'} 0.72) scale(0.17)` });
+      const place = !hasVideo ? '0.72 0.72' : node.due === undefined ? '-0.72 0.72' : '-0.72 -0.72';
+      const sound = svgElement('g', { class: 'orbit-node__sound', transform: `translate(${place}) scale(0.17)` });
       sound.appendChild(svgElement('circle', { r: '1' }));
       sound.appendChild(svgElement('path', { d: SOUND_WAVE }));
       this.body.appendChild(sound);
@@ -372,7 +445,18 @@ export class NodeView {
       this.body.appendChild(svgElement('circle', { class: 'orbit-node__marker', cx: '0.72', cy: '0.72', r: '0.13' }));
     }
 
-    this.hasBadges = hasVideo || hasSound || Boolean(hasMarker) || Boolean(node.status);
+    // Its files, at the upper left: beside a sound's badge there, moved right of it along the rim.
+    const files = nodeFiles(node).length;
+
+    if (files > 0) {
+      const { x, y } = hasSound && hasVideo && node.due !== undefined ? filesBesideSound() : FILES_BADGE;
+      this.body.appendChild(filesBadge(files, `translate(${x.toFixed(3)} ${y.toFixed(3)}) scale(${FILES_BADGE.scale})`));
+    }
+
+    // Each badge's left edge: its center less its radius, in the node's units.
+    this.lowerRightBadge = hasVideo ? 0.62 - 0.3 : hasSound ? 0.72 - 0.17 : hasMarker ? 0.72 - 0.13 : null;
+
+    this.hasBadges = hasVideo || hasSound || Boolean(hasMarker) || Boolean(node.status) || files > 0;
 
     if (node.status) {
       const look = extensions.status(node.status);
@@ -587,6 +671,14 @@ export class NodeView {
 
       this.element.classList.toggle('orbit-node--editing', editing);
       this.editing = editing;
+    }
+  }
+
+  /** Brought up close (`spotlight`): its badges step aside, and it has no shadow to blur at that size. */
+  setSpotlit(spotlit: boolean): void {
+    if (spotlit !== this.spotlit) {
+      this.element.classList.toggle('orbit-node--spotlit', spotlit);
+      this.spotlit = spotlit;
     }
   }
 
@@ -1400,9 +1492,54 @@ const COUNT_GAP = 1.5;
 /** The space under a line's letters (ems), which may pass over a "+N": the tails of g, p and y end this far above the line's bottom. */
 const UNDER_TAILS = 0.15;
 
+/**
+ * A date chip's center sits this far (px) above the bottom of its node,
+ * inside it: low enough that names keep most of the node, and inside, so it
+ * never meets the node's moons, its neighbors or the rings around it.
+ */
+export const DATE_CHIP_INSET = 12;
+
 /** Whether a node of this role and on-screen radius shows a "+N" for children that aren't drawn (flights and faded nodes hide it for a while). */
 export const showsCount = (role: NodeRole, screenRadius: number, hiddenChildren: number): boolean => {
   return hiddenChildren > 0 && role !== 'moon' && screenRadius >= 10;
+};
+
+/**
+ * Below this on-screen radius (px), a node doesn't show its date: the chip
+ * is wider than the node. Its date is still in the detail sheet, the
+ * outline and what screen readers hear.
+ */
+export const DATE_CHIP_RADIUS = 22;
+
+/**
+ * Whether a node of this role and on-screen radius shows its date, as a
+ * chip inside it at the bottom (`DATE_CHIP_INSET`), drawn like its "+N"
+ * (flights and faded nodes hide it for a while, as they hide counts).
+ */
+export const showsDateChip = (role: NodeRole, screenRadius: number): boolean => {
+  return role !== 'moon' && screenRadius >= DATE_CHIP_RADIUS;
+};
+
+/** Date chips' widths (px) by font, then by text. */
+const chipWidths = new Map<TextMeasure, Map<string, number>>();
+
+/** How wide (px) a date chip saying `text` is, in `measure` (the font it's drawn in, the counts'). */
+export const measureDateChip = (text: string, measure: TextMeasure = COUNT_ESTIMATE): number => {
+  let widths = chipWidths.get(measure);
+
+  if (!widths) {
+    widths = new Map();
+    chipWidths.set(measure, widths);
+  }
+
+  let width = widths.get(text);
+
+  if (width === undefined) {
+    width = 2 * COUNT_PADDING + measure.ems(text, COUNT_FONT_SIZE) * COUNT_FONT_SIZE;
+    widths.set(text, width);
+  }
+
+  return width;
 };
 
 /** "+N" widths (px) by font, then by how many figures the count has: its figures are all as wide (tabular). */
@@ -1449,6 +1586,21 @@ const countBox = (radius: number, width: number): CountBox | null => {
   return width > 0 ? { top: COUNT_POSITION * radius - COUNT_HEIGHT / 2 - COUNT_GAP, left: COUNT_POSITION * radius - width / 2 - COUNT_GAP } : null;
 };
 
+/**
+ * Where a node of this radius shows its date, gap included: centered, so
+ * no line beside it has room, and the name rises above it. As wide as it
+ * is, it reaches past the center of every line it's beside.
+ */
+const dateBox = (radius: number): CountBox => {
+  return { top: radius - DATE_CHIP_INSET - COUNT_HEIGHT / 2 - COUNT_GAP, left: 0 };
+};
+
+/** What a name inside a node keeps clear of at the bottom: its "+N", `countWidth` px wide, and its date when `dated`. */
+const bottomBoxes = (radius: number, countWidth: number, dated: boolean): CountBox[] => {
+  const count = countBox(radius, countWidth);
+  return [...(count ? [count] : []), ...(dated ? [dateBox(radius)] : [])];
+};
+
 /** The room for each line of a name (px), and how far above the node's center (px) its lines and icon are centered. */
 interface LineRoom {
   widths: number[];
@@ -1458,12 +1610,13 @@ interface LineRoom {
 /**
  * Room for each of `count` lines of `fontSize` px text centered in a circle of
  * radius `room`, under an icon when `icon` (null when the icon itself doesn't
- * fit). Each line gets the circle's width at its middle. Beside a "+N"
- * (`badge`), the lines and icon rise, as far as the circle allows, until the
- * last line's letters clear it, and a line still beside it ends short of it:
- * lines are centered, so they end as far from the center on the left too.
+ * fit). Each line gets the circle's width at its middle. Beside a "+N" or a
+ * date (`badges`), the lines and icon rise, as far as the circle allows,
+ * until the last line's letters clear the highest of them, and a line still
+ * beside one ends short of it: lines are centered, so they end as far from
+ * the center on the left too, and a line beside a date has no room at all.
  */
-const lineWidths = (room: number, fontSize: number, count: number, icon: boolean, badge: CountBox | null = null): LineRoom | null => {
+const lineWidths = (room: number, fontSize: number, count: number, icon: boolean, badges: readonly CountBox[] = []): LineRoom | null => {
   const lineHeight = fontSize * LINE_HEIGHT;
   const iconHeight = icon ? fontSize * ICON_HEIGHT + ICON_GAP : 0;
   const height = iconHeight + count * lineHeight;
@@ -1472,9 +1625,9 @@ const lineWidths = (room: number, fontSize: number, count: number, icon: boolean
     return null;
   }
 
-  // How low the bottom of a line may sit: the space under its letters may pass over the "+N".
-  const lowest = badge ? badge.top + fontSize * UNDER_TAILS : Infinity;
-  const lift = badge ? Math.min(Math.max(0, height / 2 - lowest), room - height / 2) : 0;
+  // How low the bottom of a line may sit beside each badge: the space under its letters may pass over one.
+  const lowest = badges.map((badge) => badge.top + fontSize * UNDER_TAILS);
+  const lift = badges.length > 0 ? Math.min(Math.max(0, height / 2 - Math.min(...lowest)), room - height / 2) : 0;
   const top = -height / 2 - lift;
 
   if (icon && chordAt(room, top + (fontSize * ICON_HEIGHT) / 2) < fontSize * ICON_HEIGHT) {
@@ -1485,8 +1638,15 @@ const lineWidths = (room: number, fontSize: number, count: number, icon: boolean
 
   for (let index = 0; index < count; index += 1) {
     const lineTop = top + iconHeight + index * lineHeight;
-    const width = chordAt(room, lineTop + lineHeight / 2);
-    widths.push(badge && lineTop + lineHeight > lowest + 1e-9 ? Math.min(width, 2 * Math.max(0, badge.left)) : width);
+    let width = chordAt(room, lineTop + lineHeight / 2);
+
+    for (const [badgeIndex, badge] of badges.entries()) {
+      if (lineTop + lineHeight > lowest[badgeIndex] + 1e-9) {
+        width = Math.min(width, 2 * Math.max(0, badge.left));
+      }
+    }
+
+    widths.push(width);
   }
 
   return { widths, lift };
@@ -1517,6 +1677,7 @@ onMeasurementsReset(() => {
   textMetricsCache.clear();
   insideLayouts.clear();
   countWidths.clear();
+  chipWidths.clear();
 });
 
 /**
@@ -1536,13 +1697,14 @@ onMeasurementsReset(() => {
  * names at each size would make frames late. A fit already made is kept,
  * though.
  *
- * A node showing a "+N" `countWidth` px wide (see `measureCount`) keeps its
- * name clear of it: the name rises above it, or gets smaller.
+ * A node showing a "+N" `countWidth` px wide (see `measureCount`), or its
+ * date (`dated`), keeps its name clear of them: the name rises above them,
+ * or gets smaller.
  *
  * A long word cut across lines breaks where `language` (the map's, a tag
  * such as `es-MX`) lets it: see `hyphenate`.
  */
-export const insideLabelLayout = (role: NodeRole, screenRadius: number, text: string, hasIcon = false, measure: TextMeasure = INSIDE_ESTIMATE, narrower = true, countWidth = 0, language = 'en'): InsideLabelLayout | null => {
+export const insideLabelLayout = (role: NodeRole, screenRadius: number, text: string, hasIcon = false, measure: TextMeasure = INSIDE_ESTIMATE, narrower = true, countWidth = 0, language = 'en', dated = false): InsideLabelLayout | null => {
   // In steps of about 6% (2 px at least), so a zoom or a flight doesn't fit and write the text again on every frame.
   const step = Math.max(2, Math.round(screenRadius * 0.06));
   const radius = Math.floor(screenRadius / step) * step;
@@ -1559,7 +1721,7 @@ export const insideLabelLayout = (role: NodeRole, screenRadius: number, text: st
     insideLayouts.set(measure, inFont);
   }
 
-  const key = `${role}|${radius}|${hasIcon ? 1 : 0}|${countWidth}|${language}|${text}`;
+  const key = `${role}|${radius}|${hasIcon ? 1 : 0}|${countWidth}|${dated ? 1 : 0}|${language}|${text}`;
   let fits = inFont.get(key);
 
   if (fits === undefined) {
@@ -1567,7 +1729,7 @@ export const insideLabelLayout = (role: NodeRole, screenRadius: number, text: st
       inFont.clear();
     }
 
-    const own = fitInFont(role, radius, text, hasIcon, measure, countWidth, language);
+    const own = fitInFont(role, radius, text, hasIcon, measure, countWidth, language, dated);
     // A name that shows whole in its font's own width needs nothing narrower, nor broken unless that shows it larger.
     fits = own !== null && !own.truncated && !mightBreakLarger(role, radius, text, measure, own) ? { own, still: own } : { own };
     inFont.set(key, fits);
@@ -1584,9 +1746,9 @@ export const insideLabelLayout = (role: NodeRole, screenRadius: number, text: st
   const own = fits.own;
 
   if (own !== null && !own.truncated) {
-    fits.still = fitBroken(role, radius, text, hasIcon, measure, countWidth, language, own.fontSize + BROKEN_GAIN) ?? own;
+    fits.still = fitBroken(role, radius, text, hasIcon, measure, countWidth, language, own.fontSize + BROKEN_GAIN, dated) ?? own;
   } else {
-    fits.still = fitNarrower(role, radius, text, hasIcon, measure, countWidth, language) ?? own;
+    fits.still = fitNarrower(role, radius, text, hasIcon, measure, countWidth, language, dated) ?? own;
   }
 
   return fits.still;
@@ -1631,9 +1793,9 @@ const mightBreakLarger = (role: NodeRole, radius: number, text: string, measure:
  * text's area down to `floor` (px); null when breaking fits it at none of
  * them. A word in three pieces reads worse than a smaller one in two.
  */
-const fitBroken = (role: NodeRole, radius: number, text: string, hasIcon: boolean, measure: TextMeasure, countWidth: number, language: string, floor: number): InsideLabelLayout | null => {
+const fitBroken = (role: NodeRole, radius: number, text: string, hasIcon: boolean, measure: TextMeasure, countWidth: number, language: string, floor: number, dated = false): InsideLabelLayout | null => {
   const room = insideRoom(radius);
-  const badge = countBox(radius, countWidth);
+  const badges = bottomBoxes(radius, countWidth, dated);
   const metrics = textMetrics(text, measure);
   const largest = LABEL_FONT_SIZE[role];
   const start = brokenStart(role, radius, metrics);
@@ -1652,7 +1814,7 @@ const fitBroken = (role: NodeRole, radius: number, text: string, hasIcon: boolea
   for (const [icon, fontSize] of attempts) {
     // A broken word takes two lines at least.
     for (let count = 2; count <= LABEL_LINES[role]; count += 1) {
-      const tried = lineWidths(room, fontSize, count, icon, badge);
+      const tried = lineWidths(room, fontSize, count, icon, badges);
 
       if (!tried) {
         break;
@@ -1665,7 +1827,7 @@ const fitBroken = (role: NodeRole, radius: number, text: string, hasIcon: boolea
       }
 
       // Fewer lines than tried sit elsewhere, where the circle may be narrower: they show only if they fit there.
-      const shown = cut.lines.length === count ? tried : lineWidths(room, fontSize, cut.lines.length, icon, badge);
+      const shown = cut.lines.length === count ? tried : lineWidths(room, fontSize, cut.lines.length, icon, badges);
 
       if (!shown || !fitRooms(cut.widths, shown.widths, fontSize)) {
         continue;
@@ -1701,7 +1863,7 @@ const NARROWER_ROOM = 16;
  * in a narrower width of it (a font with a width axis draws semi-condensed,
  * then condensed), when that shows it whole; null when none does.
  */
-const fitNarrower = (role: NodeRole, radius: number, text: string, hasIcon: boolean, measure: TextMeasure, countWidth: number, language: string): InsideLabelLayout | null => {
+const fitNarrower = (role: NodeRole, radius: number, text: string, hasIcon: boolean, measure: TextMeasure, countWidth: number, language: string, dated = false): InsideLabelLayout | null => {
   const narrower = insideRoom(radius) >= NARROWER_ROOM ? measure.narrower() : null;
 
   if (!narrower || !mightFitWhole(role, radius, text, narrower.narrower() ?? narrower)) {
@@ -1709,7 +1871,7 @@ const fitNarrower = (role: NodeRole, radius: number, text: string, hasIcon: bool
   }
 
   for (let width: TextMeasure | null = narrower; width; width = width.narrower()) {
-    const attempt = fitInFont(role, radius, text, hasIcon, width, countWidth, language);
+    const attempt = fitInFont(role, radius, text, hasIcon, width, countWidth, language, dated);
 
     if (attempt && !attempt.truncated) {
       return { ...attempt, stretch: width.stretch };
@@ -1732,9 +1894,9 @@ const mightFitWhole = (role: NodeRole, radius: number, text: string, measure: Te
   return sized.longestUnbreakable * smallest <= 2 * room && smallest <= room * Math.sqrt((1.25 * Math.PI) / (LINE_HEIGHT * breakable));
 };
 
-const fitInFont = (role: NodeRole, radius: number, text: string, hasIcon: boolean, measure: TextMeasure, countWidth: number, language: string): InsideLabelLayout | null => {
+const fitInFont = (role: NodeRole, radius: number, text: string, hasIcon: boolean, measure: TextMeasure, countWidth: number, language: string, dated = false): InsideLabelLayout | null => {
   const room = insideRoom(radius);
-  const badge = countBox(radius, countWidth);
+  const badges = bottomBoxes(radius, countWidth, dated);
 
   if (room < SMALLEST_INSIDE_ROOM) {
     return null;
@@ -1767,7 +1929,7 @@ const fitInFont = (role: NodeRole, radius: number, text: string, hasIcon: boolea
 
     // No fewer lines than the text's width (less the spaces lines break at) over the circle's.
     for (let count = Math.max(1, Math.ceil((breakable * fontSize) / (2 * room))); count <= LABEL_LINES[role]; count += 1) {
-      const tried = lineWidths(room, fontSize, count, icon, badge);
+      const tried = lineWidths(room, fontSize, count, icon, badges);
 
       if (!tried) {
         break;
@@ -1781,7 +1943,7 @@ const fitInFont = (role: NodeRole, radius: number, text: string, hasIcon: boolea
 
       // Balanced over the lines it takes, each as wide as the circle where those lines sit. Fewer lines than
       // tried sit elsewhere, where the circle may be narrower or the "+N" nearer: they show only if they fit there.
-      const shown = wrapped.length === count ? tried : lineWidths(room, fontSize, wrapped.length, icon, badge);
+      const shown = wrapped.length === count ? tried : lineWidths(room, fontSize, wrapped.length, icon, badges);
 
       if (!shown) {
         continue;
@@ -1807,7 +1969,7 @@ const fitInFont = (role: NodeRole, radius: number, text: string, hasIcon: boolea
   let mostShown = 0;
 
   for (let count = 1; count <= LABEL_LINES[role]; count += 1) {
-    const tried = lineWidths(room, smallest, count, false, badge);
+    const tried = lineWidths(room, smallest, count, false, badges);
 
     if (!tried) {
       break;
@@ -1820,7 +1982,7 @@ const fitInFont = (role: NodeRole, radius: number, text: string, hasIcon: boolea
     }
 
     // A word hyphenated across lines can leave fewer lines than tried, drawn elsewhere: shown only if they fit there.
-    const shown = cut.lines.length === count ? tried : lineWidths(room, smallest, cut.lines.length, false, badge);
+    const shown = cut.lines.length === count ? tried : lineWidths(room, smallest, cut.lines.length, false, badges);
 
     if (!shown || !fitRooms(cut.widths, shown.widths, smallest)) {
       continue;
@@ -1848,10 +2010,10 @@ const PLANET_PILL_RADIUS = 16;
  * node and planets when their names don't fit inside, and overview nodes too
  * small for their names. Any other node too small for its name shows none
  * until you zoom in. A name inside a node keeps clear of its "+N",
- * `countWidth` px wide.
+ * `countWidth` px wide, and of its date when it's `dated`.
  */
-export const labelPlacement = (role: NodeRole, screenRadius: number, text: string, hasImage: boolean, hasIcon = false, measure: TextMeasure = INSIDE_ESTIMATE, narrower = true, countWidth = 0, language = 'en'): LabelPlacement => {
-  if (!hasImage && insideLabelLayout(role, screenRadius, text, hasIcon, measure, narrower, countWidth, language)) {
+export const labelPlacement = (role: NodeRole, screenRadius: number, text: string, hasImage: boolean, hasIcon = false, measure: TextMeasure = INSIDE_ESTIMATE, narrower = true, countWidth = 0, language = 'en', dated = false): LabelPlacement => {
+  if (!hasImage && insideLabelLayout(role, screenRadius, text, hasIcon, measure, narrower, countWidth, language, dated)) {
     return 'inside';
   }
 
@@ -1919,6 +2081,9 @@ export interface LabelDrawing {
 
   /** The width (px) of the node's "+N", which a name inside it keeps clear of (default: 0, when it shows none). */
   countWidth?: number;
+
+  /** Whether the node shows its date, which a name inside it keeps clear of too. */
+  dated?: boolean;
 
   /** The map's language, which long words break by (default: English; see `insideLabelLayout`). */
   language?: string;
@@ -2046,7 +2211,7 @@ export class NodeLabel {
     let transform: string;
 
     if (placement === 'inside') {
-      const layout = insideLabelLayout(role, screenRadius, this.node.text, this.hasIcon, drawing.measure, drawing.narrower, drawing.countWidth, drawing.language) ?? {
+      const layout = insideLabelLayout(role, screenRadius, this.node.text, this.hasIcon, drawing.measure, drawing.narrower, drawing.countWidth, drawing.language, drawing.dated) ?? {
         width: insideLabelWidth(role, screenRadius),
         fontSize: MINIMUM_FONT_SIZE[role],
         lines: [this.node.text],

@@ -100,6 +100,13 @@ describe('renderPrintLayout', () => {
     expect(plain.textContent).toBe('*stars* stay\nline two');
   });
 
+  it('prints a note\'s tables and checklists, the boxes as they are and unable to change', () => {
+    const layout = layOut('# Trip\n## Packing\n> - [ ] Boots\n> - [x] Hat\n\n| Item | Cost |\n| :--- | ---: |\n| Hotel | 300 |\n');
+    const note = layout.querySelector('.orbit-print__idea .orbit-print__note')!;
+    expect(Array.from(note.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'), (box) => [box.checked, box.disabled])).toEqual([[false, true], [true, true]]);
+    expect(texts(note as HTMLElement, '.orbit-note__table td')).toEqual(['Hotel', '300']);
+  });
+
   it('shows pictures, a video’s thumbnail and address, and an embed’s address', () => {
     const layout = layOut([
       '# Trip',

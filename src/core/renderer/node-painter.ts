@@ -26,6 +26,10 @@ const NEWCOMERS_PER_FRAME = 40;
 export interface NodeHost {
   extensions(): MapExtensions;
   words(): OrbitWords;
+
+  /** The moment the map shows its dates for, which says whether they're past. */
+  dateNow(): Date;
+
   baseUrl(): string | undefined;
 
   /** The scene on screen (the one a flight leaves, until it lands). */
@@ -41,6 +45,9 @@ export interface NodeHost {
 
   /** The node whose text is being typed, if any. */
   editedId(): string | null;
+
+  /** The node brought up close (`spotlight`), if any. */
+  spotlitId(): string | null;
 
   /** Whether a node's ideas are hidden for later (see `hideChildren`), which its name says. */
   hidesChildren(id: string): boolean;
@@ -194,7 +201,8 @@ export class NodePainter {
     const drawing: NodeDrawing = { turn, speckRadius: this.speckRadius(), crowdedSpeckRadius: speckRadius(pixelRatio, true), switches: SPECK_SWITCHES_PER_FRAME, waiting: false, flight: flying };
     // A node lifted to be dragged, carried under the press, and the node it would be dropped into.
     const { liftedId, carried, targetId } = this.host.drag();
-    const marks = `${liftedId}\n${targetId}`;
+    const spotlitId = this.host.spotlitId();
+    const marks = `${liftedId}\n${targetId}\n${spotlitId}`;
 
     if (carried || marks !== this.dragMarks) {
       this.stillNodes = null;
@@ -250,7 +258,7 @@ export class NodePainter {
 
       if (!view) {
         view = new NodeView(entry, entry.radius * display.camera.scale, this.ids, this.host.baseUrl(), this.host.extensions(), drawing, () => this.host.requestPaint());
-        view.element.setAttribute('aria-label', describeNode(entry.node, this.host.hidesChildren(entry.id), this.host.extensions(), this.host.words()));
+        view.element.setAttribute('aria-label', describeNode(entry.node, this.host.hidesChildren(entry.id), this.host.extensions(), this.host.words(), this.host.dateNow()));
         this.nodeViews.set(entry.id, view);
         this.host.tabStopsChanged();
       }
@@ -278,6 +286,7 @@ export class NodePainter {
         // At rest no family moves as one: each node is drawn where it is.
         view.update(entry, entry.radius * display.camera.scale, drawing);
         view.setEditing(entry.id === editedId);
+        view.setSpotlit(entry.id === spotlitId);
         view.setLifted(entry.id === liftedId);
         view.setDropTarget(entry.id === targetId);
       }
@@ -305,6 +314,7 @@ export class NodePainter {
         }
 
         view.setEditing(entry.id === editedId);
+        view.setSpotlit(entry.id === spotlitId);
         view.setLifted(entry.id === liftedId);
         view.setDropTarget(entry.id === targetId);
       }

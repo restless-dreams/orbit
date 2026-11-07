@@ -28,6 +28,7 @@ export const THEME_TOKENS = [
   'sheet-background', 'sheet-text', 'sheet-muted-text', 'sheet-border', 'sheet-backdrop', 'sheet-shadow', 'sheet-blur',
   'chip-background', 'chip-text', 'link-text',
   'status-active', 'status-done', 'status-blocked', 'status-todo', 'status-neutral',
+  'overdue',
   'error-background', 'error-border', 'error-text',
 ] as const;
 
@@ -135,6 +136,8 @@ const PAPER: OrbitThemeTokens = {
   'status-blocked': '#DC2626',
   'status-todo': '#94A3B8',
   'status-neutral': '#64748B',
+  // A date that's past while its idea isn't done: on its planet's chip, in the detail sheet and the outline, at 4.5:1 or more on both.
+  overdue: '#C81E1E',
   'error-background': '#FFF6F5',
   'error-border': '#E58A8A',
   'error-text': '#7A1F1F',
@@ -143,6 +146,7 @@ const PAPER: OrbitThemeTokens = {
 /** Luminous planets that glow on a deep navy sky. */
 const NIGHT: OrbitThemeTokens = {
   ...PAPER,
+  overdue: 'var(--_orbit-status-blocked)',
   surface: '#0B1120',
   'surface-pattern': 'radial-gradient(120% 90% at 50% 42%, rgba(64, 84, 160, 0.26), transparent 70%)',
   text: '#E6EAF2',
@@ -214,6 +218,7 @@ const NIGHT: OrbitThemeTokens = {
 /** Frosted, translucent planets with a bright rim, on a soft pastel backdrop of their own. */
 const GLASS: OrbitThemeTokens = {
   ...PAPER,
+  overdue: '#B91C1C',
   surface: '#E7EAF8',
   'surface-pattern': [
     'radial-gradient(60% 50% at 16% 18%, rgba(196, 181, 253, 0.75), transparent 70%)',
@@ -288,6 +293,7 @@ const GLASS: OrbitThemeTokens = {
 /** The glass look at night: tinted glass planets that glow over an aurora. */
 const GLASS_NIGHT: OrbitThemeTokens = {
   ...NIGHT,
+  overdue: '#FCA5A5',
   surface: '#0E1326',
   'surface-pattern': [
     'radial-gradient(60% 50% at 18% 16%, rgba(99, 102, 241, 0.42), transparent 70%)',
@@ -436,6 +442,7 @@ const COSMOS: OrbitThemeTokens = {
 /** A technical drawing: outlined planets, construction lines and monospaced labels on a gridded blue sheet. */
 const BLUEPRINT: OrbitThemeTokens = {
   ...NIGHT,
+  overdue: '#FFB3AD',
   'font-family': 'var(--_orbit-mono-font)',
   'label-weight': '500',
   'display-weight': '600',
@@ -763,6 +770,7 @@ const FLAT: OrbitThemeTokens = {
 /** The flat look at night: bright solid planets with dark lettering, cut out from a near-black page. */
 const FLAT_NIGHT: OrbitThemeTokens = {
   ...FLAT,
+  overdue: 'var(--_orbit-status-blocked)',
   surface: '#121418',
   text: '#F3F4F6',
   'muted-text': '#9CA3AF',
@@ -819,6 +827,7 @@ const FLAT_NIGHT: OrbitThemeTokens = {
 
 /** What Material themes share whatever their color: flat tonal surfaces, no rims or shadows on planets, raised controls. */
 const MATERIAL_LOOK: Partial<OrbitThemeTokens> = {
+  overdue: 'var(--_orbit-status-blocked)',
   'label-weight': '550',
   'display-weight': '650',
   'label-letter-spacing': '0',
@@ -974,6 +983,7 @@ const MATERIAL_NIGHT: OrbitThemeTokens = {
  */
 const LIQUID: OrbitThemeTokens = {
   ...PAPER,
+  overdue: '#A61B1B',
   'label-letter-spacing': '-0.01em',
   surface: '#E9EEF8',
   'surface-pattern': [
@@ -1061,6 +1071,7 @@ const LIQUID: OrbitThemeTokens = {
 /** Liquid glass at night: clear planets that glow in their own color over a deep, vivid wallpaper. */
 const LIQUID_NIGHT: OrbitThemeTokens = {
   ...NIGHT,
+  overdue: '#FECACA',
   'label-letter-spacing': '-0.01em',
   'label-shadow': '0 1px 3px rgba(3, 6, 20, 0.6)',
   surface: '#070B1A',

@@ -1,7 +1,8 @@
 /**
- * Names and "+N" counts, in the HTML layer over the map. Each frame's names
- * are planned for its display (see `planLabels`), shown a share at a time on
- * an animated map, and ride along as one layer while only the camera moves.
+ * Names, "+N" counts and dates, in the HTML layer over the map. Each frame's
+ * names are planned for its display (see `planLabels`), shown a share at a
+ * time on an animated map, and ride along as one layer while only the
+ * camera moves.
  */
 
 import type { LabelFonts } from '../engine/text-measure.js';
@@ -10,8 +11,10 @@ import type { Display, DisplayNode } from '../engine/display.js';
 import type { Scene } from '../engine/scene.js';
 import type { MapExtensions } from '../extensions.js';
 import type { OrbitNode } from '../types.js';
-import { COUNT_POSITION, NodeLabel, showsCount, type LabelPlacement, type NodeView } from '../engine/views.js';
-import { labelOrder, planLabels, type Box, type PlannedLabel } from '../engine/labels.js';
+import type { OrbitWords } from '../languages.js';
+import { COUNT_HEIGHT, COUNT_POSITION, DATE_CHIP_INSET, NodeLabel, measureCount, measureDateChip, showsCount, showsDateChip, type LabelPlacement, type NodeView } from '../engine/views.js';
+import { isOverdue, nodeDue } from '../dates.js';
+import { labelOrder, planLabels, type Box, type PlannedLabel, type Point } from '../engine/labels.js';
 import { worldToScreen } from '../engine/camera.js';
 import { prefersLightText, resolveColor } from '../engine/colors.js';
 import { overlayTransform } from '../browser.js';
@@ -49,6 +52,9 @@ export interface LabelHost {
   /** The node whose text is being typed, which shows the field instead of its name. */
   editedId(): string | null;
 
+  /** The node brought up close (`spotlight`), if any: its name and count step aside while it is. */
+  spotlitId(): string | null;
+
   /** Where the field being typed in sits on the screen, which pills keep clear of; null while there's none. */
   editorBox(): Box | null;
 
@@ -59,6 +65,22 @@ export interface LabelHost {
 
   /** The language the map's names are in, which long words in them break by. */
   language(): string;
+
+  /** The map's words, which write its dates on the planets. */
+  words(): OrbitWords;
+
+  /** The moment the map shows its dates for: whether each is past, and how it's written ("Today", "Fri"). */
+  dateNow(): Date;
+}
+
+/** The space (px) a date chip keeps from a "+N" or a badge beside it. */
+const DATE_CHIP_GAP = 3;
+
+/** What a node's date chip says, and how wide it is (px). */
+interface DateChip {
+  text: string;
+  overdue: boolean;
+  width: number;
 }
 
 export class LabelPainter {
@@ -67,6 +89,13 @@ export class LabelPainter {
   private readonly host: LabelHost;
   private readonly labels = new Map<string, NodeLabel>();
   private readonly counts = new Map<string, { element: HTMLSpanElement; text: string; transform: string }>();
+  private readonly dates = new Map<string, { element: HTMLSpanElement; text: string; overdue: boolean; transform: string }>();
+
+  /**
+   * What nodes' date chips say, by their date and status, for one moment,
+   * language and set of statuses: worked out once, not on every frame.
+   */
+  private chips: { now: Date; words: OrbitWords; extensions: MapExtensions; byDate: Map<string, DateChip | null> } | null = null;
 
   /**
    * Nodes in the order their labels are placed, for one display, and their
@@ -105,6 +134,7 @@ export class LabelPainter {
     } else if (ride === null) {
       this.paintLabels(display);
       this.paintCounts(display);
+      this.paintDates(display);
       this.placed = { camera: { ...display.camera }, nodes: display.nodes };
     }
   }
@@ -147,6 +177,12 @@ export class LabelPainter {
     }
 
     this.counts.clear();
+
+    for (const chip of this.dates.values()) {
+      chip.element.remove();
+    }
+
+    this.dates.clear();
   }
 
   /**
@@ -229,12 +265,15 @@ export class LabelPainter {
       moving,
       isShown: (id) => this.labels.get(id)?.isShown ?? false,
       counts: true,
+      dated: (entry, screenRadius) => showsDateChip(entry.role, screenRadius) && this.dateChip(entry.node) !== null,
+      dateChip: (entry, center, screenRadius) => this.dateChipBox(entry, center, screenRadius),
       // What's typed shows in full: a pill with no other place shows none rather than going under the field.
       keepClear: editor ? [editor] : undefined,
       language: this.host.language(),
     });
     const shown = new Set<string>();
     const editedId = this.host.editedId();
+    const spotlitId = this.host.spotlitId();
     // On an animated map, only so many names start to show on one frame; the rest wait for the next.
     let showable = this.host.animationsEnabled() ? LABELS_SHOWN_PER_FRAME : Infinity;
     const waiting: PlannedLabel[] = [];
@@ -249,8 +288,8 @@ export class LabelPainter {
     for (const plan of planned) {
       const { entry } = plan;
 
-      // The field shows this node's text while it is typed.
-      if (entry.id === editedId) {
+      // The field shows this node's text while it is typed, and a node up close shows what the page lays over it.
+      if (entry.id === editedId || entry.id === spotlitId) {
         continue;
       }
 
@@ -320,6 +359,7 @@ export class LabelPainter {
       measure: this.fonts.inside(entry.role, entry.node),
       narrower: !moving,
       countWidth: plan.countWidth,
+      dated: plan.dated,
       language: this.host.language(),
       direction: plan.direction,
       distance: plan.distance,
@@ -343,12 +383,13 @@ export class LabelPainter {
     }
 
     const editedId = this.host.editedId();
+    const spotlitId = this.host.spotlitId();
     const now = waiting.plans.splice(0, LABELS_SHOWN_PER_FRAME);
 
     for (const plan of now) {
       const label = this.labels.get(plan.entry.id);
 
-      if (plan.entry.id !== editedId && (!label || label.node === plan.entry.node)) {
+      if (plan.entry.id !== editedId && plan.entry.id !== spotlitId && (!label || label.node === plan.entry.node)) {
         this.showLabel(plan, label, waiting.moving);
       }
     }
@@ -396,10 +437,12 @@ export class LabelPainter {
     const seen = new Set<string>();
 
     if (!this.host.inFlight()) {
+      const spotlitId = this.host.spotlitId();
+
       for (const entry of display.nodes.values()) {
         const radius = entry.radius * camera.scale;
 
-        if (!showsCount(entry.role, radius, entry.hiddenChildren) || entry.opacity < 0.5) {
+        if (!showsCount(entry.role, radius, entry.hiddenChildren) || entry.opacity < 0.5 || entry.id === spotlitId) {
           continue;
         }
 
@@ -441,5 +484,136 @@ export class LabelPainter {
         this.counts.delete(id);
       }
     }
+  }
+
+  /** What a node's date chip says, as of the moment the map shows its dates for; null when it has no date it reads. */
+  private dateChip(node: OrbitNode): DateChip | null {
+    const due = nodeDue(node.due);
+
+    if (!due) {
+      return null;
+    }
+
+    const now = this.host.dateNow();
+    const words = this.host.words();
+    const extensions = this.host.extensions();
+
+    if (!this.chips || this.chips.now !== now || !this.chips.words.sameAs(words) || this.chips.extensions !== extensions) {
+      this.chips = { now, words, extensions, byDate: new Map() };
+    }
+
+    const key = `${node.due}\n${node.status ?? ''}`;
+    let chip = this.chips.byDate.get(key);
+
+    if (chip === undefined) {
+      const text = words.shortDate(due, now);
+      chip = { text, overdue: isOverdue(due, node.status, now, (status) => extensions.status(status).tone === 'done'), width: measureDateChip(text, this.fonts.count()) };
+      this.chips.byDate.set(key, chip);
+    }
+
+    return chip;
+  }
+
+  /**
+   * The dates of nodes that have one, small inside them at the bottom, drawn
+   * like their "+N" and left of it and of a badge at their lower right; in
+   * the attention color once past, unless the idea is done. In the label
+   * layer, so they ride along with the labels.
+   */
+  private paintDates(display: Display): void {
+    const { camera } = display;
+    const seen = new Set<string>();
+
+    if (!this.host.inFlight()) {
+      for (const entry of display.nodes.values()) {
+        const radius = entry.radius * camera.scale;
+
+        if (entry.node.due === undefined || !showsDateChip(entry.role, radius) || entry.opacity < 0.5) {
+          continue;
+        }
+
+        const chip = this.dateChip(entry.node);
+        const box = chip ? this.dateChipBox(entry, worldToScreen(camera, this.host.viewport(), entry), radius) : null;
+
+        if (!chip || !box) {
+          continue;
+        }
+
+        let shown = this.dates.get(entry.id);
+
+        if (!shown) {
+          const element = document.createElement('span');
+          element.className = 'orbit-date';
+          // Screen readers hear the date with the node's name (see `describeNode`).
+          element.setAttribute('aria-hidden', 'true');
+          element.dataset.orbitFor = entry.id;
+          this.layer.appendChild(element);
+          shown = { element, text: '', overdue: false, transform: '' };
+          this.dates.set(entry.id, shown);
+        }
+
+        if (chip.text !== shown.text) {
+          shown.element.textContent = chip.text;
+          shown.text = chip.text;
+        }
+
+        if (chip.overdue !== shown.overdue) {
+          shown.element.classList.toggle('orbit-date--overdue', chip.overdue);
+          shown.overdue = chip.overdue;
+        }
+
+        const transform = overlayTransform(round((box.left + box.right) / 2, 1), round((box.top + box.bottom) / 2, 1), '-50%, -50%');
+
+        if (transform !== shown.transform) {
+          shown.element.style.transform = transform;
+          shown.transform = transform;
+        }
+
+        seen.add(entry.id);
+      }
+    }
+
+    for (const [id, shown] of this.dates) {
+      if (!seen.has(id)) {
+        shown.element.remove();
+        this.dates.delete(id);
+      }
+    }
+  }
+
+  /** Where a node's date chip is on the screen, for the node `radius` px across centered at `center`; null when it shows none. */
+  private dateChipBox(entry: DisplayNode, center: Point, radius: number): Box | null {
+    const chip = entry.node.due !== undefined && showsDateChip(entry.role, radius) ? this.dateChip(entry.node) : null;
+
+    if (!chip) {
+      return null;
+    }
+
+    const x = center.x + this.dateChipShift(entry, radius, chip.width);
+    const y = center.y + radius - DATE_CHIP_INSET;
+    return { left: x - chip.width / 2, right: x + chip.width / 2, top: y - COUNT_HEIGHT / 2, bottom: y + COUNT_HEIGHT / 2 };
+  }
+
+  /**
+   * How far left of its node's center (px, negative) a date chip `width` px
+   * wide moves to keep clear of the node's "+N" and of the badge at its lower
+   * right (a note's marker, a sound's or a video's): on a small planet they
+   * sit side by side. Centered when there's room.
+   */
+  private dateChipShift(entry: DisplayNode, radius: number, width: number): number {
+    let right = Infinity;
+
+    if (showsCount(entry.role, radius, entry.hiddenChildren)) {
+      right = COUNT_POSITION * radius - measureCount(entry.hiddenChildren, this.fonts.count()) / 2 - DATE_CHIP_GAP;
+    }
+
+    // The sun shows none of those badges: its buttons offer what they stand for.
+    const badge = entry.role === 'sun' ? null : this.host.nodeView(entry.id)?.lowerRightBadge ?? null;
+
+    if (badge !== null) {
+      right = Math.min(right, badge * radius - DATE_CHIP_GAP);
+    }
+
+    return Math.min(0, right - width / 2);
   }
 }

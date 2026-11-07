@@ -1,12 +1,13 @@
 /**
  * Where words break across lines with a hyphen, by Frank Liang's algorithm,
  * as TeX does it: a language's patterns say, between each pair of letters,
- * whether a hyphen may go there. English and Spanish come built in, and
- * `registerHyphenation` adds another language's, such as its patterns from
- * the hyph-utf8 package (https://www.hyphenation.org/tex).
+ * whether a hyphen may go there. English, Spanish and Portuguese come built
+ * in, and `registerHyphenation` adds another language's, such as its patterns
+ * from the hyph-utf8 package (https://www.hyphenation.org/tex).
  */
 
 import { ENGLISH_EXCEPTIONS, ENGLISH_PATTERNS } from './english.js';
+import { PORTUGUESE_EXCEPTIONS, PORTUGUESE_PATTERNS } from './portuguese.js';
 import { SPANISH_PATTERNS } from './spanish.js';
 
 /** A language's patterns and exceptions, as written: white space between them. */
@@ -39,6 +40,7 @@ interface ReadPatterns {
 const sources = new Map<string, HyphenationSource>([
   ['en', { patterns: ENGLISH_PATTERNS, exceptions: ENGLISH_EXCEPTIONS, left: 2, right: 3 }],
   ['es', { patterns: SPANISH_PATTERNS, left: 2, right: 2 }],
+  ['pt', { patterns: PORTUGUESE_PATTERNS, exceptions: PORTUGUESE_EXCEPTIONS, left: 2, right: 3 }],
 ]);
 
 /** Patterns read the first time a word in their language breaks. */

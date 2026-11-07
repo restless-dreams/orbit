@@ -21,6 +21,7 @@ import { findIndexedLinkedNode, findLinkedNode, indexNodes, isNodeLink, nodeLink
 import { findNodeById, getNodePath, nodeSlug } from '../utils.js';
 import { suggest } from '../suggest.js';
 import { guardUrl } from '../url-guard.js';
+import { readDue } from '../dates.js';
 import { ATTRIBUTES, definitionOf, formatDefinitions, TOOL_SPECS, type OrbitMapToolDefinition, type OrbitMapToolFormats, type OrbitMapToolName, type OrbitMapToolProvider, type ToolAttribute, type ToolSpec } from './definitions.js';
 import { InputError, list, readInput } from './input.js';
 import { count, descendants, findNodes, nameOf, nodeDetails, outlineOf, readOutline, searchable, type Search } from './reading.js';
@@ -624,13 +625,16 @@ const readChanges = (values: Record<string, unknown>, root: OrbitNode, node: Orb
   const absent: string[] = [];
 
   const remove = (name: ToolAttribute) => {
+    // What a result calls it: `due` is the node's date.
+    const named = name === 'due' ? 'date' : name;
+
     if (node[name] === undefined) {
-      absent.push(name);
+      absent.push(named);
       return;
     }
 
     (changes as Record<string, unknown>)[name] = undefined;
-    cleared.push(name);
+    cleared.push(named);
   };
 
   for (const name of clear) {
@@ -694,6 +698,23 @@ const readChanges = (values: Record<string, unknown>, root: OrbitNode, node: Orb
   if (values.priority !== undefined) {
     changes.priority = values.priority as number;
     set.push('priority');
+  }
+
+  if (values.due !== undefined) {
+    const written = String(values.due).trim();
+
+    if (written === '') {
+      remove('due');
+    } else {
+      const due = readDue(written);
+
+      if (due === null) {
+        throw new CallError(`"${written}" isn't a date: give one such as 2026-11-20, or a date and a time such as 2026-11-20 09:30. A day that doesn't exist, such as February 30, can't be one.`);
+      }
+
+      changes.due = due;
+      set.push('date');
+    }
   }
 
   if (values.tags !== undefined) {

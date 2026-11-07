@@ -10,7 +10,7 @@ import { reportParseDiagnostics } from '../core/diagnostics.js';
 import { OrbitWords } from '../core/languages.js';
 import { renderToSVGString } from '../core/render-to-svg.js';
 import type { OrbitAction, OrbitNodeType } from '../core/extensions.js';
-import type { OrbitDocument, OrbitNode, OrbitRendererOptions, OrbitViewMode } from '../core/types.js';
+import type { OrbitDocument, OrbitNode, OrbitNodeCircle, OrbitRendererOptions, OrbitSpotlightOptions, OrbitViewMode } from '../core/types.js';
 
 /** What `<OrbitMindMap>` takes: the map, the renderer's options as props, and a `<div>`'s own attributes. */
 export interface OrbitMindMapProps extends OrbitRendererOptions, Omit<HTMLAttributes<HTMLDivElement>, 'children'> {
@@ -60,12 +60,21 @@ export interface OrbitMindMapRef {
 
   /** Shows ideas hidden under `ids`, or under every node (see `OrbitSVGRenderer.revealChildren`). Returns whether any were shown. */
   revealChildren(ids?: string | readonly string[]): boolean;
+
+  /** Brings a node up close, for something of your own to lie over it (see `OrbitSVGRenderer.spotlight`). Returns false when the view doesn't draw it. */
+  spotlight(nodeId: string, options?: OrbitSpotlightOptions): boolean;
+
+  /** Takes the node `spotlight` brought up close back to its place. */
+  endSpotlight(): void;
+
+  /** Where a node is drawn on screen now (see `OrbitSVGRenderer.getNodeCircle`), or null. */
+  getNodeCircle(nodeId: string): OrbitNodeCircle | null;
 }
 
 type Callbacks = Pick<
   OrbitRendererOptions,
   | 'onNodeClick' | 'onViewModeChange' | 'onAction' | 'onFocusChange' | 'onSpinSettle' | 'onNodeContext' | 'onEdit' | 'onEditorOpen' | 'onEditorClose' | 'onNodeDrag'
-  | 'onMediaOpen' | 'onMediaClose' | 'onMediaState' | 'noteRenderer' | 'nodeTypeFor'
+  | 'onMediaOpen' | 'onMediaClose' | 'onMediaState' | 'onFileOpen' | 'onSpotlight' | 'noteRenderer' | 'nodeTypeFor'
 >;
 
 /** What actions declare, as a value to compare: their functions count only as being there. */
@@ -155,6 +164,7 @@ export const OrbitMindMap = forwardRef<OrbitMindMapRef, OrbitMindMapProps>(
     showDetailSheet,
     showMediaViewer,
     mediaViewer,
+    openFiles,
     baseUrl,
     spin,
     zoom,
@@ -174,6 +184,8 @@ export const OrbitMindMap = forwardRef<OrbitMindMapRef, OrbitMindMapProps>(
     onMediaOpen,
     onMediaClose,
     onMediaState,
+    onFileOpen,
+    onSpotlight,
     editable,
     editingKeys,
     longPressDelay,
@@ -207,6 +219,9 @@ export const OrbitMindMap = forwardRef<OrbitMindMapRef, OrbitMindMapProps>(
       fit: () => rendererRef.current?.fit(),
       hideChildren: (ids) => rendererRef.current?.hideChildren(ids) ?? false,
       revealChildren: (ids) => rendererRef.current?.revealChildren(ids) ?? false,
+      spotlight: (nodeId, options) => rendererRef.current?.spotlight(nodeId, options) ?? false,
+      endSpotlight: () => rendererRef.current?.endSpotlight(),
+      getNodeCircle: (nodeId) => rendererRef.current?.getNodeCircle(nodeId) ?? null,
     }), []);
 
     // The renderer holds stable wrappers that call the latest props, so new
@@ -216,7 +231,7 @@ export const OrbitMindMap = forwardRef<OrbitMindMapRef, OrbitMindMapProps>(
     useEffect(() => {
       callbacksRef.current = {
         onNodeClick, onViewModeChange, onAction, onFocusChange, onSpinSettle, onNodeContext, onEdit, onEditorOpen, onEditorClose, onNodeDrag,
-        onMediaOpen, onMediaClose, onMediaState, noteRenderer, nodeTypeFor,
+        onMediaOpen, onMediaClose, onMediaState, onFileOpen, onSpotlight, noteRenderer, nodeTypeFor,
       };
     });
 
@@ -236,6 +251,8 @@ export const OrbitMindMap = forwardRef<OrbitMindMapRef, OrbitMindMapProps>(
       onMediaOpen: (event) => callbacksRef.current.onMediaOpen?.(event),
       onMediaClose: (event) => callbacksRef.current.onMediaClose?.(event),
       onMediaState: (state) => callbacksRef.current.onMediaState?.(state),
+      onFileOpen: (event) => callbacksRef.current.onFileOpen?.(event),
+      onSpotlight: (event) => callbacksRef.current.onSpotlight?.(event),
       // Left undefined without a prop: having one takes long presses from the map.
       onNodeContext: hasNodeContext ? (event) => callbacksRef.current.onNodeContext?.(event) : undefined,
       // Left undefined without a prop so the built-in note view applies.
@@ -298,6 +315,7 @@ export const OrbitMindMap = forwardRef<OrbitMindMapRef, OrbitMindMapProps>(
       showDetailSheet,
       showMediaViewer,
       mediaViewer,
+      openFiles,
       editable,
       editingKeys,
       longPressDelay,
@@ -313,7 +331,7 @@ export const OrbitMindMap = forwardRef<OrbitMindMapRef, OrbitMindMapProps>(
       ...callbacks,
     }), [
       view, viewMode, showRings, interactive, animation, orbitAnimation, speed, orbitSpeed, maxDepth, stablePalette, stableTheme,
-      ariaLabel, language, stableStrings, showControls, showActionButtons, showDetailSheet, showMediaViewer, mediaViewer, editable, editingKeys, longPressDelay, baseUrl,
+      ariaLabel, language, stableStrings, showControls, showActionButtons, showDetailSheet, showMediaViewer, mediaViewer, openFiles, editable, editingKeys, longPressDelay, baseUrl,
       stableSpin, stableZoom, stableInsets, insetsTransition, transitionDuration, stableNodeTypes, stableActions, stableStatuses, callbacks,
     ]);
 

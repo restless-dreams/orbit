@@ -10,7 +10,7 @@ import { emitYaml, assignKey, plainScalarReadsBack, type YamlValue } from './yam
 import { nodesWithExplicitIds } from './utils.js';
 import { detectVideoProvider } from './media.js';
 import { isTitleIcon, parseOrbitMarkdown, parseTitle } from './parser-markdown.js';
-import { mediaExtras, motionValue } from './node-attributes.js';
+import { filesValue, mediaExtras, motionValue } from './node-attributes.js';
 import { optionsToWrite } from './format-upgrades.js';
 
 /** A whole map in Orbit's own form. */
@@ -523,6 +523,16 @@ export const collectAttrs = (node: OrbitNode, explicitIds: ReadonlySet<OrbitNode
 
   if (explicitIds.has(node)) {
     r.id = node.id;
+  }
+
+  // Where versions from before dates write it, with the attributes they don't read: a map keeps its order whichever writes it.
+  if (node.due) {
+    r.due = node.due;
+  }
+
+  // Also where versions from before files write it, after the attributes they read, and always a list of its own.
+  if (node.files) {
+    r.files = filesValue(node.files);
   }
 
   if (node.attrs) {

@@ -1,14 +1,17 @@
 /**
  * The words Orbit shows and says: the controls, the detail sheet, the
  * outline and what it announces, what a screen reader hears about each
- * idea, the media viewer and the empty map. English and Spanish are built
- * in; `registerLanguage` adds others, or changes words of one Orbit has.
+ * idea, the media viewer and the empty map. English, Spanish and Brazilian
+ * Portuguese are built in; `registerLanguage` adds others, or changes words
+ * of one Orbit has.
  *
  * A map speaks the language its `language` option names, or else the one
  * its element is in: the closest `lang` attribute around it, through shadow
  * roots, then the document's. A language Orbit doesn't have falls back to
- * its base (es-MX reads es), then to English.
+ * its base (es-MX reads es, pt-PT reads pt), then to English.
  */
+
+import { daysUntil, dueStart, dueText, type OrbitDue } from './dates.js';
 
 /**
  * Text that depends on a number: one form for each plural category the
@@ -140,6 +143,27 @@ export interface OrbitStrings {
   /** A status written `blocked`. */
   statusBlocked: string;
 
+  /** Part of an idea's description: `{date}` is its date (see `OrbitWords.fullDate`). */
+  date: string;
+
+  /** An idea's date in the tooltip and, for assistive technology, in the detail sheet: `{date}`. */
+  dateLabel: string;
+
+  /** Part of an idea's description, after its date, once the date is past and the idea isn't done. */
+  overdue: string;
+
+  /** `dateLabel` once the date is past and the idea isn't done: `{date}`. */
+  overdueLabel: string;
+
+  /** A date on a planet, when it's today (and has no time: one today shows its time). */
+  today: string;
+
+  /** A date on a planet, when it's tomorrow. */
+  tomorrow: string;
+
+  /** A date on a planet, when it was yesterday. */
+  yesterday: string;
+
   /** Part of an idea's description: `{list}` lists what it has, from the words below. */
   has: string;
 
@@ -150,6 +174,9 @@ export interface OrbitStrings {
   hasAudio: string;
   hasEmbed: string;
   hasLink: string;
+
+  /** How many files an idea holds, in its description and the outline: `{count}`. */
+  fileCount: OrbitPluralText;
 
   /** The text field over an idea being renamed: `{name}`. */
   textOf: string;
@@ -195,6 +222,33 @@ export interface OrbitStrings {
   openEmbed: string;
   readNote: string;
   openLink: string;
+
+  /** The button under an idea that shows its files. */
+  showFiles: string;
+
+  /** The heading over an idea's files in the detail sheet and prints. */
+  files: string;
+
+  /** A file in the detail sheet, which opens it: `{name}` is its name. */
+  openFile: string;
+
+  /** Under the files in the detail sheet when they can't be opened from there (see `openFiles`), as in a web page made without them. */
+  filesStayed: string;
+
+  /** The kinds of file the detail sheet and prints name under a file's name, beside its size. A kind Orbit doesn't name is its extension in capitals. */
+  filePdf: string;
+
+  fileDocument: string;
+  fileSpreadsheet: string;
+  filePresentation: string;
+  fileImage: string;
+  fileVideo: string;
+  fileAudio: string;
+  fileArchive: string;
+  fileText: string;
+
+  /** A file of no kind Orbit names, without an extension. */
+  fileOther: string;
 
   /** A link to another idea of the map: `{name}` is that idea, or `theIdea` when it has no text. */
   goTo: string;
@@ -331,6 +385,13 @@ const ENGLISH: OrbitStrings = {
   statusActive: 'In progress',
   statusDone: 'Done',
   statusBlocked: 'Blocked',
+  date: 'date: {date}',
+  dateLabel: 'Date: {date}',
+  overdue: 'overdue',
+  overdueLabel: 'Overdue: {date}',
+  today: 'Today',
+  tomorrow: 'Tomorrow',
+  yesterday: 'Yesterday',
   has: 'has {list}',
   hasDetails: 'details',
   hasNote: 'note',
@@ -339,6 +400,7 @@ const ENGLISH: OrbitStrings = {
   hasAudio: 'sound',
   hasEmbed: 'web page',
   hasLink: 'link',
+  fileCount: { one: '{count} file', other: '{count} files' },
 
   textOf: 'Text of {name}',
   newIdeaFor: 'New idea for {name}',
@@ -360,6 +422,20 @@ const ENGLISH: OrbitStrings = {
   openEmbed: 'Open web page',
   readNote: 'Read note',
   openLink: 'Open link',
+  showFiles: 'Show files',
+  files: 'Files',
+  openFile: 'Open {name}',
+  filesStayed: 'The files stayed with the map: they aren’t in this page.',
+  filePdf: 'PDF',
+  fileDocument: 'Document',
+  fileSpreadsheet: 'Spreadsheet',
+  filePresentation: 'Presentation',
+  fileImage: 'Picture',
+  fileVideo: 'Video',
+  fileAudio: 'Sound',
+  fileArchive: 'Archive',
+  fileText: 'Text',
+  fileOther: 'File',
   goTo: 'Go to {name}',
   seeIdea: 'See {name}',
   details: 'Details',
@@ -440,6 +516,13 @@ const SPANISH: OrbitStrings = {
   statusActive: 'En curso',
   statusDone: 'Hecho',
   statusBlocked: 'Bloqueado',
+  date: 'fecha: {date}',
+  dateLabel: 'Fecha: {date}',
+  overdue: 'vencida',
+  overdueLabel: 'Vencida: {date}',
+  today: 'Hoy',
+  tomorrow: 'Mañana',
+  yesterday: 'Ayer',
   has: 'tiene {list}',
   hasDetails: 'detalles',
   hasNote: 'nota',
@@ -448,6 +531,7 @@ const SPANISH: OrbitStrings = {
   hasAudio: 'audio',
   hasEmbed: 'página web',
   hasLink: 'enlace',
+  fileCount: { one: '{count} archivo', many: '{count} archivos', other: '{count} archivos' },
 
   textOf: 'Texto de {name}',
   newIdeaFor: 'Idea nueva en {name}',
@@ -469,6 +553,20 @@ const SPANISH: OrbitStrings = {
   openEmbed: 'Abrir página web',
   readNote: 'Leer nota',
   openLink: 'Abrir enlace',
+  showFiles: 'Ver archivos',
+  files: 'Archivos',
+  openFile: 'Abrir {name}',
+  filesStayed: 'Los archivos se quedaron con el mapa: no están en esta página.',
+  filePdf: 'PDF',
+  fileDocument: 'Documento',
+  fileSpreadsheet: 'Hoja de cálculo',
+  filePresentation: 'Presentación',
+  fileImage: 'Imagen',
+  fileVideo: 'Video',
+  fileAudio: 'Audio',
+  fileArchive: 'Archivo comprimido',
+  fileText: 'Texto',
+  fileOther: 'Archivo',
   goTo: 'Ir a {name}',
   seeIdea: 'Ver {name}',
   details: 'Detalles',
@@ -507,7 +605,139 @@ const SPANISH: OrbitStrings = {
   watchOn: 'Ver en {provider}',
 };
 
-const BUILT_IN = new Map<string, OrbitStrings>([['en', ENGLISH], ['es', SPANISH]]);
+/** Brazilian Portuguese, which is also Portuguese's: a page in `pt` or `pt-PT` reads it too. */
+const PORTUGUESE: OrbitStrings = {
+  mindMap: 'Mapa mental',
+  mindMapRole: 'mapa mental',
+  untitled: 'Sem título',
+  untitledMap: 'Mapa sem título',
+  emptyMap: 'Este mapa está vazio',
+  emptyMapHint: 'Comece com um título # ou uma lista com marcadores',
+  mapNotDrawn: 'Não foi possível desenhar este mapa',
+  mapNotDrawnReason: 'Não foi possível desenhar o mapa.',
+  problemOnLine: 'Linha {line}: {message}',
+
+  mapPath: 'Caminho do mapa',
+  back: 'Voltar',
+  backTo: 'Voltar para {name}',
+  backToParent: 'Voltar para a ideia acima',
+  view: 'Visualização',
+  focus: 'Foco',
+  overview: 'Visão geral',
+  showOutline: 'Mostrar o mapa como lista',
+  zoom: 'Zoom',
+  zoomIn: 'Aumentar o zoom',
+  zoomOut: 'Diminuir o zoom',
+  fitMap: 'Ajustar o mapa',
+  scrollToZoom: 'Use {key} + rolagem para aplicar zoom ao mapa',
+
+  outline: 'Tópicos do mapa',
+  overviewAnnouncement: 'Visão geral do mapa inteiro',
+  ideaCount: { one: '{count} ideia', many: '{count} ideias', other: '{count} ideias' },
+  hiddenIdeaCount: { one: '{count} ideia oculta', many: '{count} ideias ocultas', other: '{count} ideias ocultas' },
+  revealed: '{name}: {list}',
+  added: 'Ideia adicionada: {name}',
+  removed: 'Ideia excluída: {name}',
+  moved: 'Ideia movida para {parent}: {name}',
+  movedToTop: 'Ideia movida para o nível superior: {name}',
+  anIdea: 'sem título',
+
+  status: 'status: {status}',
+  statusLabel: 'Status: {status}',
+  statusTodo: 'A fazer',
+  statusActive: 'Em andamento',
+  statusDone: 'Concluído',
+  statusBlocked: 'Bloqueado',
+  date: 'data: {date}',
+  dateLabel: 'Data: {date}',
+  overdue: 'atrasada',
+  overdueLabel: 'Atrasada: {date}',
+  today: 'Hoje',
+  tomorrow: 'Amanhã',
+  yesterday: 'Ontem',
+  has: 'tem {list}',
+  hasDetails: 'detalhes',
+  hasNote: 'nota',
+  hasImage: 'imagem',
+  hasVideo: 'vídeo',
+  hasAudio: 'áudio',
+  hasEmbed: 'página da web',
+  hasLink: 'link',
+  fileCount: { one: '{count} arquivo', many: '{count} arquivos', other: '{count} arquivos' },
+
+  textOf: 'Texto de {name}',
+  newIdeaFor: 'Nova ideia em {name}',
+  newIdea: 'Nova ideia',
+  addIdeaTo: 'Adicionar uma ideia a {name}',
+  moveHere: 'Mover {name} para cá',
+  thisIdea: 'esta ideia',
+  theIdea: 'a ideia',
+
+  ideaActions: 'Ações de {name}',
+  ideaActionsUntitled: 'Ações da ideia',
+  showDetails: 'Ver detalhes',
+  viewImage: 'Ver imagem',
+  viewImageOf: 'Ver imagem: {description}',
+  viewLivePhoto: 'Ver foto ao vivo',
+  viewLivePhotoOf: 'Ver foto ao vivo: {description}',
+  playVideo: 'Reproduzir vídeo',
+  playAudio: 'Reproduzir áudio',
+  openEmbed: 'Abrir página da web',
+  readNote: 'Ler nota',
+  openLink: 'Abrir link',
+  showFiles: 'Ver arquivos',
+  files: 'Arquivos',
+  openFile: 'Abrir {name}',
+  filesStayed: 'Os arquivos ficaram com o mapa: eles não estão nesta página.',
+  filePdf: 'PDF',
+  fileDocument: 'Documento',
+  fileSpreadsheet: 'Planilha',
+  filePresentation: 'Apresentação',
+  fileImage: 'Imagem',
+  fileVideo: 'Vídeo',
+  fileAudio: 'Áudio',
+  fileArchive: 'Arquivo compactado',
+  fileText: 'Texto',
+  fileOther: 'Arquivo',
+  goTo: 'Ir para {name}',
+  seeIdea: 'Veja {name}',
+  details: 'Detalhes',
+  close: 'Fechar',
+  previous: 'Anterior',
+  next: 'Próximo',
+  present: 'Apresentar',
+  priority: 'Prioridade {priority}',
+  expand: 'Expandir',
+  expandVideo: 'Expandir o vídeo',
+  expandAudio: 'Expandir o áudio',
+
+  picture: 'Imagem',
+  video: 'Vídeo',
+  audio: 'Áudio',
+  position: '{index} de {total}',
+  fitPicture: 'Ajustar a imagem',
+  live: 'Ao vivo',
+  playLivePhoto: 'Reproduzir a foto ao vivo',
+  holdToPlay: 'Mantenha pressionado para reproduzir',
+  pictureUnavailable: 'Não é possível mostrar esta imagem.',
+  videoUnavailable: 'Não é possível reproduzir este vídeo.',
+  audioUnavailable: 'Não é possível reproduzir este áudio.',
+  videoUnavailableHere: 'Este vídeo não pode ser reproduzido aqui.',
+  openPictureInNewTab: 'Abrir a imagem em uma nova guia',
+  openVideoInNewTab: 'Abrir o vídeo em uma nova guia',
+  openAudioInNewTab: 'Abrir o áudio em uma nova guia',
+  play: 'Reproduzir',
+  pause: 'Pausar',
+  mute: 'Desativar o som',
+  unmute: 'Ativar o som',
+  skipBack: { one: 'Voltar {count} segundo', many: 'Voltar {count} segundos', other: 'Voltar {count} segundos' },
+  skipForward: { one: 'Avançar {count} segundo', many: 'Avançar {count} segundos', other: 'Avançar {count} segundos' },
+  playbackPosition: 'Posição',
+  timeOf: '{time} de {duration}',
+  watchOn: 'Assistir no {provider}',
+};
+
+const BUILT_IN = new Map<string, OrbitStrings>([['en', ENGLISH], ['es', SPANISH], ['pt', PORTUGUESE], ['pt-BR', PORTUGUESE]]);
 const registered = new Map<string, OrbitStrings>(BUILT_IN);
 const KEYS = Object.keys(ENGLISH) as (keyof OrbitStrings)[];
 const PLURAL_CATEGORIES = ['zero', 'one', 'two', 'few', 'many', 'other'] as const;
@@ -634,6 +864,74 @@ export class OrbitWords {
     return numberFormat(this.locale)?.format(value) ?? String(value);
   }
 
+  /**
+   * A file's size in the language's way, in the units phones show them in
+   * (a kilobyte is 1,000 bytes): "820 bytes", "48 kB", "1.2 MB".
+   */
+  fileSize(bytes: number): string {
+    const units = ['byte', 'kilobyte', 'megabyte', 'gigabyte', 'terabyte'] as const;
+    // Whole numbers from 10 up, as phones show them ("48 kB", "1.2 MB"), and the next unit up once one rounds to 1,000.
+    const shown = (value: number, unit: number): number => Number(value.toFixed(unit === 0 || value >= 9.95 ? 0 : 1));
+    let unit = 0;
+    let value = bytes;
+
+    while (shown(value, unit) >= 1000 && unit < units.length - 1) {
+      value /= 1000;
+      unit += 1;
+    }
+
+    const digits = unit === 0 || value >= 9.95 ? 0 : 1;
+    const format = sizeFormat(this.locale, units[unit], digits);
+    return format ? format.format(value) : `${value.toFixed(digits)} ${['B', 'kB', 'MB', 'GB', 'TB'][unit]}`;
+  }
+
+  /**
+   * An idea's date as its planet shows it, small: "Today" (its time instead,
+   * when it has one), "Tomorrow" or "Yesterday", the day of the week in the
+   * coming week ("Fri"), or the month and day ("Nov 20"), with the year when
+   * it's another year's. In the language's own way, at `now`.
+   */
+  shortDate(due: OrbitDue, now: Date): string {
+    const days = daysUntil(due, now);
+
+    if (days === 0) {
+      return due.hours === undefined ? this.text('today') : this.formatDate(due, TIME);
+    }
+
+    if (days === 1 || days === -1) {
+      return this.text(days === 1 ? 'tomorrow' : 'yesterday');
+    }
+
+    if (days > 1 && days < 7) {
+      return this.formatDate(due, { weekday: 'short' });
+    }
+
+    return this.formatDate(due, due.year === now.getFullYear() ? { month: 'short', day: 'numeric' } : { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  /**
+   * An idea's date with its weekday and time, as the detail sheet's chip
+   * shows it: "Fri, Nov 20, 9:30 AM", with the year when it's another
+   * year's than `now`'s, or always without `now`.
+   */
+  mediumDate(due: OrbitDue, now?: Date): string {
+    const day: Intl.DateTimeFormatOptions = due.year === now?.getFullYear()
+      ? { weekday: 'short', month: 'short', day: 'numeric' }
+      : { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' };
+    return this.formatDate(due, due.hours === undefined ? day : { ...day, ...TIME });
+  }
+
+  /** An idea's date in full, its time included, for screen readers and tooltips: "Friday, November 20, 2026 at 9:30 AM". */
+  fullDate(due: OrbitDue): string {
+    const day: Intl.DateTimeFormatOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+    return this.formatDate(due, due.hours === undefined ? day : { ...day, ...TIME });
+  }
+
+  /** A date written by the language's own rules; as Orbit writes it in a file where it has none. */
+  private formatDate(due: OrbitDue, options: Intl.DateTimeFormatOptions): string {
+    return dateFormat(this.locale, options)?.format(dueStart(due)) ?? dueText(due);
+  }
+
   private fill(template: string, values?: Values): string {
     if (!values) {
       return template;
@@ -738,6 +1036,21 @@ const pluralRules = (locale: string): Intl.PluralRules | null => {
 
 const numberFormat = (locale: string): Intl.NumberFormat | null => {
   return cached(numberFormatCache, locale, () => new Intl.NumberFormat(locale));
+};
+
+const sizeFormatCache = new Map<string, Intl.NumberFormat | null>();
+
+const sizeFormat = (locale: string, unit: string, digits: number): Intl.NumberFormat | null => {
+  return cached(sizeFormatCache, `${locale} ${unit} ${digits}`, () => new Intl.NumberFormat(locale, { style: 'unit', unit, unitDisplay: unit === 'byte' ? 'long' : 'short', maximumFractionDigits: digits }));
+};
+
+/** A time of day, as the language writes one: "9:30 AM", "9:30". */
+const TIME: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
+
+const dateFormatCache = new Map<string, Intl.DateTimeFormat | null>();
+
+const dateFormat = (locale: string, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat | null => {
+  return cached(dateFormatCache, `${locale} ${JSON.stringify(options)}`, () => new Intl.DateTimeFormat(locale, options));
 };
 
 const listFormat = (locale: string): Intl.ListFormat | null => {

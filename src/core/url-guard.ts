@@ -4,8 +4,12 @@
  * baseUrl.
  */
 
-/** Where a URL is used. `motion` is a live photo's: the few seconds of video a phone records around a picture. */
-export type UrlSurface = 'image' | 'video' | 'audio' | 'motion' | 'embed' | 'link';
+/**
+ * Where a URL is used. `motion` is a live photo's: the few seconds of video
+ * a phone records around a picture. `file` is one of an idea's files, opened
+ * in a new tab: only from the web, or relative to the map.
+ */
+export type UrlSurface = 'image' | 'video' | 'audio' | 'motion' | 'embed' | 'link' | 'file';
 
 const warned = new Set<string>();
 const WARN_LIMIT = 500;

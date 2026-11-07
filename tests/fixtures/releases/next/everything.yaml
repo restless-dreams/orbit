@@ -36,6 +36,7 @@ nodes:
           - text: Competitor teardown
             tags: [market, q3]
             status: todo
+            due: "2026-12-04 17:00"
           - text: Questions to answer
             note: |
               - Who buys it?
@@ -47,8 +48,8 @@ nodes:
         type: "milestone@2"
         tags: [engineering, sprint-3]
         collapsed: false
-        owner: Ana
         due: "2026-11-01"
+        owner: Ana
         children:
           - text: Frontend
             icon: ★
@@ -58,6 +59,13 @@ nodes:
               - text: Offline sync
                 status: blocked
                 note: "Waits on the [backend](#backend) sync API."
+                files:
+                  - src: media/sync-protocol.pdf
+                    name: "Sync protocol, v2.pdf"
+                    type: application/pdf
+                    size: 482133
+                    pages: 12
+                  - src: media/sync-notes.txt
           - text: Backend
             note: "Plain text, shown as written: *not emphasis*."
             noteFormat: plain
@@ -77,6 +85,9 @@ nodes:
           - text: Demo page
             embed:
               src: "https://example.com/demo"
+          - text: Press kit
+            files:
+              - src: media/press-kit.zip
           - text: Read the research
             link: "#research"
           - text: Old poster

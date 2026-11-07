@@ -1,7 +1,7 @@
 import { warnDeprecated } from './deprecated.js';
 import { parseOrbit } from './dispatch.js';
 import { OrbitSVGRenderer } from './svg-renderer.js';
-import type { OrbitDocument, OrbitEventMap, OrbitMediaOptions, OrbitRendererOptions } from './types.js';
+import type { OrbitDocument, OrbitEventMap, OrbitMediaOptions, OrbitNodeCircle, OrbitRendererOptions, OrbitSpotlightOptions } from './types.js';
 import { OrbitParseError, reportParseDiagnostics, type OrbitDiagnostic } from './diagnostics.js';
 import { isThemeName, mergeThemes, themeNames } from './themes.js';
 import { THEME_SYNONYMS } from './document-options.js';
@@ -80,6 +80,15 @@ export interface OrbitMapElement extends HTMLElement {
 
   /** Shows ideas hidden under `ids`, or under every node (see `OrbitSVGRenderer.revealChildren`). Returns whether any were shown. */
   revealChildren(ids?: string | readonly string[]): boolean;
+
+  /** Brings a node up close, for something of the page's own to lie over it (see `OrbitSVGRenderer.spotlight`). Returns false when the view doesn't draw it. */
+  spotlight(nodeId: string, options?: OrbitSpotlightOptions): boolean;
+
+  /** Takes the node `spotlight` brought up close back to its place. */
+  endSpotlight(): void;
+
+  /** Where a node is drawn on screen now (see `OrbitSVGRenderer.getNodeCircle`), or null. */
+  getNodeCircle(nodeId: string): OrbitNodeCircle | null;
 }
 
 /**
@@ -300,6 +309,18 @@ const createOrbitMapElementClass = (): CustomElementConstructor => {
 
     revealChildren(ids?: string | readonly string[]): boolean {
       return this.#renderer?.revealChildren(ids) ?? false;
+    }
+
+    spotlight(nodeId: string, options?: OrbitSpotlightOptions): boolean {
+      return this.#renderer?.spotlight(nodeId, options) ?? false;
+    }
+
+    endSpotlight(): void {
+      this.#renderer?.endSpotlight();
+    }
+
+    getNodeCircle(nodeId: string): OrbitNodeCircle | null {
+      return this.#renderer?.getNodeCircle(nodeId) ?? null;
     }
 
     get source(): string {

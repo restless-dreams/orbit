@@ -252,7 +252,7 @@ const renderer = new OrbitSVGRenderer(host, {
 });
 ```
 
-The focused node shows a button for each kind of content it has, then your own [actions](extending.md#actions). They sit under it, or, where its planets crowd it (as they do on a phone), under the whole orbit, which is then fitted to leave them room: they never cover a planet. When `onAction` isn't provided (or doesn't return `false`), "View picture", "Play video" and "Play sound" open the [media viewer](#pictures-and-videos), and the other buttons the built-in detail sheet: a panel along the right edge on wide screens and a bottom sheet on phones (swipe down to close), with the node's media, note, status and tags, and arrows to step through its siblings. YouTube and Vimeo links play through their embeddable players (`youtube-nocookie.com/embed/…`, `player.vimeo.com/video/…`). Links open in a new tab.
+The focused node shows a button for each kind of content it has, then your own [actions](extending.md#actions). They sit under it, or, where its planets crowd it (as they do on a phone), under the whole orbit, which is then fitted to leave them room: they never cover a planet. When `onAction` isn't provided (or doesn't return `false`), "View picture", "Play video" and "Play sound" open the [media viewer](#pictures-and-videos), and the other buttons the built-in detail sheet: a panel along the right edge on wide screens and a bottom sheet on phones (swipe down to close), with the node's media, note, files, status and tags, and arrows to step through its siblings. YouTube and Vimeo links play through their embeddable players (`youtube-nocookie.com/embed/…`, `player.vimeo.com/video/…`). Links open in a new tab.
 
 Notes are markdown and are rendered safely (no raw HTML). Opt-out flags: `showActionButtons: false`, `showDetailSheet: false` and `showMediaViewer: false`. Custom note rendering: `noteRenderer: (note, ctx) => '<p>...</p>'`. The HTML it returns is used as is, so sanitize it if the note content is untrusted.
 
@@ -285,6 +285,21 @@ map.on('media-state', ({ node, playing, time }) => tellThePresenter(node.id, pla
 ```
 
 `openMedia` works whatever `showMediaViewer` and `showDetailSheet` say. On a map that isn't interactive, the viewer is the page's to drive: no buttons, no video controls, and no input of its own. [Pictures, videos and sounds](media.md) covers the keys, YouTube and Vimeo, sound and autoplay, and the events.
+
+## Files
+
+An idea can hold files: a PDF, a spreadsheet, a ticket, any file (`files`, see [Map format](format.md#files)). Its planet wears a paperclip at its upper left, with how many from two on, and its description says so ("has 2 files"). In focus, it offers "Show files", which opens the detail sheet at them: a row for each, with its kind's icon, its name, and its kind and size under it ("PDF · 48 kB").
+
+A file pressed there opens its address in a new tab, resolved against `baseUrl`, as a link does: only an address on the web or relative to the map ever opens. An app that keeps the files itself, as one on a phone does, takes the press with `onFileOpen` returning `false` or the `file-open` event's `preventDefault()`, and opens the file its own way:
+
+```ts
+map.on('file-open', (event) => {
+  event.preventDefault();
+  openInAnotherApp(event.node.id, event.file.src, event.file.type);
+});
+```
+
+Where the files can't be opened from, as in a web page made without them, `openFiles: false` lists them without opening them, and the sheet says they stayed with the map. `exportWebPage` makes its pages so. Prints and PDFs ([`renderPrintLayout`](#printing-and-pdf)) name each file, its kind and its size.
 
 ## Extending
 
@@ -338,6 +353,33 @@ A node in focus keeps a faint place in its orbit for each hidden idea, in that i
 
 Hiding is only how the map looks: the map, `toMarkdown()` and its events don't change, and nothing is edited. Ids the map doesn't have, and nodes with no ideas under them, are left out. A node keeps its ideas hidden when an edit renames it, and new text for the map keeps the nodes it still has hidden. With no ids, `revealChildren()` shows every hidden idea. Both return whether anything changed, and `<orbit-map>` and the React wrapper's ref have them too.
 
+## Bringing a node up close
+
+`spotlight(id, options?)` brings a node up close, for something of your own to lie over it: a surface to draw on, say, or a picture to frame. The camera flies until the node fills most of the map, the rest of the map dims under the sheet's backdrop, and the node's name, icon, badges and its type's content step aside, leaving its color and its picture. `endSpotlight()` flies the camera back where it was, and the map brightens again.
+
+```ts
+const map = createOrbitMap(element, markdown, { editable: true });
+
+map.on('spotlight', ({ phase, x, y, radius }) => {
+  if (phase === 'rest') {
+    canvas.style.cssText = `left: ${x - radius}px; top: ${y - radius}px; width: ${radius * 2}px; height: ${radius * 2}px`;
+    canvas.hidden = false;
+  }
+});
+
+map.spotlight('summit', { share: 0.8, insets: { bottom: 96 } }); // 80% of the room above a 96 px toolbar
+// …and when the drawing is done:
+canvas.hidden = true;
+map.updateNode('summit', { image: { src: drawing } });
+map.endSpotlight();
+```
+
+`share` is how much of the room the node fills across, along the room's shorter side (0.86 by default), and `insets` the room your own controls take while it's up close, as the `insets` option says for the map; the node is held in the middle of what's left. The map's own `insets` stay as they are.
+
+The `spotlight` event says where the node's circle is, in px from the map's top left: on each frame of the flight to it (`move`), once it lands (`rest`), and once the flight back lands (`end`). While the node is up close the map takes no gestures, keys or presses, the orbit doesn't drift, and the camera holds the node where it landed, whatever changes under it: an edit to the node, a new picture included, keeps its circle where it is, and a map that changes size fits it again and says where it rests now (`rest` again). A node that leaves the view, as an edit removes it, is let go of, and so is one when `flyTo`, `overview` or `setViewMode` take the map somewhere else. Bringing another node up close flies there, and `endSpotlight()` still flies back where the camera was before the first. With reduced motion, the camera moves at once, and the map dims with a fade.
+
+`spotlight` returns false when the current view doesn't draw the node. `getNodeCircle(id)` says where any node is drawn on screen now, or null. `<orbit-map>` and the React wrapper's ref have all three.
+
 What follows the view leaves hidden ideas out: the map, the outline, the media viewer's steps through the map's pictures, videos and sounds, and `toSVGString()`, which exports the view with the faint places. A node whose ideas are hidden has no + to add one either, and `editNewNode` returns false there: reveal them first. What reads the map itself reads every idea: `toMarkdown()`, `renderToSVGString`, prints (a map's web page and `renderPrintLayout`) and [map tools](map-tools.md), so a language model reading the map sees the hidden ideas too.
 
 ## Interaction
@@ -352,7 +394,7 @@ A map has two views. **Focus** puts one node at the center (the sun) with its ch
 - **Assistive technology:** the list button shows the whole map as a nested list, which screen readers can also browse at any time, and moves are announced. When the reader asks for reduced motion, views cross-fade instead of flying and a flicked orbit doesn't coast.
 - **Pictures, videos and sounds:** "View picture", "Play video" and "Play sound" open them over the whole window, to zoom into a picture (the wheel, a pinch, a double click or tap) and to play a video or a sound; the arrows and swipes step through every picture, video and sound of the map. See [Pictures and videos](#pictures-and-videos).
 - **Editing:** on `editable` maps, the + in the orbit adds an idea and a long press, a right click or F2 edits a node's text. A long press, a right click, or the context menu key (or Shift+F10) also fires `node-context`, for a menu of your own. A node held still lifts: drag it onto another node to move it there, or along the orbit to a new place. With `editingKeys`, Tab, Shift+Enter and Delete add and remove ideas from the keyboard. See [Editing on the map](#editing-on-the-map).
-- **Programmatic:** `renderer.setOptions(options)` changes the options it's given, such as the theme or the language, and keeps the others (see [Theming](theming.md) and [Languages](languages.md)); `renderer.getSVGElement()` is the map's `<svg>`. `renderer.flyTo(id)` (in focus mode), `renderer.overview()`, `renderer.focusNode(id)` (keeps the current view), `renderer.setViewMode(mode)`, `renderer.zoomBy(factor)`, `renderer.fit()`, `renderer.spin(degreesPerSecond)`, `renderer.getFocusPath()`, `renderer.getFocusedNode()`, `renderer.getViewMode()`, `renderer.getNodeColor(id)` for the color a node is drawn with, to match a list or legend beside the map, `renderer.getNodeAt(x, y)` and `renderer.setDropTarget(id)` for drops from elsewhere (see [Drops from elsewhere](editing.md#drops-from-elsewhere)), `renderer.hideChildren(ids)` and `renderer.revealChildren(ids?)` to keep ideas for later (see [Hiding ideas to reveal later](#hiding-ideas-to-reveal-later)), and `renderer.openMedia(id)`, `closeMedia()`, `playMedia()`, `pauseMedia()`, `seekMedia(seconds)` and `unmuteMedia()` for the media viewer.
+- **Programmatic:** `renderer.setOptions(options)` changes the options it's given, such as the theme or the language, and keeps the others (see [Theming](theming.md) and [Languages](languages.md)); `renderer.getSVGElement()` is the map's `<svg>`. `renderer.flyTo(id)` (in focus mode), `renderer.overview()`, `renderer.focusNode(id)` (keeps the current view), `renderer.setViewMode(mode)`, `renderer.zoomBy(factor)`, `renderer.fit()`, `renderer.spin(degreesPerSecond)`, `renderer.getFocusPath()`, `renderer.getFocusedNode()`, `renderer.getViewMode()`, `renderer.getNodeColor(id)` for the color a node is drawn with, to match a list or legend beside the map, `renderer.getNodeAt(x, y)` and `renderer.setDropTarget(id)` for drops from elsewhere (see [Drops from elsewhere](editing.md#drops-from-elsewhere)), `renderer.hideChildren(ids)` and `renderer.revealChildren(ids?)` to keep ideas for later (see [Hiding ideas to reveal later](#hiding-ideas-to-reveal-later)), `renderer.spotlight(id, options?)`, `renderer.endSpotlight()` and `renderer.getNodeCircle(id)` for something of your own over a node (see [Bringing a node up close](#bringing-a-node-up-close)), and `renderer.openMedia(id)`, `closeMedia()`, `playMedia()`, `pauseMedia()`, `seekMedia(seconds)` and `unmuteMedia()` for the media viewer.
 
 ## Events
 
@@ -376,6 +418,8 @@ element.addEventListener('orbit-focus-change', (event) => event.detail.node);
 | `node-drag` | `orbit-node-drag` | `{ phase, node, parent, index }`: a node dragged somewhere else, as it leaves its place (`start`), when where it would go changes (`over`), and when it's let go (`end`) |
 | `media-open`, `media-close` | `orbit-media-open`, `orbit-media-close` | `{ node, kind, index, total }`: the media viewer opened (or stepped) on a node's picture (`kind: 'image'`), video (`'video'`) or sound (`'audio'`), `index` of `total` in reading order, or closed |
 | `media-state` | `orbit-media-state` | `{ node, kind, playing, time, duration, ended, muted }`: the viewer's video, sound or live photo's motion (`kind`: `video`, `audio` or `image`) started, paused, moved on, ended or was muted; while it plays, its time a few times a second |
+| `file-open` | `orbit-file-open` | `{ node, file, index, sourceEvent }`: one of a node's files was opened in the detail sheet; `preventDefault()` keeps it from opening in a new tab, for an app to open it its way |
+| `spotlight` | `orbit-spotlight` | `{ phase, node, x, y, radius }`: where a node `spotlight` brought up close is on screen, its circle's center and radius in px, as the camera flies to it or back (`move`), once it rests there and whenever it rests somewhere else (`rest`), and once it's back in its place (`end`) |
 | | `orbit-error` | `{ message, line, error, diagnostics }`, on elements whose map couldn't be drawn |
 
 The `on…` options hear the same, a few in a shape of their own:
@@ -386,8 +430,9 @@ The `on…` options hear the same, a few in a shape of their own:
 | `onViewModeChange` | `(mode)` |
 | `onNodeClick` | `(node)` |
 | `onAction` | `({ node, action, sourceEvent })`; returning `false` skips the built-in viewer, sheet or link, and the `action` event with it |
+| `onFileOpen` | `({ node, file, index, sourceEvent })`; returning `false` keeps the file from opening in a new tab, and skips the `file-open` event with it |
 | `onSpinSettle` | `(node)` |
-| `onNodeContext`, `onEdit`, `onEditorOpen`, `onEditorClose`, `onNodeDrag`, `onMediaOpen`, `onMediaClose`, `onMediaState` | the event's detail |
+| `onNodeContext`, `onEdit`, `onEditorOpen`, `onEditorClose`, `onNodeDrag`, `onMediaOpen`, `onMediaClose`, `onMediaState`, `onSpotlight` | the event's detail |
 
 A callback that throws doesn't stop the map, as a listener that throws doesn't: the error is reported (`reportError`, or thrown on its own afterwards), and the event still reaches the `on()` listeners and the DOM.
 
@@ -462,7 +507,28 @@ import { renderNoteMarkdown } from '@restless-dreams/orbit';
 caption.replaceChildren(renderNoteMarkdown(node.note ?? '', { baseUrl }));
 ```
 
-Options: `baseUrl`, where relative links and pictures resolve from, and `resolveLink(href)`, whether a `#id` link points at a node of the map (links to missing nodes show as plain text).
+Options: `baseUrl`, where relative links and pictures resolve from, `resolveLink(href)`, whether a `#id` link points at a node of the map (links to missing nodes show as plain text), and `onCheck`.
+
+A note's checklists show as checkboxes, which change only with `onCheck`: it's called when someone checks or unchecks one, with the box's `line` in the note (from 0) and whether it's `checked` now. `setNoteCheckbox(note, line, checked)` gives the note with that one box changed and every other character as it was, or `null` when the note has no box on that line, as after it changed. Save it with `updateNode`, as the detail sheet does on an editable map: it's an edit like any other, and saving changes just that line of the file.
+
+```ts
+import { findNodeById, renderNoteMarkdown, setNoteCheckbox } from '@restless-dreams/orbit';
+
+const showNote = (id) => {
+  const note = findNodeById(map.getDocument().root, id)?.note ?? '';
+  caption.replaceChildren(renderNoteMarkdown(note, {
+    onCheck: ({ line, checked }) => {
+      const changed = setNoteCheckbox(findNodeById(map.getDocument().root, id)?.note ?? '', line, checked);
+
+      if (changed === null) {
+        showNote(id); // The note changed since it showed: show it as it is.
+      } else {
+        map.updateNode(id, { note: changed });
+      }
+    },
+  }));
+};
+```
 
 ## Renderer options
 
@@ -478,6 +544,7 @@ Options: `baseUrl`, where relative links and pictures resolve from, and `resolve
 | `showControls` | `true` | Breadcrumbs, view switch, list button and zoom buttons. |
 | `showActionButtons` / `showDetailSheet` | `true` | Content buttons under the focused node / the built-in detail sheet. |
 | `showMediaViewer` | `true` | Pictures, videos and sounds open in the media viewer, over the whole window; `false` keeps them in the detail sheet. |
+| `openFiles` | `true` | The detail sheet's files open, each in a new tab unless `onFileOpen` or the `file-open` event takes it; `false` lists them without opening them, and says they stayed with the map, as a web page made without them does. |
 | `editable` | `false` | A + in the orbit to add ideas, text edited inside nodes (long press, right click or F2), and nodes dragged somewhere else. |
 | `editingKeys` | `false` | Mind-map keys on editable maps: Tab adds an idea under a node, Shift+Enter beside it, and Delete removes it; while typing, Tab and Shift+Tab go a level down and up. |
 | `longPressDelay` | `500` | Milliseconds a touch holds still on a node before it is a long press; apps can pass their platform's own. |
@@ -491,7 +558,7 @@ Options: `baseUrl`, where relative links and pictures resolve from, and `resolve
 | `language` | the page's | The language of the map's buttons, sheets and announcements: a tag like `'es'` ([Languages](languages.md)). By default, the closest `lang` attribute around the map. |
 | `strings` | | Words to change on this map only: `{ zoomIn: 'Closer' }`. |
 | `baseUrl` | | Resolves relative image, video, sound and link URLs: an `http`, `https` or `file` address, or a relative one. Joined to a base of any other kind, such as `javascript:`, they stay relative. |
-| `onNodeClick`, `onFocusChange`, `onViewModeChange`, `onAction`, `onSpinSettle`, `onNodeContext`, `onEdit`, `onEditorOpen`, `onEditorClose`, `onNodeDrag`, `onMediaOpen`, `onMediaClose`, `onMediaState` | | Callbacks (see [Events](#events)). |
+| `onNodeClick`, `onFocusChange`, `onViewModeChange`, `onAction`, `onSpinSettle`, `onNodeContext`, `onEdit`, `onEditorOpen`, `onEditorClose`, `onNodeDrag`, `onMediaOpen`, `onMediaClose`, `onMediaState`, `onFileOpen`, `onSpotlight` | | Callbacks (see [Events](#events)). |
 | `noteRenderer` | | Renders note markdown to HTML yourself. |
 | `nodeTypes`, `actions`, `statuses`, `nodeTypeFor` | | Node types, buttons of your own, status words, and the type a node that names none is drawn as (see [Extending](#extending)). |
 
@@ -512,7 +579,7 @@ Use `-` as the file to read from stdin, and `--help` after any command for its o
 
 ## Languages
 
-Maps speak the language of the page they're on: the buttons, the detail sheet, the media viewer and everything screen readers hear. English and Spanish are built in; `registerLanguage` adds others, and the `language` and `strings` options pick a language or change single words for one map.
+Maps speak the language of the page they're on: the buttons, the detail sheet, the media viewer and everything screen readers hear. English, Spanish and Brazilian Portuguese are built in; `registerLanguage` adds others, and the `language` and `strings` options pick a language or change single words for one map.
 
 ```ts
 import { createOrbitMap, registerLanguage } from '@restless-dreams/orbit';

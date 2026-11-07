@@ -8,6 +8,7 @@ import { patchMarkdown } from '../src/core/source-patch';
 import { parseOrbitMarkdown } from '../src/core/parser-markdown';
 import type { OrbitSVGRenderer } from '../src/core/svg-renderer';
 import type { OrbitNode } from '../src/core/types';
+import { noteCheckboxes, setNoteCheckbox } from '../src/core/ui/note-markdown';
 import { mount, useMapSize } from './helpers/renderer';
 
 useMapSize();
@@ -50,7 +51,7 @@ const edit = (renderer: OrbitSVGRenderer, next: () => number, step: number): str
   const pick = <Item>(items: Item[]): Item => items[Math.floor(next() * items.length)];
   const node = pick(nodes);
 
-  switch (Math.floor(next() * 7)) {
+  switch (Math.floor(next() * 8)) {
     case 0:
       renderer.addNode(node.id, { text: `Idea ${step}` }, Math.floor(next() * (node.children.length + 1)));
       return `add under ${node.id}`;
@@ -72,6 +73,17 @@ const edit = (renderer: OrbitSVGRenderer, next: () => number, step: number): str
       }
 
       return 'nothing to remove';
+    }
+    case 5: {
+      const target = pick(nodes.filter((other) => noteCheckboxes(other.note ?? '').length > 0));
+
+      if (!target) {
+        return 'no box to check';
+      }
+
+      const box = pick(noteCheckboxes(target.note!));
+      renderer.updateNode(target.id, { note: setNoteCheckbox(target.note!, box.line, !box.checked)! });
+      return `check the box on line ${box.line} of ${target.id}'s note`;
     }
     default: {
       const moving = pick(nodes.filter((other) => other !== root));
@@ -145,6 +157,46 @@ describe('an edit changes only its own lines', () => {
     const { renderer } = mount('# Groceries\n- [ ] **Fresh** milk from `the corner shop`\n- [ ] Eggs\n');
     renderer.updateNode('fresh-milk-from-the-corner-shop', { status: 'done' });
     expect(renderer.toMarkdown()).toBe('# Groceries\n- [x] **Fresh** milk from `the corner shop`\n- [ ] Eggs\n');
+  });
+
+  it('checking a box in a note changes only its line, wherever the note is written', () => {
+    const text = read('34-checklists-in-notes.md');
+    const { renderer } = mount(text);
+
+    const check = (id: string, line: number, checked: boolean): void => {
+      const node = preorder(renderer.getDocument()!.root).find((candidate) => candidate.id === id)!;
+      renderer.updateNode(id, { note: setNoteCheckbox(node.note!, line, checked)! });
+    };
+
+    check('trip-to-oaxaca', 2, true);
+    check('trip-to-oaxaca', 5, false);
+    check('packing', 1, false);
+    check('day-trips', 5, true);
+    const before = text.split('\n');
+    const after = renderer.toMarkdown().split('\n');
+    expect(after).toHaveLength(before.length);
+    expect(after.map((line, index) => (line === before[index] ? null : `${before[index]} → ${line}`)).filter(Boolean)).toEqual([
+      '> - [ ] Book the flights → > - [x] Book the flights',
+      '>   - [X] The form → >   - [ ] The form',
+      '> * [x] A hat <!-- the wide one --> → > * [ ] A hat <!-- the wide one -->',
+      '  > > - [ ] Check the road first →   > > - [x] Check the road first',
+    ]);
+  });
+
+  it('checking a box keeps a note Orbit wrote quoted, and the file\'s line endings', () => {
+    const text = '# Map\r\n## Groceries\r\n> Shop on Friday.\r\n>\r\n> - [ ] Milk\r\n> - [ ] Eggs\r\n';
+    const { renderer } = mount(text);
+    const groceries = renderer.getDocument()!.root.children[0];
+    renderer.updateNode('groceries', { note: setNoteCheckbox(groceries.note!, 3, true)! });
+    expect(renderer.toMarkdown()).toBe(text.replace('> - [ ] Eggs', '> - [x] Eggs'));
+  });
+
+  it('a note that changes more than lines in place is written again whole, and reads back', () => {
+    const { renderer } = mount('# Map\n## A\nFirst words.\n> - [ ] One\n');
+    renderer.updateNode('a', { note: 'First words.\n\n- [ ] One\n- [ ] Two' });
+    const saved = renderer.toMarkdown();
+    expect(parseOrbit(saved).root.children[0].note).toBe('First words.\n\n- [ ] One\n- [ ] Two');
+    expect(saved).toContain('> - [ ] Two');
   });
 
   it('a number changed among four short attributes stays on the idea\'s line', () => {

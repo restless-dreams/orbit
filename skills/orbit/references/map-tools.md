@@ -122,9 +122,9 @@ For anything else, such as the Vercel AI SDK or LangChain, build the tools from 
 | --- | --- | --- |
 | `read_map` | The map as an outline: each node's title, id and attributes, and the start of its note. A big map is cut short, whole levels first, with what's left out counted. | `node_id` (to read one branch), `depth` |
 | `find_nodes` | Searches titles, notes and tags, in any case and with or without accents, and statuses by what they mean: `done` finds `shipped` too. | `query`, `status`, `tag` |
-| `read_node` | Everything about one node: its whole note, its picture, video or page, where it is, its children, and the nodes that link to it. | `node_id` |
+| `read_node` | Everything about one node: its whole note, its picture, video or page, its files, where it is, its children, and the nodes that link to it. | `node_id` |
 | `add_nodes` | Adds nodes, or whole branches, written as a markdown list. | `parent_id`, `outline`, `index` |
-| `update_node` | Changes a title or attributes, and `clear` removes attributes. | `node_id`, `text`, `note`, `status`, `priority`, `tags`, `icon`, `color`, `link`, `image`, `video`, `audio`, `embed`, `collapsed`, `clear` |
+| `update_node` | Changes a title or attributes, and `clear` removes attributes. | `node_id`, `text`, `note`, `status`, `priority`, `due`, `tags`, `icon`, `color`, `link`, `image`, `video`, `audio`, `embed`, `collapsed`, `clear` |
 | `move_node` | Moves a branch under another node, or to another place among its siblings. | `node_id`, `parent_id`, `index` |
 | `reorder_children` | Puts all the children of a node in a new order at once: to sort them, or to group them. | `parent_id`, `order` |
 | `remove_node` | Removes a branch. Never the root. | `node_id` |

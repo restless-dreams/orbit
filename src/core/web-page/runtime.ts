@@ -50,6 +50,8 @@ export const startWebPage = (page: Document = document): OrbitSVGRenderer | null
     language: data.language,
     strings: data.strings,
     insets: EXPLORING_INSETS,
+    // A page carries a map's pictures and sounds, never its files: it lists them, and says they stayed with the map.
+    openFiles: false,
   });
 
   layOutForPrint(page, element('page-print'), map, data);

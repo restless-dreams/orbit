@@ -87,6 +87,33 @@
     white-space: nowrap;
   }
 
+  // A node up close (see `spotlight`): the sheet's backdrop over the rest of the
+  // map, the node's circle cut out of it. It takes every press over the map, the
+  // circle's too, so nothing under it reacts until the node is back in its place.
+  &__spotlight {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    pointer-events: auto;
+    touch-action: none;
+  }
+
+  &__spotlight-scrim {
+    fill: var(--_orbit-sheet-backdrop);
+  }
+
+  // With reduced motion the camera doesn't fly to the node: the scrim fades in instead.
+  &__spotlight--fading {
+    transition: opacity 240ms ease;
+
+    @starting-style {
+      opacity: 0;
+    }
+  }
+
   // Components set display themselves, which would otherwise beat `hidden`.
   [hidden] {
     display: none !important;
@@ -227,12 +254,14 @@
   }
 
   // A crowded orbit's planets don't grow under the pointer: a drag or a zoom
-  // passes it over dozens of them, each animating for a while after.
-  &:not(#{&}--crowded):hover &__body {
+  // passes it over dozens of them, each animating for a while after. Nor does
+  // one up close (see `spotlight`), which a touch leaves hovered on phones:
+  // what the page lays over it has to cover the circle the map says it has.
+  &:not(#{&}--crowded):not(#{&}--spotlit):hover &__body {
     transform: scale(1.045);
   }
 
-  &:not(#{&}--crowded):active &__body {
+  &:not(#{&}--crowded):not(#{&}--spotlit):active &__body {
     transform: scale(0.97);
   }
 
@@ -304,8 +333,32 @@
   &__status,
   &__marker,
   &__play,
-  &__sound {
+  &__sound,
+  &__files {
     pointer-events: none;
+  }
+
+  // Up close (see `spotlight`), what the page lays over the node shows instead of
+  // its badges and focus ring, and at that size it has no shadow to blur.
+  &__status,
+  &__marker,
+  &__play,
+  &__sound,
+  &__files {
+    transition: opacity 160ms ease;
+  }
+
+  &--spotlit &__status,
+  &--spotlit &__marker,
+  &--spotlit &__play,
+  &--spotlit &__sound,
+  &--spotlit &__files {
+    opacity: 0;
+  }
+
+  &--spotlit &__shadow,
+  &--spotlit &__focus-ring {
+    display: none;
   }
 
   // The rim: the theme's stroke color, mixed with the node's own.
@@ -406,14 +459,44 @@
     }
   }
 
+  // A paperclip on the note marker's color, and the count of files beside it
+  // from two on, all in the badge's own units, as the sound wave's bars are.
+  // Both are drawn in the badge's rim color, which every theme sets apart from
+  // the marker's (4.5:1 or more).
+  &__files {
+    // The marker's rim: 0.2 of the badge is its 0.04 of the planet.
+    rect {
+      fill: var(--_orbit-note-indicator);
+      stroke: var(--_orbit-badge-stroke);
+      stroke-width: 0.2;
+    }
+
+    path {
+      fill: none;
+      stroke: var(--_orbit-badge-stroke);
+      stroke-width: 0.17;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    text {
+      fill: var(--_orbit-badge-stroke);
+      font-family: var(--_orbit-label-font);
+      font-size: 1.35px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+  }
+
   &--moon {
     cursor: pointer;
   }
 
-  // The focused node's buttons already offer its note and media.
+  // The focused node's buttons already offer its note, media and files.
   &--sun &__marker,
   &--sun &__play,
-  &--sun &__sound {
+  &--sun &__sound,
+  &--sun &__files {
     display: none;
   }
 
@@ -435,7 +518,8 @@
   &--speck &__marker,
   &--speck &__status,
   &--speck &__play,
-  &--speck &__sound {
+  &--speck &__sound,
+  &--speck &__files {
     display: none;
   }
 
@@ -577,6 +661,33 @@
   font-variant-numeric: tabular-nums;
   translate: -50% -50%;
   pointer-events: none;
+}
+
+// An idea's date at its node's lower left, across from its "+N" and drawn
+// like it (`showsDateChip` in views.ts): names inside the node keep clear of
+// both. Past, while the idea isn't done, it takes the attention color.
+.orbit-date {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--_orbit-control-background);
+  color: var(--_orbit-control-muted-text);
+  z-index: 1;
+  font-size: 10.5px;
+  font-weight: 650;
+  // 15 px tall in any font, as a "+N" is.
+  line-height: 13px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  translate: -50% -50%;
+  pointer-events: none;
+
+  &--overdue {
+    color: var(--_orbit-overdue);
+    box-shadow: inset 0 0 0 1px var(--_orbit-overdue);
+  }
 }
 
 // Action badges around the sun
@@ -932,6 +1043,37 @@
     white-space: nowrap;
   }
 
+  // An idea with a date: its name, cut short where it must, and its date after it, whole.
+  .orbit-outline__dated {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+  }
+
+  .orbit-outline__name,
+  .orbit-outline__date {
+    width: auto;
+    padding: 0;
+    border-radius: 0;
+  }
+
+  .orbit-outline__name {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .orbit-outline__date {
+    flex: none;
+    color: var(--_orbit-control-muted-text);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .orbit-outline__date--overdue {
+    color: var(--_orbit-overdue);
+    font-weight: 600;
+  }
+
   button {
     cursor: pointer;
 
@@ -1276,6 +1418,25 @@
       background: none;
       box-shadow: inset 0 0 0 1px var(--_orbit-chip-background);
     }
+
+    // An idea's date, after a calendar.
+    &--date {
+      gap: 5px;
+      padding-left: 8px;
+      font-variant-numeric: tabular-nums;
+
+      .orbit-icon {
+        width: 14px;
+        height: 14px;
+        stroke-width: 2;
+      }
+    }
+
+    // Past, while the idea isn't done.
+    &--overdue {
+      color: var(--_orbit-overdue);
+      box-shadow: inset 0 0 0 1px var(--_orbit-overdue);
+    }
   }
 
   // A node type's own section.
@@ -1477,6 +1638,17 @@
       padding-left: 22px;
     }
 
+    // A list with checkboxes keeps room for them where its bullets go.
+    .orbit-note__checklist {
+      padding-left: 28px;
+    }
+
+    // A list inside an item belongs to it: the next item follows it as closely as any other.
+    li > ul,
+    li > ol {
+      margin-bottom: 0;
+    }
+
     h3,
     h4,
     h5 {
@@ -1514,6 +1686,131 @@
       border-left: 3px solid var(--_orbit-sheet-border);
       color: var(--_orbit-sheet-muted-text);
     }
+  }
+
+  // An idea's files, after its note: a row for each, its kind's icon in a
+  // tinted square, its name, and its kind and size under it.
+  &__files {
+    margin-top: 16px;
+
+    &:first-child {
+      margin-top: 0;
+    }
+  }
+
+  &__files-heading {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 6px;
+    color: var(--_orbit-sheet-muted-text);
+    font-size: 12px;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    line-height: 1.4;
+
+    .orbit-icon {
+      width: 15px;
+      height: 15px;
+    }
+  }
+
+  &__file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0 -10px;
+    padding: 0;
+    list-style: none;
+  }
+
+  &__file {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 52px;
+    padding: 6px 10px;
+    border: 0;
+    border-radius: 14px;
+    background: none;
+    color: var(--_orbit-sheet-text);
+    font: inherit;
+    text-align: start;
+  }
+
+  button#{&}__file {
+    cursor: pointer;
+
+    &:hover {
+      background: color-mix(in srgb, var(--_orbit-sheet-text) 8%, transparent);
+    }
+
+    &:active {
+      background: color-mix(in srgb, var(--_orbit-sheet-text) 12%, transparent);
+    }
+
+    &:focus-visible {
+      outline: 2.5px solid var(--_orbit-focus-ring);
+      outline-offset: -2.5px;
+    }
+  }
+
+  &__file-icon {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: var(--_orbit-chip-background);
+    color: var(--_orbit-chip-text);
+
+    .orbit-icon {
+      width: 22px;
+      height: 22px;
+    }
+  }
+
+  &__file-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.3;
+  }
+
+  &__file-name {
+    font-size: 14px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__file-facts {
+    color: var(--_orbit-sheet-muted-text);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__file-opens {
+    flex: none;
+    color: var(--_orbit-sheet-muted-text);
+
+    .orbit-icon {
+      width: 18px;
+      height: 18px;
+    }
+  }
+
+  // Under files a page carries without them, as a web page made from a map.
+  &__files-stayed {
+    margin: 6px 0 0;
+    color: var(--_orbit-sheet-muted-text);
+    font-size: 13px;
+    line-height: 1.45;
   }
 
   &__footer {
@@ -1609,6 +1906,136 @@
 @keyframes orbit-sheet-up {
   from {
     transform: translateY(100%);
+  }
+}
+
+// What notes have besides text (renderNoteMarkdown), wherever a note shows:
+// checklists, whose boxes stand where a list's bullets go, and tables, each
+// in a box that scrolls sideways when it's wider than the note. The colors
+// are the detail sheet's, with plain ones for notes shown outside a map;
+// print.scss draws them for paper.
+.orbit-note {
+  &__checklist {
+    padding-inline-start: 28px;
+  }
+
+  &__item {
+    list-style: none;
+  }
+
+  // A checklist item's box and its text: a press anywhere on it checks the box.
+  &__check {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-inline-start: -28px;
+    cursor: pointer;
+  }
+
+  &__check--disabled {
+    cursor: auto;
+  }
+
+  &__box {
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    flex: none;
+    box-sizing: border-box;
+    width: 18px;
+    height: 18px;
+    // In the middle of the text's first line.
+    margin: max(0px, calc(0.8em - 9px)) 0 0;
+    border: 2px solid var(--_orbit-sheet-muted-text, currentColor);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--_orbit-control-active-text, Canvas);
+    font: inherit;
+    cursor: inherit;
+    transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+
+    // The check: two sides of a box, turned, drawn when it's checked.
+    &::after {
+      content: '';
+      position: absolute;
+      top: 1px;
+      left: 4px;
+      box-sizing: border-box;
+      width: 6px;
+      height: 10px;
+      border: solid currentColor;
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg) scale(0);
+      transition: transform 120ms ease;
+    }
+
+    &:checked {
+      border-color: var(--_orbit-control-active-background, currentColor);
+      background: var(--_orbit-control-active-background, currentColor);
+
+      &::after {
+        transform: rotate(45deg) scale(1);
+      }
+    }
+
+    &:enabled:hover {
+      box-shadow: 0 0 0 7px color-mix(in srgb, var(--_orbit-sheet-text, currentColor) 8%, transparent);
+    }
+
+    &:focus-visible {
+      outline: 2.5px solid var(--_orbit-focus-ring, Highlight);
+      outline-offset: 2px;
+    }
+  }
+
+  &__label {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  // A checked item reads as done.
+  &__box:checked + &__label {
+    color: var(--_orbit-sheet-muted-text, inherit);
+    text-decoration: line-through;
+  }
+
+  &__table {
+    box-sizing: border-box;
+    max-width: 100%;
+    margin: 0 0 12px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    border: 1px solid var(--_orbit-sheet-border, rgba(127, 127, 127, 0.35));
+    border-radius: 12px;
+
+    table {
+      min-width: 100%;
+      border-collapse: collapse;
+      font-variant-numeric: tabular-nums;
+    }
+
+    th {
+      background: var(--_orbit-chip-background, rgba(127, 127, 127, 0.12));
+      font-weight: 650;
+    }
+
+    tbody .orbit-note__cell {
+      border-top: 1px solid var(--_orbit-sheet-border, rgba(127, 127, 127, 0.35));
+    }
+  }
+
+  // A cell keeps its text to one line, so a narrow note scrolls a wide table rather than squeezing it. A long one wraps.
+  &__cell {
+    padding: 8px 12px;
+    text-align: start;
+    vertical-align: top;
+    white-space: nowrap;
+
+    &--long {
+      min-width: 14em;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
   }
 }
 
@@ -2457,6 +2884,10 @@
     background: rgba(127, 127, 127, 0.14);
   }
 
+  .orbit-note__box:enabled:hover {
+    box-shadow: 0 0 0 7px rgba(127, 127, 127, 0.14);
+  }
+
   .orbit-viewer__art--made {
     background: var(--orbit-art-color, #9ed5fd);
   }
@@ -2475,6 +2906,8 @@
   .orbit *,
   .orbit-sheet,
   .orbit-sheet *,
+  .orbit-note__box,
+  .orbit-note__box::after,
   .orbit-viewer,
   .orbit-viewer * {
     transition: none !important;
@@ -2486,6 +2919,17 @@
   .orbit-node__focus-ring,
   .orbit-add__focus-ring {
     stroke: Highlight;
+  }
+
+  // A checkbox is drawn by its border and its check, in the reader's colors.
+  .orbit-note__box {
+    border-color: CanvasText;
+    color: HighlightText;
+
+    &:checked {
+      border-color: Highlight;
+      background: Highlight;
+    }
   }
 
   // Forced colors paint the page in the reader's colors but leave strokes as written: a theme's rings and lines,

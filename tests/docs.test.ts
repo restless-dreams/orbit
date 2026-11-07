@@ -226,7 +226,7 @@ describe('the files coding agents read', () => {
 });
 
 describe('the languages guide', () => {
-  test('lists every word Orbit says, in English and Spanish, as the languages have them', () => {
+  test('lists every word Orbit says, in English, Spanish and Brazilian Portuguese, as the languages have them', () => {
     const guide = readFileSync(join(import.meta.dir, '../docs/languages.md'), 'utf8');
     const rows = guide.split('\n').filter((line) => /^\| `\w+` \|/.test(line));
     const table = (language: string) => (new OrbitWords(language) as unknown as { table: Record<string, string | Record<string, string>> }).table;
@@ -235,6 +235,7 @@ describe('the languages guide', () => {
       : Object.entries(value).map(([category, text]) => `${category}: ${text}`).join('; ')).replace(/\|/g, '\\|');
     const english = table('en');
     const spanish = table('es');
-    expect(rows).toEqual(Object.keys(english).map((key) => `| \`${key}\` | ${show(english[key])} | ${show(spanish[key])} |`));
+    const portuguese = table('pt-BR');
+    expect(rows).toEqual(Object.keys(english).map((key) => `| \`${key}\` | ${show(english[key])} | ${show(spanish[key])} | ${show(portuguese[key])} |`));
   });
 });

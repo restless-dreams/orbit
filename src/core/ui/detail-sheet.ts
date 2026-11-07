@@ -1,5 +1,5 @@
 /**
- * The detail sheet: a node's media, note, status, tags and link. A sound
+ * The detail sheet: a node's media, note, files, status, date, tags and link. A sound
  * plays in Orbit's own player, which stops when the sheet closes. A native
  * `<dialog>` opened as a modal, so it sits in the top layer, traps focus,
  * closes with Esc and makes the page behind it inert. Phones get a bottom
@@ -17,8 +17,9 @@ import { isNodeLink } from '../node-links.js';
 import { AudioPlayer } from './audio-player.js';
 import { liveMotion } from './live-photo.js';
 import { focusedElement } from '../browser.js';
+import { FILE_ICONS, fileFacts, fileKind, fileName, nodeFiles } from '../files.js';
 
-export type DetailSection = 'details' | 'image' | 'video' | 'audio' | 'embed' | 'note';
+export type DetailSection = 'details' | 'image' | 'video' | 'audio' | 'embed' | 'note' | 'files';
 
 /** What the map tells the sheet about the node it shows, beyond its content: its type, actions and status look. */
 export interface SheetExtensions {
@@ -31,6 +32,9 @@ export interface SheetExtensions {
   actions(node: OrbitNode): { id: string; label: string; icon?: string }[];
   runAction(node: OrbitNode, action: string, event: MouseEvent): void;
   status(word: string): { tone: string; color?: string };
+
+  /** The node's date as the sheet shows it, as of now ("Fri, Nov 20, 9:30 AM"), and whether it's overdue; null without one. */
+  date?(node: OrbitNode): { text: string; overdue: boolean } | null;
 }
 
 export interface DetailRequest {
@@ -55,6 +59,12 @@ export interface DetailRequest {
   /** Called, after the sheet closes, when the reader follows a link to another node. */
   onFollowLink?: (node: OrbitNode) => void;
 
+  /**
+   * Checks or unchecks a box of a checklist in the node's note, by its line
+   * in the note. Without it, the boxes show but don't change.
+   */
+  onCheck?: (node: OrbitNode, line: number, checked: boolean) => void;
+
   /** The map's node types, actions and status words. */
   extensions?: SheetExtensions;
 
@@ -64,6 +74,13 @@ export interface DetailRequest {
    * where the sheet's own player of a video file or a sound was.
    */
   onViewMedia?: (node: OrbitNode, kind: 'image' | 'video' | 'audio', event: MouseEvent, startAt?: number) => void;
+
+  /**
+   * Opens one of the node's files, by its place among them. Without it, the
+   * files are listed but don't open, and the sheet says they stayed with the
+   * map.
+   */
+  onOpenFile?: (node: OrbitNode, index: number, event: MouseEvent) => void;
 
   /** The map's words, in its language. Default: English. */
   words?: OrbitWords;
@@ -338,7 +355,12 @@ export class DetailSheet {
         paragraph.textContent = node.note;
         note.appendChild(paragraph);
       } else {
-        note.appendChild(renderNoteMarkdown(node.note, { baseUrl: request.baseUrl, resolveLink: request.resolveLink }));
+        const check = request.onCheck;
+        note.appendChild(renderNoteMarkdown(node.note, {
+          baseUrl: request.baseUrl,
+          resolveLink: request.resolveLink,
+          onCheck: check ? ({ line, checked }) => check(node, line, checked) : undefined,
+        }));
       }
 
       // `#id` links, from the markdown or a custom renderer, go to that node.
@@ -353,6 +375,12 @@ export class DetailSheet {
       });
 
       body.appendChild(note);
+    }
+
+    const files = this.buildFiles(request);
+
+    if (files) {
+      body.appendChild(files);
     }
 
     const footer = element('footer', 'orbit-sheet__footer');
@@ -449,6 +477,27 @@ export class DetailSheet {
     if (node.priority !== undefined) {
       const chip = element('span', 'orbit-sheet__chip');
       chip.textContent = this.words.text('priority', { priority: node.priority });
+      chips.push(chip);
+    }
+
+    const date = extensions?.date?.(node);
+
+    if (date) {
+      const chip = element('span', date.overdue ? 'orbit-sheet__chip orbit-sheet__chip--date orbit-sheet__chip--overdue' : 'orbit-sheet__chip orbit-sheet__chip--date');
+      const icon = createIcon('calendar');
+      icon.setAttribute('aria-hidden', 'true');
+      const text = element('span', '');
+      // Past and not done, it says so in words, not by its color alone; otherwise, screen readers hear what the date is.
+      text.textContent = date.overdue ? this.words.text('overdueLabel', { date: date.text }) : date.text;
+
+      if (!date.overdue) {
+        text.setAttribute('aria-hidden', 'true');
+        const label = element('span', 'orbit-visually-hidden');
+        label.textContent = this.words.text('dateLabel', { date: date.text });
+        chip.append(label);
+      }
+
+      chip.append(icon, text);
       chips.push(chip);
     }
 
@@ -608,6 +657,67 @@ export class DetailSheet {
     }
 
     return figures;
+  }
+
+  /**
+   * The node's files, last, as a list: each one's icon by its kind, its name,
+   * and its kind and size under it. A file that opens is a button, which
+   * says it opens; without `onOpenFile` they're only listed, with a line
+   * that says they stayed with the map.
+   */
+  private buildFiles(request: DetailRequest): HTMLElement | null {
+    const { node, onOpenFile } = request;
+    const files = nodeFiles(node);
+
+    if (files.length === 0) {
+      return null;
+    }
+
+    const section = element('section', 'orbit-sheet__files');
+    section.dataset.section = 'files';
+    const heading = element('h3', 'orbit-sheet__files-heading');
+    heading.append(createIcon('paperclip'), document.createTextNode(this.words.text('files')));
+    const list = element('ul', 'orbit-sheet__file-list');
+
+    for (const file of files) {
+      const index = node.files?.indexOf(file) ?? -1;
+      const name = fileName(file);
+      const facts = fileFacts(file, this.words);
+      const item = element('li', 'orbit-sheet__file-item');
+      const row = element(onOpenFile ? 'button' : 'div', 'orbit-sheet__file');
+      const icon = element('span', 'orbit-sheet__file-icon');
+      icon.appendChild(createIcon(FILE_ICONS[fileKind(file)]));
+      const text = element('span', 'orbit-sheet__file-text');
+      const title = element('span', 'orbit-sheet__file-name');
+      title.textContent = name;
+      const under = element('span', 'orbit-sheet__file-facts');
+      under.textContent = facts;
+      text.append(title, under);
+      row.append(icon, text);
+
+      if (row instanceof HTMLButtonElement && onOpenFile) {
+        row.type = 'button';
+        // Its name, then what it is: "Open Boarding pass.pdf, PDF, 48 kB".
+        row.setAttribute('aria-label', [this.words.text('openFile', { name }), ...facts.split(' · ')].join(', '));
+        const opens = element('span', 'orbit-sheet__file-opens');
+        opens.appendChild(createIcon('link'));
+        row.appendChild(opens);
+        row.addEventListener('click', (event) => onOpenFile(node, index, event));
+      }
+
+      item.appendChild(row);
+      list.appendChild(item);
+    }
+
+    section.append(heading, list);
+
+    if (!onOpenFile) {
+      const stayed = element('p', 'orbit-sheet__files-stayed');
+      stayed.textContent = this.words.text('filesStayed');
+      section.appendChild(stayed);
+    }
+
+    return section;
   }
 
   /**

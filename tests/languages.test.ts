@@ -54,22 +54,44 @@ const MAP = `# Launch plan
 ## Ship`;
 
 describe('the words a map speaks', () => {
-  test('English and Spanish are built in, with every word', () => {
-    expect(languageTags()).toEqual(expect.arrayContaining(['en', 'es']));
+  test('English, Spanish and Brazilian Portuguese are built in, with every word', () => {
+    expect(languageTags()).toEqual(expect.arrayContaining(['en', 'es', 'pt', 'pt-BR']));
     const table = (words: OrbitWords) => (words as unknown as { table: OrbitStrings }).table;
     const english = table(new OrbitWords('en'));
-    const spanish = table(new OrbitWords('es'));
-    expect(Object.keys(spanish).sort()).toEqual(Object.keys(english).sort());
 
-    for (const [key, value] of Object.entries(spanish)) {
-      const kind = typeof english[key as keyof OrbitStrings];
-      expect([key, typeof value]).toEqual([key, kind]);
-      // The same placeholders, in any order.
-      const placeholders = (text: unknown) => [...new Set(JSON.stringify(text).match(/\{\w+\}/g) ?? [])].sort();
-      expect([key, placeholders(value)]).toEqual([key, placeholders(english[key as keyof OrbitStrings])]);
+    for (const language of ['es', 'pt-BR']) {
+      const translated = table(new OrbitWords(language));
+      expect(Object.keys(translated).sort()).toEqual(Object.keys(english).sort());
+
+      for (const [key, value] of Object.entries(translated)) {
+        const kind = typeof english[key as keyof OrbitStrings];
+        expect([language, key, typeof value]).toEqual([language, key, kind]);
+        // The same placeholders, in any order.
+        const placeholders = (text: unknown) => [...new Set(JSON.stringify(text).match(/\{\w+\}/g) ?? [])].sort();
+        expect([language, key, placeholders(value)]).toEqual([language, key, placeholders(english[key as keyof OrbitStrings])]);
+      }
     }
 
     expect(new OrbitWords('es').text('zoomIn')).toBe('Acercar');
+    expect(new OrbitWords('pt-BR').text('zoomIn')).toBe('Aumentar o zoom');
+  });
+
+  test('Brazilian Portuguese is pt-BR’s and pt’s, and Portugal’s until it has its own', () => {
+    expect(new OrbitWords('pt-BR').language).toBe('pt-BR');
+    expect(new OrbitWords('pt').language).toBe('pt');
+
+    for (const requested of ['pt-BR', 'pt', 'pt-PT', 'pt_BR']) {
+      expect(new OrbitWords(requested).text('overview')).toBe('Visão geral');
+    }
+
+    // Portugal writes its numbers its own way, and Brazil gives 0 and 1 the same plural.
+    const portugal = new OrbitWords('pt-PT');
+    expect(portugal.language).toBe('pt');
+    expect(portugal.locale).toBe('pt-PT');
+    expect(new OrbitWords('pt-BR').count('ideaCount', 1)).toBe('1 ideia');
+    expect(new OrbitWords('pt-BR').count('ideaCount', 2400)).toBe('2.400 ideias');
+    expect(new OrbitWords('pt-BR').count('hiddenIdeaCount', 3)).toBe('3 ideias ocultas');
+    expect(new OrbitWords('pt-BR').list(['nota', 'imagem', 'link'])).toBe('nota, imagem e link');
   });
 
   test('a regional tag reads its language, and writes numbers its own way', () => {
@@ -158,6 +180,17 @@ describe('registering languages', () => {
     expect(new OrbitWords('es').text('zoomIn')).toBe('Acercar más');
     restore();
     expect(new OrbitWords('es').text('zoomIn')).toBe('Acercar');
+  });
+
+  test('Portugal’s words can come over the Brazilian ones, and Brazil keeps its own', () => {
+    undo.push(registerLanguage('pt-PT', { overview: 'Vista geral' }));
+    expect(new OrbitWords('pt-PT').text('overview')).toBe('Vista geral');
+    expect(new OrbitWords('pt-PT').text('zoomIn')).toBe('Aumentar o zoom');
+    expect(new OrbitWords('pt-BR').text('overview')).toBe('Visão geral');
+
+    // Changing pt's words leaves pt-BR's as they are.
+    undo.push(registerLanguage('pt', { overview: 'Vista geral' }));
+    expect(new OrbitWords('pt-BR').text('overview')).toBe('Visão geral');
   });
 
   test('a tag that isn’t one is refused', () => {
@@ -283,6 +316,46 @@ describe('a map in Spanish', () => {
     } finally {
       error.mockRestore();
     }
+  });
+});
+
+describe('a map in Brazilian Portuguese', () => {
+  test('its controls, outline, descriptions and statuses follow the page’s lang', () => {
+    const { host } = mountIn('pt-BR', MAP);
+    expect(label(host, '.orbit-controls__zoom button')).toBe('Aumentar o zoom');
+    expect(host.querySelector('.orbit-segmented__label')?.textContent).toBe('Foco');
+    expect(label(host, '.orbit-outline')).toBe('Tópicos do mapa');
+    expect(node(host, 'launch-plan').getAttribute('aria-label')).toBe('Launch plan, 3 ideias, tem nota e imagem');
+
+    const { host: statuses } = mountIn('pt', '# Plano\n## Rascunho <!-- orbit status: active -->\n## Entrega <!-- orbit status: done -->');
+    expect(node(statuses, 'rascunho').getAttribute('aria-label')).toBe('Rascunho, status: Em andamento');
+    expect(node(statuses, 'entrega').getAttribute('aria-label')).toBe('Entrega, status: Concluído');
+  });
+
+  test('its announcements and the + speak Portuguese, whatever the idea’s name', () => {
+    const { host, renderer } = mountIn('pt-BR', '# Viagem\n## Comida\n## Praias\n## Museus', { editable: true });
+    expect(label(host, '[data-orbit-add]')).toBe('Adicionar uma ideia a Viagem');
+    const live = host.querySelector('.orbit__live') as HTMLElement;
+
+    const announced = () => new Promise<string>((resolve) => {
+      setTimeout(() => resolve(live.textContent ?? ''), 60);
+    });
+
+    renderer.removeNode('museus');
+
+    return announced().then((removed) => {
+      // The idea's name comes after the words, which agree with "ideia" whatever the name is.
+      expect(removed).toBe('Ideia excluída: Museus');
+      renderer.moveNode('praias', 'comida');
+      return announced();
+    }).then((moved) => {
+      expect(moved).toBe('Ideia movida para Comida: Praias');
+    });
+  });
+
+  test('renderToSVGString writes its few words in Portuguese', () => {
+    expect(renderToSVGString('', { language: 'pt-BR' })).toContain('>Este mapa está vazio<');
+    expect(renderToSVGString('- Praia\n- Serra', { language: 'pt-BR' })).toContain('<title>Mapa sem título</title>');
   });
 });
 

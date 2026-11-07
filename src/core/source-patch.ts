@@ -139,6 +139,9 @@ class Patcher {
   /** The node whose own lines are being written. */
   private current: OrbitNode | null = null;
 
+  /** Lines of notes written again in place, by their line in the source (see `noteLines`). */
+  private readonly rewritten = new Map<number, string>();
+
   /** The options the frontmatter was written with. */
   writtenOptions: OrbitDocumentOptions = {};
 
@@ -348,6 +351,17 @@ class Patcher {
     const changes = this.changes(node, record, runs);
     this.current = node;
     const kindChanged = record.shape.kind !== context.kind;
+    const noteLines = changes.note && !kindChanged && !this.coarse && !this.noteInAttributes(record, runs) ? this.noteLines(node, record, runs) : null;
+
+    // A note whose changed lines are found in the source keeps its other lines as they are.
+    if (noteLines) {
+      changes.note = false;
+
+      for (const [line, text] of noteLines) {
+        this.rewritten.set(line, text);
+      }
+    }
+
     const pieces = nodePieces(node, context.kind === 'item', this.writing, ' '.repeat(contentColumn(record.shape, context)));
     const head = runs.filter((run) => run.after < 0);
 
@@ -400,11 +414,9 @@ class Patcher {
       media: before.media !== after.media,
       note: before.note !== after.note,
     };
-    // A note written (partly) as a `note:` attribute is written again as text whenever either changes.
-    const noteAttribute = /(^|[\s,])note\s*:/;
-    const titleComment = record.titleLine === null ? '' : (INLINE_COMMENT.exec(this.lines[record.titleLine]) ?? [''])[0];
 
-    if (runs.some((run) => run.role === 'attributes' && noteAttribute.test(this.text(run))) || noteAttribute.test(titleComment)) {
+    // A note written (partly) as a `note:` attribute is written again as text whenever either changes.
+    if (this.noteInAttributes(record, runs)) {
       if (changes.note || changes.attributes) {
         changes.note = true;
         changes.attributes = true;
@@ -420,6 +432,87 @@ class Patcher {
 
   private text(run: Run): string {
     return this.lines.slice(run.from, run.to).join('\n');
+  }
+
+  /** Whether the node's note is written, at least partly, as a `note:` attribute. */
+  private noteInAttributes(record: NodeRecord, runs: Run[]): boolean {
+    const noteAttribute = /(^|[\s,])note\s*:/;
+    const titleComment = record.titleLine === null ? '' : (INLINE_COMMENT.exec(this.lines[record.titleLine]) ?? [''])[0];
+    return runs.some((run) => run.role === 'attributes' && noteAttribute.test(this.text(run))) || noteAttribute.test(titleComment);
+  }
+
+  /** The source's lines from `from` to `to`, with the lines of notes written again in place. */
+  private writtenLines(from: number, to: number): string[] {
+    const lines = this.lines.slice(from, to);
+    return this.rewritten.size === 0 ? lines : lines.map((line, index) => this.rewritten.get(from + index) ?? line);
+  }
+
+  /**
+   * A changed note written line by line, in place: when it has as many
+   * lines as before, and each line that changed is on a line of the source
+   * with only quote markers and indentation before it, only those lines are
+   * written again, after the same markers. A box checked in a checklist
+   * changes just its line that way. Null when the note has to be written
+   * again whole. Each line found is read back with the rest of the map,
+   * so one found in the wrong place makes saving rewrite the idea instead.
+   */
+  private noteLines(node: OrbitNode, record: NodeRecord, runs: Run[]): Map<number, string> | null {
+    const before = (record.fields.note ?? '').split('\n');
+    const after = (node.note ?? '').split('\n');
+
+    if (before.length !== after.length) {
+      return null;
+    }
+
+    const written: number[] = [];
+
+    for (const run of runs) {
+      if (run.role === 'note' || run.role === 'end') {
+        for (let line = run.from; line < run.to; line += 1) {
+          written.push(line);
+        }
+      }
+    }
+
+    const changed = new Map<number, string>();
+    let next = 0;
+
+    for (let index = 0; index < before.length; index += 1) {
+      const line = before[index];
+
+      if (line.trim() === '' || after[index].trim() === '') {
+        // A blank line keeps the blocks around it apart: it can't change in place, nor can a line become one.
+        if (line !== after[index]) {
+          return null;
+        }
+
+        continue;
+      }
+
+      // The note's lines are in the order they're written: the next line that ends with this one, after markers alone.
+      let found: number | null = null;
+
+      while (next < written.length && found === null) {
+        const candidate = this.lines[written[next]];
+
+        if (candidate.endsWith(line) && /^[\s>]*$/.test(candidate.slice(0, candidate.length - line.length))) {
+          found = written[next];
+        }
+
+        next += 1;
+      }
+
+      if (found === null) {
+        return null;
+      }
+
+      if (after[index] !== line) {
+        const source = this.lines[found];
+        changed.set(found, `${source.slice(0, source.length - line.length)}${after[index]}`);
+      }
+    }
+
+    return changed.size > 0 ? changed : null;
   }
 
   /**
@@ -450,7 +543,7 @@ class Patcher {
     }
 
     for (const run of head) {
-      const lines = this.lines.slice(run.from, run.to);
+      const lines = this.writtenLines(run.from, run.to);
 
       switch (run.role) {
         case 'title': {
@@ -680,7 +773,7 @@ class Patcher {
       const definitions = run.role === 'end' && this.lines.slice(run.from, run.to).some((line) => line.trim() !== '');
 
       if (run.role === 'end' && !(definitions && changes.note)) {
-        out.push(...this.lines.slice(run.from, run.to));
+        out.push(...this.writtenLines(run.from, run.to));
       }
     }
   }
@@ -696,7 +789,7 @@ class Patcher {
       const dropped = (run.role === 'attributes' && changes.attributes) || (run.role === 'media' && changes.media) || (run.role === 'note' && changes.note);
 
       if (!dropped) {
-        out.push(...shiftLines(this.lines.slice(run.from, run.to), shift));
+        out.push(...shiftLines(this.writtenLines(run.from, run.to), shift));
       }
     }
   }

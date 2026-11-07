@@ -33,7 +33,7 @@ What `<OrbitMindMap>` takes: the map, the renderer's options as props, and a `<d
 | <a id="property-insets"></a> `insets?` | [`OrbitInsets`](index.md#orbitinsets) | The parts of the map the page covers with its own controls, such as a toolbar floating over its bottom edge, in px from each edge. Views are fitted into what's left, and the map still draws under the controls. Changing them moves a fitted view to its new place (see `insetsTransition`). | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`insets`](index.md#property-insets-2) |
 | <a id="property-insetstransition"></a> `insetsTransition?` | `"instant"` \| `"glide"` | How the insets a `setOptions` call brings take effect, for that call alone. By default (`'instant'`) a fitted view is kept within its new room at once, as it has to be while the keyboard slides or a sheet is dragged and the insets change every frame. `'glide'` glides it all the way from where it was, with the camera, for a change made once, such as a panel coming or going. | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`insetsTransition`](index.md#property-insetstransition-2) |
 | <a id="property-interactive"></a> `interactive?` | `boolean` | `false` draws a still picture: no clicks, drags, zoom or keyboard. Default true. | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`interactive`](index.md#property-interactive-3) |
-| <a id="property-language"></a> `language?` | `string` | The language of the map's controls, sheets and announcements: a BCP 47 tag such as `es` or `pt-BR`. Default: the language the map's element is in (the closest `lang` attribute), then English. Orbit speaks English and Spanish; `registerLanguage` adds others. | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`language`](index.md#property-language-3) |
+| <a id="property-language"></a> `language?` | `string` | The language of the map's controls, sheets and announcements: a BCP 47 tag such as `es` or `pt-BR`. Default: the language the map's element is in (the closest `lang` attribute), then English. Orbit speaks English, Spanish and Brazilian Portuguese; `registerLanguage` adds others. | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`language`](index.md#property-language-3) |
 | <a id="property-longpressdelay"></a> `longPressDelay?` | `number` | How long (ms) a finger or pen holds still on a node before it counts as a long press (see `onNodeContext`). Default 500; apps can pass their platform's own, such as Android's 400. | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`longPressDelay`](index.md#property-longpressdelay-2) |
 | <a id="property-maxdepth"></a> `maxDepth?` | `number` | Levels below the root to render (1 = root + direct children). | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`maxDepth`](index.md#property-maxdepth-3) |
 | <a id="property-mediaviewer"></a> ~~`mediaViewer?`~~ | `boolean` | **Deprecated** Use `showMediaViewer`, named as `showRings` and the other switches are: this name goes in Orbit 1.0. | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`mediaViewer`](index.md#property-mediaviewer-2) |
@@ -44,6 +44,7 @@ What `<OrbitMindMap>` takes: the map, the renderer's options as props, and a `<d
 | <a id="property-onedit"></a> `onEdit?` | (`edit`) => `void` | The map was edited with `addNode`, `updateNode`, `removeNode` or `moveNode`; save `renderer.toMarkdown()` to keep it. | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`onEdit`](index.md#property-onedit-2) |
 | <a id="property-oneditorclose"></a> `onEditorClose?` | (`event`) => `void` | The field for typing on the map closed. | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`onEditorClose`](index.md#property-oneditorclose-2) |
 | <a id="property-oneditoropen"></a> `onEditorOpen?` | (`event`) => `void` | The field for typing on the map opened. | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`onEditorOpen`](index.md#property-oneditoropen-2) |
+| <a id="property-onfileopen"></a> `onFileOpen?` | (`event`) => `false` \| `void` | One of a node's files was opened in the detail sheet. Return `false` to open it your way instead of in a new tab. | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`onFileOpen`](index.md#property-onfileopen-2) |
 | <a id="property-onfocuschange"></a> `onFocusChange?` | (`node`, `path`) => `void` | A new node is in focus, with the `path` from the root to it, as `focus-change` has them. | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`onFocusChange`](index.md#property-onfocuschange-2) |
 | <a id="property-onmediaclose"></a> `onMediaClose?` | (`event`) => `void` | The media viewer closed. | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`onMediaClose`](index.md#property-onmediaclose-2) |
 | <a id="property-onmediaopen"></a> `onMediaOpen?` | (`event`) => `void` | The media viewer opened, or stepped to another picture, video or sound. | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`onMediaOpen`](index.md#property-onmediaopen-2) |
@@ -52,7 +53,9 @@ What `<OrbitMindMap>` takes: the map, the renderer's options as props, and a `<d
 | <a id="property-onnodecontext"></a> `onNodeContext?` | (`event`) => `void` | A node was long-pressed, right-clicked or chosen with the context menu key: show a menu of things to do with it at (`x`, `y`). With this callback or a `node-context` listener, the press is yours: it doesn't open the node, and the browser's own menu stays closed. | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`onNodeContext`](index.md#property-onnodecontext-2) |
 | <a id="property-onnodedrag"></a> `onNodeDrag?` | (`event`) => `void` | A node is dragged somewhere else (see `editable` and the `node-drag` event). | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`onNodeDrag`](index.md#property-onnodedrag-2) |
 | <a id="property-onspinsettle"></a> `onSpinSettle?` | (`node`) => `void` | Called when a flicked orbit comes to rest, with the planet nearest the top. | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`onSpinSettle`](index.md#property-onspinsettle-2) |
+| <a id="property-onspotlight"></a> `onSpotlight?` | (`event`) => `void` | A node `spotlight` brought up close moved on screen, came to rest there, or is back in its place. | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`onSpotlight`](index.md#property-onspotlight-2) |
 | <a id="property-onviewmodechange"></a> `onViewModeChange?` | (`mode`) => `void` | - | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`onViewModeChange`](index.md#property-onviewmodechange-2) |
+| <a id="property-openfiles"></a> `openFiles?` | `boolean` | Whether the detail sheet opens a node's files: with `false` it lists them, each with its name, kind and size, and says they stayed with the map, as in a web page made without them. Default true. | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`openFiles`](index.md#property-openfiles-2) |
 | <a id="property-orbitanimation"></a> ~~`orbitAnimation?`~~ | `boolean` | **Deprecated** Use `animation`, as a document writes it: this name goes in Orbit 1.0. | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`orbitAnimation`](index.md#property-orbitanimation-3) |
 | <a id="property-orbitspeed"></a> ~~`orbitSpeed?`~~ | `number` | **Deprecated** Use `speed`, as a document writes it: this name goes in Orbit 1.0. | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`orbitSpeed`](index.md#property-orbitspeed-3) |
 | <a id="property-palette"></a> `palette?` | `string`[] | Node colors: the first for the root, then one per top-level branch (cycling). Default: the theme's. | [`OrbitRendererOptions`](index.md#orbitrendereroptions).[`palette`](index.md#property-palette-4) |
@@ -85,6 +88,18 @@ What `<OrbitMindMap>` takes: the map, the renderer's options as props, and a `<d
 
 #### Methods
 
+##### endSpotlight()
+
+```ts
+endSpotlight(): void;
+```
+
+Takes the node `spotlight` brought up close back to its place.
+
+###### Returns
+
+`void`
+
 ##### fit()
 
 ```ts
@@ -114,6 +129,24 @@ Flies to a node by id, in focus mode. Returns false when there's no such node.
 ###### Returns
 
 `boolean`
+
+##### getNodeCircle()
+
+```ts
+getNodeCircle(nodeId): OrbitNodeCircle | null;
+```
+
+Where a node is drawn on screen now (see `OrbitSVGRenderer.getNodeCircle`), or null.
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `nodeId` | `string` |
+
+###### Returns
+
+[`OrbitNodeCircle`](index.md#orbitnodecircle) \| `null`
 
 ##### getViewMode()
 
@@ -188,6 +221,25 @@ setViewMode(mode): void;
 ###### Returns
 
 `void`
+
+##### spotlight()
+
+```ts
+spotlight(nodeId, options?): boolean;
+```
+
+Brings a node up close, for something of your own to lie over it (see `OrbitSVGRenderer.spotlight`). Returns false when the view doesn't draw it.
+
+###### Parameters
+
+| Parameter | Type |
+| ------ | ------ |
+| `nodeId` | `string` |
+| `options?` | [`OrbitSpotlightOptions`](index.md#orbitspotlightoptions) |
+
+###### Returns
+
+`boolean`
 
 ##### zoomBy()
 

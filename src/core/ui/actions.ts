@@ -1,12 +1,13 @@
 /**
  * Buttons under the focused node: its type's details, its image, video,
- * sound, embed, note and link, then your own actions.
+ * sound, embed, note, link and files, then your own actions.
  */
 
 import type { OrbitContentAction, OrbitNode } from '../types.js';
 import { OrbitWords } from '../languages.js';
 import { actionLabel, type OrbitAction } from '../extensions.js';
 import { hasMediaSource } from '../media.js';
+import { nodeFiles } from '../files.js';
 import { isNodeLink } from '../node-links.js';
 import { guardUrl } from '../url-guard.js';
 import { focusedElement, overlayTransform, pointsCoarsely } from '../browser.js';
@@ -52,6 +53,10 @@ export const activeActions = (node: OrbitNode, hasDetails = false): ActionKind[]
     kinds.push('link');
   }
 
+  if (nodeFiles(node).length > 0) {
+    kinds.push('files');
+  }
+
   return kinds;
 };
 
@@ -63,6 +68,7 @@ const LABELS = {
   embed: 'openEmbed',
   note: 'readNote',
   link: 'openLink',
+  files: 'showFiles',
 } as const satisfies Record<ActionKind, string>;
 
 const ICONS: Record<ActionKind, IconName> = {
@@ -73,6 +79,7 @@ const ICONS: Record<ActionKind, IconName> = {
   embed: 'embed',
   note: 'note',
   link: 'link',
+  files: 'paperclip',
 };
 
 /** What the bar asks the map about a node besides its content. */

@@ -9,7 +9,7 @@
 
 import type { OrbitNewNode, OrbitNode, OrbitNodeInput } from './types.js';
 import { branchColorsBefore, keepBranchColors, type BranchColorRules } from './branch-colors.js';
-import { mediaWithExtras, unreadAttributes } from './node-attributes.js';
+import { filesWithExtras, mediaWithExtras, unreadAttributes } from './node-attributes.js';
 import { readNodeInput } from './node-input.js';
 import { findIndexedLinkedNode, indexNodes, nodeLinksOf } from './node-links.js';
 import { findNodeById, getNodePath, nodeSlug, setParent } from './utils.js';
@@ -19,7 +19,7 @@ import { ideaName, isNewerFormat, newerFormatError } from './format-upgrades.js'
 
 /** The attributes `addNode` and `updateNode` set, in the order nodes list them. */
 const ATTRIBUTE_KEYS = [
-  'icon', 'color', 'paletteColor', 'status', 'priority', 'tags', 'collapsed', 'type', 'typeVersion', 'link', 'note', 'noteFormat', 'image', 'video', 'audio', 'embed', 'attrs',
+  'icon', 'color', 'paletteColor', 'status', 'priority', 'due', 'tags', 'collapsed', 'type', 'typeVersion', 'link', 'note', 'noteFormat', 'image', 'video', 'audio', 'embed', 'files', 'attrs',
 ] as const satisfies readonly Exclude<keyof OrbitNodeInput, 'text'>[];
 
 /** The attributes that are a file's, whose fields Orbit doesn't read are kept through edits (see `mediaWithExtras`). */
@@ -117,6 +117,8 @@ export const assignAttributes = (node: OrbitNode, changes: OrbitNodeInput): void
 
     if (value === undefined) {
       delete target[key];
+    } else if (key === 'files') {
+      target[key] = filesWithExtras(value as unknown[], target[key]);
     } else if (Array.isArray(value)) {
       target[key] = [...value];
     } else if (MEDIA_KEYS.has(key) && typeof value === 'object' && value !== null) {

@@ -57,6 +57,9 @@ export interface PlannedLabel {
 
   /** The width (px) of the node's "+N", which a name inside it keeps clear of; 0 when it shows none. */
   countWidth: number;
+
+  /** Whether the node shows its date, which a name inside it keeps clear of too. */
+  dated: boolean;
 }
 
 export interface LabelPlanOptions {
@@ -98,6 +101,16 @@ export interface LabelPlanOptions {
 
   /** Whether nodes show a "+N" for children that aren't drawn, which names inside them keep clear of: the map does, an export doesn't. */
   counts?: boolean;
+
+  /** Whether a node shows its date at this on-screen radius, which a name inside it keeps clear of: the map's nodes do, an export's don't. */
+  dated?(entry: DisplayNode, screenRadius: number): boolean;
+
+  /**
+   * Where a node's date chip is on the screen, for a node `screenRadius` px
+   * across centered at `center`; null when it shows none. Pills keep clear of
+   * other nodes' dates as they do of the nodes.
+   */
+  dateChip?(entry: DisplayNode, center: Point, screenRadius: number): Box | null;
 
   /** Boxes on the screen that no pill may cover, such as the field a node's text is typed in. */
   keepClear?: readonly Box[];
@@ -163,6 +176,21 @@ export const planLabels = (display: Display, order: DisplayNode[], options: Labe
     addDisc('', worldToScreen(camera, viewport, display.addSlot), display.addSlot.radius * camera.scale, 0.75);
   }
 
+  // And of the dates on the nodes, which cost covering as their node would. A pill keeps the room from a date it
+  // keeps from its own node: a name right against another node's "Tomorrow" reads as one pill.
+  const chips = new ScreenGrid<{ id: string; box: Box; cost: number }>(viewport);
+
+  if (options.dateChip) {
+    for (const entry of display.nodes.values()) {
+      const chip = entry.opacity > 0.3 ? options.dateChip(entry, worldToScreen(camera, viewport, entry), entry.radius * camera.scale) : null;
+
+      if (chip) {
+        const box = { left: chip.left - PILL_GAP, right: chip.right + PILL_GAP, top: chip.top - PILL_GAP, bottom: chip.bottom + PILL_GAP };
+        chips.add({ id: entry.id, box, cost: COVER_COST[entry.role] }, box);
+      }
+    }
+  }
+
   const taken = new ScreenGrid<Box>(viewport);
 
   // What must stay in view counts as a name already placed: no pill goes over it.
@@ -184,7 +212,8 @@ export const planLabels = (display: Display, order: DisplayNode[], options: Labe
     }
 
     const countWidth = countMeasure && showsCount(entry.role, screenRadius, entry.hiddenChildren) ? measureCount(entry.hiddenChildren, countMeasure) : 0;
-    const placement = labelPlacement(entry.role, screenRadius, entry.node.text, options.hasImage(entry), options.hasIcon?.(entry), measures.inside(entry.role, entry.node), !options.moving, countWidth, options.language);
+    const dated = options.dated?.(entry, screenRadius) ?? false;
+    const placement = labelPlacement(entry.role, screenRadius, entry.node.text, options.hasImage(entry), options.hasIcon?.(entry), measures.inside(entry.role, entry.node), !options.moving, countWidth, options.language, dated);
 
     if (placement === 'hidden' || (placement === 'outside' && options.inFlight)) {
       continue;
@@ -193,7 +222,7 @@ export const planLabels = (display: Display, order: DisplayNode[], options: Labe
     // While the map moves, a name starts to show only where the estimate would show it too, and during a
     // flight between views, only such names show at all; the rest wait for the map to be still.
     if (placement === 'inside' && options.moving && measures !== ESTIMATED_LABELS && (options.inFlight || !options.isShown?.(entry.id))
-      && labelPlacement(entry.role, screenRadius, entry.node.text, false, options.hasIcon?.(entry), INSIDE_ESTIMATE, true, countWidth, options.language) !== 'inside') {
+      && labelPlacement(entry.role, screenRadius, entry.node.text, false, options.hasIcon?.(entry), INSIDE_ESTIMATE, true, countWidth, options.language, dated) !== 'inside') {
       continue;
     }
 
@@ -224,8 +253,10 @@ export const planLabels = (display: Display, order: DisplayNode[], options: Labe
         return { side, offset: nudge, lines: lineCount, box: nudge === 0 ? box : outsideLabelBox(text, point, screenRadius, side, maximumWidth, nudge, lineCount, pill) };
       };
 
-      const coversNode = (box: Box) => discs.some(box, (disc) => disc.id !== entry.id && discOverlapsBox(disc, box));
-      const coverCost = (box: Box) => discs.sum(box, (disc) => (disc.id !== entry.id && discOverlapsBox(disc, box) ? disc.cost : 0));
+      const coversChip = (box: Box) => chips.some(box, (chip) => chip.id !== entry.id && overlaps(chip.box, box));
+      const coversNode = (box: Box) => discs.some(box, (disc) => disc.id !== entry.id && discOverlapsBox(disc, box)) || coversChip(box);
+      const coverCost = (box: Box) => discs.sum(box, (disc) => (disc.id !== entry.id && discOverlapsBox(disc, box) ? disc.cost : 0))
+        + chips.sum(box, (chip) => (chip.id !== entry.id && overlaps(chip.box, box) ? chip.cost : 0));
       const coversLabel = (box: Box) => taken.some(box, (other) => overlaps(box, other));
       const isFree = ({ box }: Spot) => insideViewport(box, viewport) && !coversLabel(box) && !coversNode(box);
       const spots = sides.map((side) => spotFor(side, 1));
@@ -256,7 +287,7 @@ export const planLabels = (display: Display, order: DisplayNode[], options: Labe
 
       // Moons are small, and a pill over some of them still leaves them seen: a planet whose name only didn't fit
       // inside it may cover moons, never another planet, the sun or the +.
-      const coversOnlyMoons = (box: Box) => !discs.some(box, (disc) => disc.id !== entry.id && disc.cost > COVER_COST.moon && discOverlapsBox(disc, box));
+      const coversOnlyMoons = (box: Box) => !discs.some(box, (disc) => disc.id !== entry.id && disc.cost > COVER_COST.moon && discOverlapsBox(disc, box)) && !coversChip(box);
 
       if (!spot && entry.role === 'sun') {
         // The focused node always says what it is, even over its neighbors, where it covers the fewest of them,
@@ -280,7 +311,7 @@ export const planLabels = (display: Display, order: DisplayNode[], options: Labe
       taken.add(spot.box, spot.box);
     }
 
-    planned.push({ entry, x: point.x, y: point.y, screenRadius, placement, direction, distance: fromCenter, offset, lines, width, opacity, text, countWidth });
+    planned.push({ entry, x: point.x, y: point.y, screenRadius, placement, direction, distance: fromCenter, offset, lines, width, opacity, text, countWidth, dated });
   }
 
   return planned;

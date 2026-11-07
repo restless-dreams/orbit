@@ -23,6 +23,19 @@ Every version of Orbit is tested against the maps earlier ones wrote
   `bun scripts/release-fixtures.ts` and read the diff.
 - A released version's folder is never changed: what it wrote is what
   people's files hold. RELEASE.md adds one at each release.
+- `kept/<version>/` is what a released version writes from today's sources,
+  which have attributes added after it (like `due`): the same files, made
+  the same way. It shows that version keeps what it doesn't read, when it
+  writes a map and when it edits one, and the test checks it does: every
+  idea's date comes out of its files as it comes out of `next/`'s. After a
+  change to the sources, write it again with that version, as for `0.1.0/`
+  below:
+
+  ```bash
+  mkdir /tmp/orbit-0.4.0 && cd /tmp/orbit-0.4.0 && npm init -y && npm pkg set type=module && npm install @restless-dreams/orbit@0.4.0
+  cd -
+  bun scripts/release-fixtures.ts --orbit /tmp/orbit-0.4.0/node_modules/@restless-dreams/orbit/dist/index.js --version kept/0.4.0
+  ```
 
 `0.1.0/` was written by `@restless-dreams/orbit@0.1.0` from npm, the same
 Orbit Orbit for Android 0.2.0 bundles:
@@ -35,4 +48,5 @@ bun scripts/release-fixtures.ts --orbit /tmp/orbit-0.1.0/node_modules/@restless-
 
 `0.3.0/` was written by Orbit 0.3.0, which was made but never published: npm
 and GitHub go from 0.2.0 to 0.4.0. Its folder stays, as every version's does.
-`0.4.0/` was written by 0.4.0 as it was released: `next/` as it was then.
+`0.4.0/` and `0.5.0/` were written by those versions as they were released:
+`next/` as it was then.

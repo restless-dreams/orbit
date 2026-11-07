@@ -5,8 +5,12 @@
 
 export type IconName =
   | 'back' | 'home' | 'chevron' | 'focus' | 'overview' | 'zoom-in' | 'zoom-out' | 'fit'
-  | 'image' | 'video' | 'audio' | 'embed' | 'note' | 'link' | 'goto' | 'info' | 'close' | 'previous' | 'next' | 'list' | 'expand'
-  | 'play' | 'pause' | 'sound-on' | 'sound-off' | 'skip-back' | 'skip-forward' | 'live';
+  | 'image' | 'video' | 'audio' | 'embed' | 'note' | 'calendar' | 'link' | 'goto' | 'info' | 'close' | 'previous' | 'next' | 'list' | 'expand'
+  | 'play' | 'pause' | 'sound-on' | 'sound-off' | 'skip-back' | 'skip-forward' | 'live'
+  | 'paperclip' | 'file' | 'file-pdf' | 'file-document' | 'file-spreadsheet' | 'file-presentation' | 'file-archive';
+
+/** A page with its corner turned down: what every file's icon starts from. */
+const PAGE = ['M6 4h9l4 4v11a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z', 'M15 4v4h4'];
 
 const ICONS: Record<IconName, string[]> = {
   back: ['M19 12H5', 'M11 6l-6 6 6 6'],
@@ -22,6 +26,7 @@ const ICONS: Record<IconName, string[]> = {
   audio: ['M4 10v4', 'M8 7v10', 'M12 4v16', 'M16 7v10', 'M20 10v4'],
   embed: ['M8.5 8l-4 4 4 4', 'M15.5 8l4 4-4 4', 'M13.5 5l-3 14'],
   note: ['M6 4h9l4 4v11a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z', 'M15 4v4h4', 'M8.5 12.5h7', 'M8.5 16h5'],
+  calendar: ['M5 5.5h14a1 1 0 0 1 1 1V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6.5a1 1 0 0 1 1-1z', 'M4 10h16', 'M8.5 3.5v4', 'M15.5 3.5v4'],
   link: ['M14 4h6v6', 'M20 4l-9 9', 'M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4'],
   goto: ['M4 12h12', 'M12 7l5 5-5 5', 'M20 5v14'],
   info: ['M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 1 0 0-17z', 'M12 11v5.5', 'M12 7.75h.01'],
@@ -36,6 +41,14 @@ const ICONS: Record<IconName, string[]> = {
   'sound-off': ['M4 9.5h3.5L12 5.5v13l-4.5-4H4z', 'M16 9.5l5 5', 'M21 9.5l-5 5'],
   'skip-back': ['M5.2 12a6.8 6.8 0 1 0 2-4.8', 'M5 4.5v3.2h3.2'],
   'skip-forward': ['M18.8 12a6.8 6.8 0 1 1-2-4.8', 'M19 4.5v3.2h-3.2'],
+  // Three loops of wire on the diagonal.
+  paperclip: ['M16.73 10.26L10.62 17.53A2.5 2.5 0 0 1 6.79 14.32L13.86 5.89A1.75 1.75 0 0 1 16.54 8.14L10.11 15.8A1 1 0 0 1 8.58 14.52L13.4 8.77'],
+  file: PAGE,
+  'file-pdf': [...PAGE, 'M8.5 12.5h7v4.5h-7z', 'M10.5 14.75h3'],
+  'file-document': [...PAGE, 'M8.5 11h7', 'M8.5 14h7', 'M8.5 17h4'],
+  'file-spreadsheet': [...PAGE, 'M8.5 11h7v6h-7z', 'M8.5 14h7', 'M12 11v6'],
+  'file-presentation': [...PAGE, 'M12 10.5v3.5h3.5', 'M15.5 14a3.5 3.5 0 1 1-3.5-3.5'],
+  'file-archive': [...PAGE, 'M10 6h1.5', 'M10 8.5h1.5', 'M10 11h1.5', 'M9.25 13.5h3v3h-3z'],
   // A live photo: a sun, its ring, and a dashed orbit around them, last, so it can turn on its own.
   live: [
     'M12 10.9a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 1 0 0-2.2z',

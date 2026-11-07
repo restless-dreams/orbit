@@ -1,4 +1,4 @@
-/**
+/*!
  * Where Spanish words break across lines: the hyphenation patterns for
  * Spanish, `hyph-es` from the hyph-utf8 package
  * (https://www.hyphenation.org/tex), version 5.0 (2019-09-24).

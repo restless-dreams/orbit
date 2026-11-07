@@ -70,6 +70,15 @@ export interface OrbitNode {
   priority?: number;
 
   /**
+   * The idea's date: a day, `2026-11-20`, or a day and a time of day,
+   * `2026-11-20 09:30`, always in this form (see `parseDue`). It's local
+   * time, with no time zone: 9:30 is 9:30 wherever the map is read. Shown
+   * small on its planet, and in the detail sheet and the outline; once it's
+   * past, in the theme's attention color, unless the idea's status is done.
+   */
+  due?: string;
+
+  /**
    * A picture shown inside the node and in the detail sheet. A live photo's
    * picture carries its `motion`, the few seconds of video a phone records
    * around it, which the media viewer plays (see `OrbitMotion`).
@@ -89,6 +98,14 @@ export interface OrbitNode {
    * the node's video, embed or picture, as older versions read it.
    */
   audio?: { src: string; caption?: string };
+
+  /**
+   * Files the idea holds: a PDF, a spreadsheet, a ticket, any file, each
+   * by its address (`media/boarding-pass.pdf`). Its planet shows a
+   * paperclip with how many, and the detail sheet lists them; opening one
+   * fires `file-open` (see `OrbitFile`).
+   */
+  files?: OrbitFile[];
 
   /** Attributes Orbit doesn't use itself, kept for your own code (`<!-- orbit owner: Ana -->`). */
   attrs?: Record<string, unknown>;
@@ -119,8 +136,27 @@ export interface OrbitMotion {
   still?: number;
 }
 
-/** Orbit's own buttons for a node: its picture, video, sound, embed, note, link, and its type's details. */
-export type OrbitContentAction = 'image' | 'video' | 'audio' | 'embed' | 'note' | 'link' | 'details';
+/**
+ * A file an idea holds (see `OrbitNode.files`). Written `media/report.pdf`,
+ * or with what Orbit shows of it without opening it:
+ * `{ src: media/report.pdf, name: Q3 report.pdf, type: application/pdf, size: 482133 }`.
+ */
+export interface OrbitFile {
+  /** Its address: relative ones resolve against `baseUrl`, as every media address does. */
+  src: string;
+
+  /** Its name as people know it, which its address may not keep. Without one, the last part of its address. */
+  name?: string;
+
+  /** Its media type, such as `application/pdf`. Without one, its kind comes from its name's extension. */
+  type?: string;
+
+  /** How big it is, in bytes. */
+  size?: number;
+}
+
+/** Orbit's own buttons for a node: its picture, video, sound, embed, note, link, files, and its type's details. */
+export type OrbitContentAction = 'image' | 'video' | 'audio' | 'embed' | 'note' | 'link' | 'files' | 'details';
 
 /** A button pressed under the focused node or in its detail sheet. */
 export interface OrbitActionEvent {
@@ -191,6 +227,73 @@ export interface OrbitEventMap {
 
   /** The video, sound or live photo's motion in the media viewer started, paused, moved on, ended or was muted; while it plays, its time a few times a second. */
   'media-state': OrbitMediaState;
+
+  /**
+   * One of a node's files was opened in the detail sheet. Without
+   * `preventDefault()`, the browser opens its address in a new tab: an app
+   * that keeps the files itself takes the press and opens the file its way.
+   */
+  'file-open': OrbitFileOpenDetail;
+
+  /** A node `spotlight` brought up close moved on screen, came to rest there, or is back in its place (see `phase`). */
+  spotlight: OrbitSpotlightEvent;
+}
+
+/** Where a node is drawn on screen: its circle's center, in px from the map's top left, and its radius in px. */
+export interface OrbitNodeCircle {
+  x: number;
+  y: number;
+  radius: number;
+}
+
+/** How `spotlight` brings a node up close. */
+export interface OrbitSpotlightOptions {
+  /**
+   * How much of the room the node fills across, along the room's shorter
+   * side: more than 0, up to 1. Default 0.86.
+   */
+  share?: number;
+
+  /**
+   * The parts of the map the page covers with its own controls while the
+   * node is up close, such as a toolbar for what's laid over it, in px: the
+   * node is held in the middle of what's left. Default none; the map's own
+   * `insets` aren't used, nor changed.
+   */
+  insets?: OrbitInsets;
+}
+
+/**
+ * A node `spotlight` brought up close, and where its circle is on screen
+ * (see `OrbitNodeCircle`). `move` as the camera flies to it or back from
+ * it, on each frame its circle moves; `rest` once the flight to it lands,
+ * and again whenever its circle changes while it's held there (the map
+ * resized, say), for whatever the page lays over it to follow; `end` once
+ * the camera is back from it and the map takes input again, with where the
+ * node is then.
+ */
+export interface OrbitSpotlightEvent extends OrbitNodeCircle {
+  phase: 'move' | 'rest' | 'end';
+  node: OrbitNode;
+}
+
+/** One of a node's files opened in the detail sheet. */
+export interface OrbitFileOpenEvent {
+  node: OrbitNode;
+
+  /** The file, as the node has it. */
+  file: OrbitFile;
+
+  /** Its place among the node's files, from 0. */
+  index: number;
+
+  sourceEvent: MouseEvent | KeyboardEvent;
+}
+
+/** The `file-open` event: call `preventDefault()` to open the file your way, instead of in a new tab. */
+export interface OrbitFileOpenDetail extends OrbitFileOpenEvent {
+  preventDefault(): void;
+  readonly defaultPrevented: boolean;
 }
 
 /** A node's picture, video or sound in the media viewer. */
@@ -300,19 +403,20 @@ export interface OrbitEdit {
  * What `addNode` and `updateNode` take: a node's text and attributes, read
  * as a file's are. The format's shorthands work here too: a picture, video,
  * sound or embed as its address (`{ image: 'summit.jpg' }`), a live photo's
- * motion as its own, tags as `'web, mobile'` and a type as `'task@2'`. A
- * value Orbit can't read throws a `TypeError` that says what it takes, and
- * the map stays as it was.
+ * motion as its own, tags as `'web, mobile'`, a type as `'task@2'` and a
+ * date as `'2026-11-20T09:30'`. A value Orbit can't read throws a
+ * `TypeError` that says what it takes, and the map stays as it was.
  */
 export type OrbitNodeInput = Partial<Pick<
   OrbitNode,
-  'text' | 'icon' | 'color' | 'paletteColor' | 'status' | 'priority' | 'collapsed' | 'link' | 'note' | 'noteFormat' | 'type' | 'typeVersion' | 'attrs'
+  'text' | 'icon' | 'color' | 'paletteColor' | 'status' | 'priority' | 'due' | 'collapsed' | 'link' | 'note' | 'noteFormat' | 'type' | 'typeVersion' | 'attrs'
 >> & {
   tags?: string[] | string;
   image?: string | (Omit<NonNullable<OrbitNode['image']>, 'motion'> & { motion?: OrbitMotion | string });
   video?: string | OrbitNode['video'];
   audio?: string | OrbitNode['audio'];
   embed?: string | OrbitNode['embed'];
+  files?: string | OrbitFile | (string | OrbitFile)[];
 };
 
 /** What `addNode` takes: a node's text and attributes, and the nodes to add under it, as many levels down as you like. */
@@ -513,8 +617,8 @@ export interface OrbitRendererOptions {
   /**
    * The language of the map's controls, sheets and announcements: a BCP 47
    * tag such as `es` or `pt-BR`. Default: the language the map's element is
-   * in (the closest `lang` attribute), then English. Orbit speaks English and
-   * Spanish; `registerLanguage` adds others.
+   * in (the closest `lang` attribute), then English. Orbit speaks English,
+   * Spanish and Brazilian Portuguese; `registerLanguage` adds others.
    */
   language?: string;
 
@@ -640,6 +744,19 @@ export interface OrbitRendererOptions {
 
   /** The video, sound or live photo's motion in the media viewer started, paused, moved on, ended or was muted; while it plays, its time a few times a second. */
   onMediaState?: (state: OrbitMediaState) => void;
+
+  /**
+   * Whether the detail sheet opens a node's files: with `false` it lists
+   * them, each with its name, kind and size, and says they stayed with the
+   * map, as in a web page made without them. Default true.
+   */
+  openFiles?: boolean;
+
+  /** One of a node's files was opened in the detail sheet. Return `false` to open it your way instead of in a new tab. */
+  onFileOpen?: (event: OrbitFileOpenEvent) => void | false;
+
+  /** A node `spotlight` brought up close moved on screen, came to rest there, or is back in its place. */
+  onSpotlight?: (event: OrbitSpotlightEvent) => void;
 
   /** Renders a note to HTML yourself. The HTML is used as-is: sanitize untrusted notes. */
   noteRenderer?: (note: string, context: { node: OrbitNode; format: 'markdown' | 'plain' }) => string;

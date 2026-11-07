@@ -1,6 +1,7 @@
 import type { DiagnosticCollector } from './diagnostics.js';
-import type { OrbitNode } from './types.js';
+import type { OrbitFile, OrbitNode } from './types.js';
 import { isPaletteNumber } from './branch-colors.js';
+import { DUE_FORMS, readDue } from './dates.js';
 import { didYouMean } from './suggest.js';
 import { assignKey } from './yaml-mini.js';
 
@@ -243,6 +244,92 @@ export const readAudio = (value: unknown): AudioMedia | undefined => {
   return audio;
 };
 
+/**
+ * One of an idea's files: an address, or `{ src, name, type, size }`. A
+ * `size` that isn't a number of bytes, and fields Orbit doesn't read, are
+ * kept as written.
+ */
+export const readFile = (value: unknown): OrbitFile | undefined => {
+  const record = mediaRecord(value);
+
+  if (!record) {
+    return undefined;
+  }
+
+  const file: OrbitFile = { src: String(record.src) };
+  const name = optionalString(record.name);
+  const type = typeof record.type === 'string' && record.type.trim() !== '' ? record.type.trim() : undefined;
+  const size = typeof record.size === 'number' && Number.isFinite(record.size) && record.size >= 0 ? record.size : undefined;
+  const known = ['src'];
+
+  if (name !== undefined) {
+    file.name = name;
+    known.push('name');
+  }
+
+  if (type !== undefined) {
+    file.type = type;
+    known.push('type');
+  }
+
+  if (size !== undefined) {
+    file.size = size;
+    known.push('size');
+  }
+
+  keepExtras(file, record, known);
+  return file;
+};
+
+/**
+ * An idea's files: a list of addresses or `{ src, name, type, size }`, or
+ * one of them alone. Undefined when any of them isn't a file Orbit can read:
+ * the whole value is then kept as written, so saving loses none of them.
+ */
+export const readFiles = (value: unknown): OrbitFile[] | undefined => {
+  const entries = Array.isArray(value) ? value : [value];
+  const files = entries.map(readFile);
+  return files.every((file) => file !== undefined) ? files as OrbitFile[] : undefined;
+};
+
+/**
+ * An idea's files as the writers write them: each with its fields, its
+ * address first, as `src`, and the fields Orbit doesn't read after its own.
+ * So each address is on a line of its own after `src: `, even one written
+ * alone: apps that find a map's files by its text, as `media/…`, find it
+ * there in either flavor.
+ */
+export const filesValue = (files: readonly OrbitFile[]): Record<string, unknown>[] => {
+  return files.map((file) => ({
+    src: file.src,
+    ...(file.name === undefined ? {} : { name: file.name }),
+    ...(file.type === undefined ? {} : { type: file.type }),
+    ...(file.size === undefined ? {} : { size: file.size }),
+    ...mediaExtras(file),
+  }));
+};
+
+/**
+ * Files to set on a node, read as a file's are: each given as its address
+ * alone becomes `{ src }`, and each keeps the fields Orbit doesn't read of
+ * the node's `current` file with the same address, unless it has its own.
+ */
+export const filesWithExtras = (given: readonly unknown[], current: unknown): OrbitFile[] => {
+  const before = Array.isArray(current) ? current as unknown[] : [];
+
+  return given.map((entry) => {
+    // A file read from a file, or a copy of one, keeps its own fields Orbit doesn't read; any other is read as a file's.
+    const file = entry && typeof entry === 'object' && MEDIA_EXTRAS.has(entry) ? copyMedia(entry as OrbitFile) : readFile(JSON.parse(JSON.stringify(entry)));
+
+    if (!file) {
+      throw new TypeError('A file needs an address.');
+    }
+
+    keepExtrasOf(before.find((earlier) => sameFile(earlier, file)), file);
+    return file;
+  });
+};
+
 export const readEmbed = (value: unknown): EmbedMedia | undefined => {
   const record = mediaRecord(value);
 
@@ -263,8 +350,8 @@ export const readEmbed = (value: unknown): EmbedMedia | undefined => {
 
 /** The attributes every node takes, in `<!-- orbit … -->` blocks and in YAML. */
 export const NODE_ATTRIBUTE_KEYS = [
-  'color', 'paletteColor', 'icon', 'status', 'priority', 'tags', 'collapsed', 'link',
-  'note', 'noteFormat', 'image', 'video', 'audio', 'embed', 'caption', 'id', 'type',
+  'color', 'paletteColor', 'icon', 'status', 'priority', 'due', 'tags', 'collapsed', 'link',
+  'note', 'noteFormat', 'image', 'video', 'audio', 'embed', 'files', 'caption', 'id', 'type',
 ] as const;
 
 /**
@@ -281,6 +368,9 @@ const ATTRIBUTE_SYNONYMS: Record<string, string> = {
   colour: 'color',
   emoji: 'icon',
   state: 'status',
+  deadline: 'due',
+  dueDate: 'due',
+  due_date: 'due',
   tag: 'tags',
   labels: 'tags',
   url: 'link',
@@ -293,6 +383,9 @@ const ATTRIBUTE_SYNONYMS: Record<string, string> = {
   voice: 'audio',
   recording: 'audio',
   iframe: 'embed',
+  file: 'files',
+  attachment: 'files',
+  attachments: 'files',
   notes: 'note',
   description: 'note',
   details: 'note',
@@ -306,6 +399,13 @@ export interface AttributeVocabulary {
   keys: readonly string[];
   synonyms?: Readonly<Record<string, string>>;
 }
+
+/**
+ * What `type` takes, said when its version is past the whole numbers a
+ * number holds exactly (`Number.MAX_SAFE_INTEGER`), which would be written
+ * back with other digits.
+ */
+export const TYPE_WITH_VERSION = `one word, with a version up to ${Number.MAX_SAFE_INTEGER}`;
 
 /** A value Orbit reads as text: a string, or a number or true/false written without quotes. */
 const scalar = (value: unknown): string | undefined => {
@@ -387,6 +487,18 @@ export const assignNodeAttribute = (
 
       return;
     }
+    case 'due': {
+      const due = readDue(value);
+
+      // Kept as written otherwise, as a day that doesn't exist is: before Orbit read `due`, it was any app's own attribute.
+      if (due === null) {
+        keepUnread(node, key, value, diagnostics, line, DUE_FORMS);
+      } else {
+        node.due = due;
+      }
+
+      return;
+    }
     case 'tags': {
       // Joins any hashtags from the title. A single value may list several, as `palette` does: `tags: web, mobile`.
       const single = Array.isArray(value) ? undefined : scalar(value);
@@ -458,10 +570,18 @@ export const assignNodeAttribute = (
 
       // `task@2`: the version of the type the node was written for.
       const versioned = /^(.*\S)@(\d+)$/.exec(text.trim());
+      const version = versioned ? Number(versioned[2]) : undefined;
+
+      // A version past the whole numbers a number holds exactly would be written back with other digits: kept as written.
+      if (version !== undefined && !Number.isSafeInteger(version)) {
+        keepUnread(node, key, value, diagnostics, line, TYPE_WITH_VERSION);
+        return;
+      }
+
       node.type = versioned ? versioned[1] : text.trim();
 
-      if (versioned) {
-        node.typeVersion = Number(versioned[2]);
+      if (version !== undefined) {
+        node.typeVersion = version;
       }
 
       return;
@@ -496,6 +616,18 @@ export const assignNodeAttribute = (
         node.audio = audio;
       } else {
         keepUnread(node, key, value, diagnostics, line, 'a URL, or an object with a src');
+      }
+
+      return;
+    }
+    case 'files': {
+      const files = readFiles(value);
+
+      // Kept as written otherwise: before Orbit read `files`, it was any app's own attribute.
+      if (files) {
+        node.files = files;
+      } else {
+        keepUnread(node, key, value, diagnostics, line, 'a list of addresses, or of objects with a src');
       }
 
       return;

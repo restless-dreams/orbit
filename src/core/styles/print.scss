@@ -137,6 +137,11 @@
       padding-inline-start: 16pt;
     }
 
+    li > ul,
+    li > ol {
+      margin-bottom: 0;
+    }
+
     blockquote {
       padding-inline-start: 8pt;
       border-inline-start: 2pt solid var(--orbit-print-border, var(--_orbit-print-border));
@@ -164,6 +169,77 @@
     &--plain {
       white-space: pre-wrap;
     }
+
+    // Checklists on paper: an empty box, or a box with its check drawn in, in the text's color.
+    .orbit-note__checklist {
+      padding-inline-start: 16pt;
+    }
+
+    .orbit-note__check {
+      gap: 6pt;
+      margin-inline-start: -16pt;
+    }
+
+    .orbit-note__box {
+      width: 10pt;
+      height: 10pt;
+      margin: 2pt 0 0;
+      border: 1pt solid currentColor;
+      border-radius: 2pt;
+      color: inherit;
+
+      &::after {
+        top: 0.5pt;
+        left: 2.6pt;
+        width: 3.6pt;
+        height: 6.4pt;
+        border-width: 0 1.2pt 1.2pt 0;
+      }
+
+      &:checked {
+        border-color: currentColor;
+        background: none;
+      }
+    }
+
+    .orbit-note__box:checked + .orbit-note__label {
+      color: var(--orbit-print-muted-text, var(--_orbit-print-muted-text));
+    }
+
+    // Tables at the page's width: their cells wrap, as paper can't scroll.
+    .orbit-note__table {
+      margin: 0 0 4pt;
+      overflow: visible;
+      border: 0.75pt solid var(--orbit-print-border, var(--_orbit-print-border));
+      border-radius: 4pt;
+
+      table {
+        width: 100%;
+      }
+
+      th {
+        background: var(--orbit-print-chip-background, var(--_orbit-print-chip-background));
+      }
+
+      tbody .orbit-note__cell {
+        border-top: 0.75pt solid var(--orbit-print-border, var(--_orbit-print-border));
+      }
+
+      tr {
+        break-inside: avoid;
+      }
+    }
+
+    // A cell wraps between words, never inside one, so a column keeps at least its longest word's width.
+    .orbit-note__cell {
+      padding: 2pt 5pt;
+      white-space: normal;
+      overflow-wrap: break-word;
+
+      &--long {
+        min-width: 0;
+      }
+    }
   }
 
   &__media {
@@ -186,7 +262,28 @@
     overflow-wrap: anywhere;
   }
 
-  // A sound, by name: its icon before it, on the caption's line.
+  // An idea's files, by name, each with its kind's icon, its kind and its size.
+  &__files {
+    margin: 4pt 0 0;
+    padding: 0;
+    color: var(--orbit-print-muted-text, var(--_orbit-print-muted-text));
+    font-size: 8.5pt;
+    list-style: none;
+    break-inside: avoid;
+  }
+
+  &__file {
+    margin: 1pt 0 0;
+    overflow-wrap: anywhere;
+  }
+
+  &__file-name {
+    color: var(--orbit-print-text, var(--_orbit-print-text));
+    font-weight: 600;
+  }
+
+  // A sound, by name, and a file: its icon before it, on its line.
+  &__file .orbit-icon,
   &__media--audio &__caption .orbit-icon {
     width: 10pt;
     height: 10pt;

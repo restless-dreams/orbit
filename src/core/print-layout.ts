@@ -6,11 +6,13 @@
  */
 
 import { documentOf } from './dispatch.js';
+import { nodeDue } from './dates.js';
 import { documentToRendererOptions } from './document-options.js';
 import { MapExtensions, guarded, type OrbitNodeType, type OrbitStatusStyle } from './extensions.js';
 import { OrbitWords, type OrbitStrings } from './languages.js';
 import { hasMediaSource, videoPageUrl, youtubeThumbnailUrl } from './media.js';
 import { findIndexedLinkedNode, indexNodes, isNodeLink } from './node-links.js';
+import { FILE_ICONS, fileFacts, fileKind, fileName, nodeFiles } from './files.js';
 import { renderToSVGString } from './render-to-svg.js';
 import { currentOptions } from './renderer/options.js';
 import { ensureStyles } from './styles.js';
@@ -106,9 +108,9 @@ export const printTheme = (theme: string | OrbitRendererTheme | undefined): Orbi
  * Lays a map out for print in `container`, replacing what it held, and
  * returns the layout: the title, the map as a picture that fits the page,
  * then every idea in reading order, nested by depth, with its icon, status,
- * priority, tags, link (its address printed), note, picture and video. An
- * idea stays whole across page breaks, and a heading stays with what
- * follows it.
+ * priority, tags, link (its address printed), note, picture, video and files
+ * (by name, kind and size). An idea stays whole across page breaks, and a
+ * heading stays with what follows it.
  *
  * It's laid out on screen like any element: hide it there and show it in
  * print, as Orbit's web pages do.
@@ -269,10 +271,41 @@ const entryParts = (node: OrbitNode, layout: PrintContext): HTMLElement[] => {
   }
 
   parts.push(...mediaOf(node, layout));
+  const files = filesOf(node, layout);
+
+  if (files) {
+    parts.push(files);
+  }
+
   return parts;
 };
 
-/** The type, status, priority and tags, as the detail sheet shows them. */
+/**
+ * An idea's files, by name, with their kind and size: paper can't open them,
+ * and a PDF of the map doesn't carry them, so it names them.
+ */
+const filesOf = (node: OrbitNode, layout: PrintContext): HTMLElement | null => {
+  const files = nodeFiles(node);
+
+  if (files.length === 0) {
+    return null;
+  }
+
+  const list = element('ul', 'orbit-print__files');
+  list.setAttribute('aria-label', layout.words.text('files'));
+
+  for (const file of files) {
+    const item = element('li', 'orbit-print__file');
+    const name = element('span', 'orbit-print__file-name');
+    name.textContent = fileName(file);
+    item.append(createIcon(FILE_ICONS[fileKind(file)]), name, document.createTextNode(` · ${fileFacts(file, layout.words)}`));
+    list.appendChild(item);
+  }
+
+  return list;
+};
+
+/** The type, status, priority, date and tags, as the detail sheet shows them; the date with its year, as paper is read later. */
 const chipsOf = (node: OrbitNode, layout: PrintContext): HTMLElement | null => {
   const chips: HTMLElement[] = [];
   const typeLabel = layout.extensions.nodeType(node)?.label;
@@ -290,6 +323,12 @@ const chipsOf = (node: OrbitNode, layout: PrintContext): HTMLElement | null => {
 
   if (node.priority !== undefined) {
     chips.push(chip(layout.words.text('priority', { priority: node.priority })));
+  }
+
+  const due = nodeDue(node.due);
+
+  if (due) {
+    chips.push(chip(layout.words.text('dateLabel', { date: layout.words.mediumDate(due) })));
   }
 
   for (const tag of node.tags ?? []) {

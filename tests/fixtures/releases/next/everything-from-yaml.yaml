@@ -26,6 +26,13 @@ nodes:
         tags: [ux, q3]
         status: done
         priority: 2
+        due: "2026-11-20"
+        files:
+          - src: media/interviews.xlsx
+            name: Interviews (all 24).xlsx
+            type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+            size: 91200
+          - src: media/consent.pdf
         children:
           - text: Interviews
           - text: Survey
@@ -39,6 +46,7 @@ nodes:
           - text: Frontend
             paletteColor: 2
             link: "#research"
+            due: "2026-11-21 09:30"
           - text: Backend
             note: Plain text.
             noteFormat: plain

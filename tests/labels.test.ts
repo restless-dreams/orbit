@@ -53,6 +53,48 @@ describe('label planning', () => {
     expect(planet?.direction.y).not.toBe(1);
   });
 
+  test('a pill keeps clear of another node’s date, as of the node itself', () => {
+    const map = display(
+      entry('sun', 'sun', 0, 0, 40, 'Sun'),
+      entry('planet', 'planet', 0, -120, 12, 'A planet with a long name', 'sun'),
+    );
+
+    const side = (dateChip?: (item: DisplayNode) => Box | null) => {
+      const planned = planLabels(map, labelOrder(map.nodes.values()), { viewport, hasImage: picture('planet'), dateChip });
+      return planned.find((plan) => plan.entry.id === 'planet')?.direction;
+    };
+
+    // Free, the planet's pill goes under it…
+    expect(side()).toEqual({ x: 0, y: 1 });
+    // …and with another node's date there, elsewhere. Its own date is where its pill may go.
+    const date = { left: 150, right: 250, top: 100, bottom: 115 };
+    expect(side((item) => (item.id === 'sun' ? date : null))?.y).not.toBe(1);
+    expect(side((item) => (item.id === 'planet' ? date : null))).toEqual({ x: 0, y: 1 });
+  });
+
+  test('a pill keeps a little room from another node’s date, as from its own node', () => {
+    const map = display(
+      entry('sun', 'sun', 0, 0, 40, 'Sun'),
+      entry('planet', 'planet', 0, -120, 12, 'A planet with a long name', 'sun'),
+    );
+
+    const plan = (dateChip?: (item: DisplayNode) => Box | null) => {
+      return planLabels(map, labelOrder(map.nodes.values()), { viewport, hasImage: picture('planet'), dateChip }).find((planned) => planned.entry.id === 'planet');
+    };
+
+    // Free, the planet's pill goes under it: its box, a line high.
+    const free = plan();
+    expect(free?.direction).toEqual({ x: 0, y: 1 });
+    const left = (free?.x ?? 0) + (free?.offset ?? 0) - (free?.width ?? 0) / 2;
+    const top = (free?.y ?? 0) + (free?.distance ?? 0);
+
+    // Another node's date right against its left end, or 3 px from it, sends it elsewhere; 8 px away leaves it there.
+    const dateLeftOf = (gap: number) => ({ left: left - gap - 60, right: left - gap, top, bottom: top + 21 });
+    expect(plan((item) => (item.id === 'sun' ? dateLeftOf(0) : null))?.direction.y).not.toBe(1);
+    expect(plan((item) => (item.id === 'sun' ? dateLeftOf(3) : null))?.direction.y).not.toBe(1);
+    expect(plan((item) => (item.id === 'sun' ? dateLeftOf(8) : null))?.direction).toEqual({ x: 0, y: 1 });
+  });
+
   test('a pill on a slant keeps the same gap from its node as one beside it', () => {
     const point = { x: 200, y: 200 };
     const name = 'Seafood in Cais do Sodré';

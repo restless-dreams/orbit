@@ -8,6 +8,8 @@
 
 import type { OrbitNodeInput } from './types.js';
 import { isPaletteNumber } from './branch-colors.js';
+import { TYPE_WITH_VERSION } from './node-attributes.js';
+import { readDue } from './dates.js';
 
 const TRUE_WORDS = new Set(['true', 'yes', 'on', '1']);
 const FALSE_WORDS = new Set(['false', 'no', 'off', '0']);
@@ -89,6 +91,29 @@ const media = (key: string, value: unknown, textFields: readonly string[]): obje
   return value;
 };
 
+/** One of an idea's files: its address alone becomes `{ src }`; its name and type have to be text, and its size a number of bytes. */
+const file = (value: unknown): object => {
+  if (isAddress(value)) {
+    return { src: value.trim() };
+  }
+
+  if (!isRecord(value) || !isAddress(value.src)) {
+    throw new TypeError(`A node's files are addresses, or objects with a src, like { files: ['media/report.pdf'] }, but got ${isRecord(value) ? 'an object without a src' : described(value)}.`);
+  }
+
+  for (const field of ['name', 'type']) {
+    if (value[field] !== undefined && scalar(value[field]) === undefined) {
+      refuse(`file's ${field}`, 'text', "'Q3 report.pdf'", described(value[field]));
+    }
+  }
+
+  if (value.size !== undefined && !(typeof value.size === 'number' && Number.isFinite(value.size) && value.size >= 0)) {
+    refuse("file's size", 'a number of bytes', '48213', described(value.size));
+  }
+
+  return value;
+};
+
 /** `changes` with each attribute read as the parsers read it. Throws for one Orbit can't read. */
 export const readNodeInput = (changes: OrbitNodeInput): OrbitNodeInput => {
   const read: Record<string, unknown> = {};
@@ -124,6 +149,11 @@ export const readNodeInput = (changes: OrbitNodeInput): OrbitNodeInput => {
         read.priority = Number.isFinite(number) ? number : refuse(key, 'a number', '1', described(value));
         break;
       }
+      case 'due': {
+        // Read as the parsers read it, and written in Orbit's own form: `2026-11-20T09:30` becomes `2026-11-20 09:30`.
+        read.due = readDue(value) ?? refuse(key, 'a date, or a date and a time', "'2026-11-20 09:30'", described(value));
+        break;
+      }
       case 'tags': {
         // A single value may list several, as files write them: `tags: web, mobile`.
         const words = Array.isArray(value) ? value.map(scalar) : scalar(value)?.split(',').map((tag) => tag.trim()).filter((tag) => tag !== '');
@@ -146,14 +176,16 @@ export const readNodeInput = (changes: OrbitNodeInput): OrbitNodeInput => {
         read.type = versioned ? versioned[1] : text;
 
         if (versioned && changes.typeVersion === undefined) {
-          read.typeVersion = Number(versioned[2]);
+          const version = Number(versioned[2]);
+          // Past the whole numbers a number holds exactly, it would be written with other digits.
+          read.typeVersion = Number.isSafeInteger(version) ? version : refuse(key, TYPE_WITH_VERSION, "'goal@2'", described(value));
         }
 
         break;
       }
       case 'typeVersion': {
         const number = numeric(value);
-        read.typeVersion = Number.isInteger(number) && number >= 1 ? number : refuse(key, 'a whole number from 1', '2', described(value));
+        read.typeVersion = Number.isSafeInteger(number) && number >= 1 ? number : refuse(key, `a whole number from 1 to ${Number.MAX_SAFE_INTEGER}`, '2', described(value));
         break;
       }
       case 'image': {
@@ -167,6 +199,10 @@ export const readNodeInput = (changes: OrbitNodeInput): OrbitNodeInput => {
       case 'audio':
       case 'embed': {
         read[key] = media(key, value, ['caption']);
+        break;
+      }
+      case 'files': {
+        read.files = (Array.isArray(value) ? value : [value]).map(file);
         break;
       }
       case 'attrs': {

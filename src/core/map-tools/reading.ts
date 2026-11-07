@@ -7,6 +7,12 @@
 import type { OrbitNode } from '../types.js';
 import { findIndexedLinkedNode, indexNodes, nodeLinksOf } from '../node-links.js';
 import { statusTone } from '../ui/detail-sheet.js';
+import { dueStart, parseDue } from '../dates.js';
+import { fileKindName, fileName, nodeFiles } from '../files.js';
+import { OrbitWords } from '../languages.js';
+
+/** Models read files' kinds and sizes in English, as the rest of what they read. */
+const ENGLISH = new OrbitWords('en');
 
 /** How much of a note an outline shows. */
 const NOTE_PREVIEW = 100;
@@ -39,6 +45,10 @@ const attributesOf = (node: OrbitNode): string[] => {
     details.push(`priority: ${node.priority}`);
   }
 
+  if (node.due) {
+    details.push(`due: ${node.due}`);
+  }
+
   if (node.tags && node.tags.length > 0) {
     details.push(`tags: ${node.tags.join(', ')}`);
   }
@@ -55,6 +65,12 @@ const attributesOf = (node: OrbitNode): string[] => {
     if (node[media]) {
       details.push(media);
     }
+  }
+
+  const files = nodeFiles(node);
+
+  if (files.length > 0) {
+    details.push(`files: ${files.map(fileName).join(', ')}`);
   }
 
   if (node.type) {
@@ -151,6 +167,13 @@ export const count = (amount: number, one: string, many = `${one}s`): string => 
   return `${amount} ${amount === 1 ? one : many}`;
 };
 
+/** A date as models read it: as the file writes it, with its weekday, which a model would otherwise work out (and may get wrong). */
+const dueForModels = (due: string): string => {
+  const read = parseDue(due);
+  const weekday = read ? new Intl.DateTimeFormat('en', { weekday: 'long' }).format(dueStart(read)) : '';
+  return weekday ? `${due} (a ${weekday}, in the reader's local time)` : due;
+};
+
 /** Everything about a node, for read_node. */
 export const nodeDetails = (root: OrbitNode, node: OrbitNode, path: OrbitNode[]): string => {
   const lines = [nameOf(node)];
@@ -159,12 +182,14 @@ export const nodeDetails = (root: OrbitNode, node: OrbitNode, path: OrbitNode[])
     ['Icon', node.icon],
     ['Status', node.status],
     ['Priority', node.priority],
+    ['Date', node.due && dueForModels(node.due)],
     ['Tags', node.tags && node.tags.length > 0 ? node.tags.join(', ') : undefined],
     ['Color', node.color],
     ['Link', node.link],
     ['Picture', node.image && mediaLine(node.image.src, { alt: node.image.alt, caption: node.image.caption, 'live photo': node.image.motion?.src })],
     ['Video', node.video && mediaLine(node.video.src, { caption: node.video.caption })],
     ['Embedded page', node.embed && mediaLine(node.embed.src, { caption: node.embed.caption })],
+    ['Files', nodeFiles(node).map((file) => `${fileName(file)}: ${mediaLine(file.src, { kind: fileKindName(file, ENGLISH), size: file.size === undefined ? undefined : ENGLISH.fileSize(file.size) })}`).join('; ')],
     ['Type', node.type],
     ['Collapsed', node.collapsed ? 'yes: its children are hidden until the reader opens it' : undefined],
   ];

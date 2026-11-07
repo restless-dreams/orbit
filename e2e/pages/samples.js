@@ -76,6 +76,31 @@ title: Product roadmap 2027
 - Accessibility audit
 - Performance budget`,
     },
+    planning: {
+      title: 'Planning in notes: a checklist and a table',
+      source: `---
+title: Trip to Oaxaca
+---
+# 🧳 Trip to Oaxaca
+
+## 📋 Before we go
+What's left to do, and what each day costs.
+> - [ ] Book the flights
+> - [x] Renew the passport
+>   - [x] Photos
+>   - [ ] The **form**, signed
+> - [ ] Tell [the guesthouse](https://example.com/guesthouse) when we land
+
+| Day | Plan | Where | Budget |
+| :-- | :--- | :---: | -----: |
+| Mon | Monte Albán, early, before the heat of the day | Oaxaca | $40 |
+| Tue | Mercado \`20 de Noviembre\` | Centro | $25 |
+| Wed | Hierve el Agua, then mezcal in Mitla on the way back | San Lorenzo Albarradas | $60 |
+
+## 🍲 Food
+- Tlayudas
+- Mole negro`,
+    },
     format: {
       title: 'Writing a map (the format, explained)',
       source: `---
@@ -131,9 +156,75 @@ This map defines two node types: people show their initials, and milestones get 
 - Lea Chen <!-- orbit type: person, role: Research, status: on hold -->
 
 ## Milestones
-- Beta <!-- orbit type: milestone, due: May 2, status: done -->
-- Launch <!-- orbit type: milestone, due: June 6, status: review -->
-- Party <!-- orbit type: milestone, due: June 7 -->`,
+- Beta <!-- orbit type: milestone, due: 2027-05-02, status: done -->
+- Launch <!-- orbit type: milestone, due: 2027-06-06, status: review -->
+- Party <!-- orbit type: milestone, due: "2027-06-07 19:00" -->`,
+    },
+    dates: {
+      title: 'Lisbon trip (dates)',
+      source: `---
+title: Lisbon trip
+---
+# 🧳 Lisbon trip
+## Book the flights <!-- orbit due: "2026-11-18 18:30" -->
+## Pack the bags <!-- orbit due: 2026-11-19 -->
+## Hotel deposit <!-- orbit due: 2026-11-21, status: todo -->
+Pay the rest at the desk.
+## Visa photos <!-- orbit due: 2026-11-16 -->
+At the pharmacy on the corner.
+## Insurance <!-- orbit due: 2026-11-14, status: done -->
+## Museums <!-- orbit due: 2026-11-30, collapsed: true -->
+- Gulbenkian
+- MAAT
+- Azulejo museum
+## Renew the passport <!-- orbit due: 2027-02-14 -->
+## Ideas`,
+    },
+    files: {
+      title: 'Lisbon trip (files)',
+      source: `---
+title: Lisbon trip
+---
+# 🧳 Lisbon trip
+## Tickets
+<!-- orbit
+files:
+  - src: media/boarding-pass.pdf
+    name: Boarding pass.pdf
+    type: application/pdf
+    size: 48213
+  - src: media/train.pdf
+    name: Train to Sintra.pdf
+    type: application/pdf
+    size: 210400
+  - src: media/hotel.docx
+    name: Hotel booking.docx
+    type: application/vnd.openxmlformats-officedocument.wordprocessingml.document
+    size: 1250000
+-->
+## Budget <!-- orbit status: active -->
+<!-- orbit
+files:
+  - src: media/budget.xlsx
+    name: Budget, May.xlsx
+    type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+    size: 18400
+-->
+## Museums <!-- orbit due: 2026-11-21 -->
+<!-- orbit
+files:
+  - src: media/museum-pass.pdf
+    name: Museum pass.pdf
+    size: 91200
+  - src: media/floor-plans.zip
+    name: Floor plans.zip
+    size: 4800000
+-->
+- Gulbenkian
+- MAAT
+## Food
+Pastéis de nata first.
+## Ideas`,
     },
     trip: {
       title: 'Mountain trip (pictures, videos and notes)',
@@ -296,7 +387,7 @@ export const createDemoExtensions = (onCelebrate = () => {}) => {
         color: '#F5C46B',
         tokens: { 'node-stroke': '#B7791F', 'node-stroke-width': '3' },
         details(node, element) {
-          element.append(paragraph(node.attrs?.due ? `Due ${node.attrs.due}` : 'No date yet'));
+          element.append(paragraph(node.due ? `Due ${node.due}` : 'No date yet'));
         },
         actions: [{ id: 'celebrate', label: 'Celebrate', icon: '🎉', run: (node) => onCelebrate(node) }],
       },

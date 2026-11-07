@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
-import type { OrbitActionEvent, OrbitNode } from '../src/core/types';
+import type { OrbitActionEvent, OrbitEdit, OrbitNode } from '../src/core/types';
 import { ActionBar } from '../src/core/ui/actions';
 import { click, manualClock, mount, node, useMapSize } from './helpers/renderer';
 
@@ -423,6 +423,55 @@ Starts when [Research](#research) is done.
     click(button!);
     expect(host.querySelector('dialog[open]')).toBeNull();
     expect(renderer.getFocusedNode()?.id).toBe('research');
+  });
+});
+
+describe('checklists and tables in the detail sheet', () => {
+  const TRIP = '# Trip\n## Packing\nBefore we go:\n> - [ ] Boots\n>   - [x] Wool socks\n\n| Item | Cost |\n| :--- | ---: |\n| Hotel | 300 |\n';
+
+  const openNote = (host: HTMLElement, renderer: ReturnType<typeof mount>['renderer']): HTMLElement => {
+    renderer.focusNode('packing');
+    click(host.querySelector('.orbit-action--note')!);
+    return host.querySelector<HTMLElement>('dialog[open] .orbit-sheet__note')!;
+  };
+
+  test('a note shows its table and its checklist', () => {
+    const { host, renderer } = mount(TRIP);
+    const note = openNote(host, renderer);
+    expect(note.querySelector('.orbit-note__table td')?.textContent).toBe('Hotel');
+    expect(Array.from(note.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'), (box) => box.checked)).toEqual([false, true]);
+  });
+
+  test('on a map that isn\'t editable, the boxes show but don\'t change', () => {
+    const { host, renderer } = mount(TRIP);
+    const boxes = openNote(host, renderer).querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
+    expect(Array.from(boxes, (box) => box.disabled)).toEqual([true, true]);
+  });
+
+  test('on an editable map, checking a box is an edit that changes just its line of the file', () => {
+    const onEdit = mock<(edit: OrbitEdit) => void>(() => undefined);
+    const { host, renderer } = mount(TRIP, { editable: true, onEdit });
+    const box = openNote(host, renderer).querySelector<HTMLInputElement>('input[data-line="2"]')!;
+    expect(box.disabled).toBe(false);
+    box.click();
+    expect(onEdit).toHaveBeenCalledTimes(1);
+    expect(onEdit.mock.calls[0][0]).toMatchObject({ kind: 'update', node: { id: 'packing' } });
+    expect(renderer.getDocument()!.root.children[0].note).toBe('Before we go:\n\n- [x] Boots\n  - [x] Wool socks\n\n| Item | Cost |\n| :--- | ---: |\n| Hotel | 300 |');
+    expect(renderer.toMarkdown()).toBe(TRIP.replace('> - [ ] Boots', '> - [x] Boots'));
+    // The sheet stays as it was, the box with the keyboard's focus included.
+    expect(host.querySelector('dialog[open] input[data-line="2"]')).toBe(box);
+  });
+
+  test('a box whose note changed since the sheet showed it shows the note as it is now', () => {
+    const onEdit = mock(() => undefined);
+    const { host, renderer } = mount(TRIP, { editable: true, onEdit });
+    const box = openNote(host, renderer).querySelector<HTMLInputElement>('input[data-line="2"]')!;
+    renderer.getDocument()!.root.children[0].note = 'All packed.';
+    box.click();
+    expect(onEdit).not.toHaveBeenCalled();
+    const note = host.querySelector('dialog[open] .orbit-sheet__note');
+    expect(note?.textContent).toBe('All packed.');
+    expect(note?.querySelector('input')).toBeNull();
   });
 });
 

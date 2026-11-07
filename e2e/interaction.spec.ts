@@ -4,6 +4,33 @@ import { around, drag, frames, mapState, nodeCenter, openMap, settle } from './h
 
 type TouchEventType = 'touchStart' | 'touchMove' | 'touchEnd' | 'touchCancel';
 
+test.describe('notes', () => {
+  test('a wide table scrolls sideways in the detail sheet, and the boxes don\'t change on a map that isn\'t editable', async ({ page, isMobile }) => {
+    await openMap(page, 'sample=planning&focus=before-we-go&instant');
+    const note = page.getByRole('button', { name: 'Read note' });
+
+    if (isMobile) {
+      await note.tap();
+    } else {
+      await note.click();
+    }
+
+    const sheet = page.locator('dialog.orbit-sheet[open]');
+    const table = sheet.locator('.orbit-note__table');
+    await expect(table.getByRole('columnheader', { name: 'Budget' })).toBeAttached();
+    const [scrolled, width] = await table.evaluate((element) => [element.scrollWidth, element.clientWidth]);
+    expect(scrolled).toBeGreaterThan(width);
+    // The table moves inside the note, never the sheet.
+    expect(await sheet.locator('.orbit-sheet__body').evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
+    await table.evaluate((element) => element.scrollBy({ left: 400 }));
+    await expect(table.getByRole('columnheader', { name: 'Budget' })).toBeInViewport();
+    const flights = sheet.getByRole('checkbox', { name: 'Book the flights' });
+    await expect(flights).toBeDisabled();
+    await sheet.getByText('Book the flights').click({ force: true });
+    await expect(flights).not.toBeChecked();
+  });
+});
+
 test.describe('with a mouse', () => {
   test.skip(({ isMobile }) => isMobile, 'mouse gestures');
 
@@ -123,6 +150,26 @@ test.describe('with a mouse', () => {
     await expect(button).toBeFocused();
   });
 
+  test('a note\'s checklist checks off with a click or the space bar, and saving changes just that line', async ({ page }) => {
+    await openMap(page, 'sample=planning&focus=before-we-go&instant&editable');
+    const original = await page.evaluate(() => (window as unknown as { map: { toMarkdown(): string } }).map.toMarkdown());
+    await page.getByRole('button', { name: 'Read note' }).click();
+    const sheet = page.locator('dialog.orbit-sheet[open]');
+    const flights = sheet.getByRole('checkbox', { name: 'Book the flights' });
+    const form = sheet.getByRole('checkbox', { name: 'The form, signed' });
+    await expect(flights).not.toBeChecked();
+    // A press on the item's text checks its box too.
+    await sheet.getByText('Book the flights').click();
+    await expect(flights).toBeChecked();
+    await form.focus();
+    await page.keyboard.press('Space');
+    await expect(form).toBeChecked();
+    await expect(form).toBeFocused();
+    const saved = await page.evaluate(() => (window as unknown as { map: { toMarkdown(): string } }).map.toMarkdown());
+    const before = original.split('\n');
+    expect(saved.split('\n').filter((line, index) => line !== before[index])).toEqual(['> - [x] Book the flights', '>   - [x] The **form**, signed']);
+  });
+
   test('in a scrolling page, a plain scroll scrolls the page and Ctrl + scroll zooms the map', async ({ page, browserName }) => {
     // Orbit cancels the Ctrl + wheel event (cancelable, and defaultPrevented after), and the map zooms; this headless
     // WebKit scrolls the page by it all the same.
@@ -233,7 +280,7 @@ test.describe('your own node types and actions', () => {
 
     await page.getByRole('button', { name: 'Show details' }).click();
     const sheet = page.locator('dialog.orbit-sheet[open]');
-    await expect(sheet.locator('.orbit-sheet__details')).toHaveText('Due May 2');
+    await expect(sheet.locator('.orbit-sheet__details')).toHaveText('Due 2027-05-02');
     await expect(sheet.locator('.orbit-sheet__chip--type')).toHaveText('Milestone');
   });
 });

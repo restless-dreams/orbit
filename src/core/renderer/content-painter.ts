@@ -44,6 +44,9 @@ export interface ContentHost {
 
   /** Nodes changed since the last frame. */
   changedIds(): ReadonlySet<string>;
+
+  /** The node brought up close (`spotlight`), if any: what its type draws inside it steps aside while it is. */
+  spotlitId(): string | null;
 }
 
 export class ContentPainter {
@@ -71,6 +74,7 @@ export class ContentPainter {
   paint(display: Display): void {
     const { camera } = display;
     const seen = new Set<string>();
+    const spotlitId = this.host.spotlitId();
 
     for (const entry of display.nodes.values()) {
       const type = this.host.extensions().nodeType(entry.node);
@@ -101,7 +105,7 @@ export class ContentPainter {
 
       seen.add(entry.id);
       const radius = entry.radius * camera.scale;
-      const visible = entry.opacity > 0.01 && radius >= 6;
+      const visible = entry.opacity > 0.01 && radius >= 6 && entry.id !== spotlitId;
 
       if (visible !== content.visible) {
         content.element.style.display = visible ? '' : 'none';

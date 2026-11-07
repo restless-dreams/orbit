@@ -10,8 +10,10 @@ The complete reference for writing Orbit maps. A map is a tree: one root, and no
   - [Notes](#notes)
   - [Links between nodes](#links-between-nodes)
   - [Media](#media)
+  - [Files](#files)
   - [Attributes](#attributes)
   - [Statuses](#statuses)
+  - [Dates](#dates)
 - [Document options](#document-options)
 - [YAML](#yaml)
 - [Which flavor a document is](#which-flavor-a-document-is)
@@ -78,18 +80,27 @@ A note is longer text shown in the detail sheet, as markdown. Everything under a
 
 - Under a list item, indent the note under it, as you would write anything under a heading. A line right after the item, with no blank line between, continues the item too.
 - To keep a list inside a note, instead of making it children, quote it with `>`: headings and bullets inside a quote stay note text.
+- **Checklists:** a quoted list's `[ ]` and `[x]` items show as checkboxes, at any depth. On an editable map, checking one in the detail sheet changes just that box's line of the file.
+- **Tables** are GitHub's: a header row, then a row of dashes with as many cells, a colon at either end of the dashes aligning the column. A `|` in a cell is written `\|`, or inside code. A table wider than the sheet scrolls sideways.
 
 ```markdown
 # Launch
 ## Research
 Questions to answer:
-> - Who buys it?
-> - Why now?
+> - [x] Who buys it?
+> - [ ] Why now?
+
+| Market | Size | Growth |
+| :--- | ---: | :---: |
+| Students | 2.1M | **fast** |
+| Teams | 340K | steady |
 
 - Frontend
   Vite and React. Ships behind the beta flag.
 - Backend
 ```
+
+Tables and checklists are note text to every version of Orbit: versions before them show them as written, and keep them when they save.
 
 ### Links between nodes
 
@@ -167,6 +178,38 @@ A sound (a voice memo, music, a recording) is only ever an attribute, with its c
 
 Sounds have no line of their own: a link to an `.mp3` on its own line stays note text, as it always has, and a `caption` beside `audio` stays with the node's video, embed or picture. So versions from before sounds read every map exactly as they did: they keep `audio` as a custom attribute, write it back as it was, and play nothing (see [Changing the format](#changing-the-format)).
 
+### Files
+
+An idea can hold files: a PDF, a spreadsheet, a ticket, any file. They're the `files` attribute, a list, each file its address or its address with what Orbit shows of it without opening it:
+
+```markdown
+# Trip
+## Tickets
+<!-- orbit
+files:
+  - src: media/boarding-pass.pdf
+    name: Boarding pass.pdf
+    type: application/pdf
+    size: 48213
+  - src: media/hotel.docx
+    name: "Hotel: booking, final.docx"
+-->
+- Visa <!-- orbit files: [media/visa.pdf] -->
+```
+
+| Field | Value | |
+| --- | --- | --- |
+| `src` | URL | The file's address. Relative ones resolve against `baseUrl`, as every media address does. |
+| `name` | text | Its name as people know it, which its address may not keep. Without one, the last part of its address. |
+| `type` | a media type | Such as `application/pdf`: what kind of file it is. Without one, its name's extension says. |
+| `size` | a number of bytes | How big it is, shown beside its kind ("PDF · 48 kB"). |
+
+- **On the map:** its planet wears a paperclip at its upper left, with how many from two on. The detail sheet lists them, each with its kind's icon, its name, and its kind and size; prints and PDFs name them too. Opening one is the page's to do (see [Files](guide.md#files)).
+- **One file alone** reads as a list of one: `files: media/visa.pdf`.
+- **Fields Orbit doesn't read** in a file stay with it, as a picture's do, and so does a `size` that isn't a number of bytes. A list with a file Orbit can't read (one without an address) is kept as written, with an `invalid-attributes` note, and not shown.
+- **Written by Orbit** after `due`, with each file's fields and its address first, as `src`, even one written alone: so every file's address is on a line of its own, `src: media/…`, in markdown and YAML alike.
+- **Versions from before files** keep `files` as a custom attribute, without a word, and write it back as it was: through their own edits too, renamed, checked off, colored and moved, and in their YAML (see [Changing the format](#changing-the-format)).
+
 ### Attributes
 
 Attributes go in an HTML comment that starts with `orbit` (in any case, with or without a colon after it), written as YAML:
@@ -199,6 +242,7 @@ tags: [frontend, sprint-3]
 | `icon` | emoji or short symbol | `🚀`, `"★"` | Shown before the text. Same as an emoji at the start of the title. |
 | `status` | text | `active`, `done`, `blocked` | Shown in the detail sheet; some words get a colored dot (see [Statuses](#statuses)). |
 | `priority` | number | `1` | Shown in the detail sheet. |
+| `due` | a date, or a date and a time | `2026-11-20`, `"2026-11-20 09:30"` | The idea's date, in local time: shown small on its planet, in the detail sheet and the outline (see [Dates](#dates)). |
 | `tags` | list of text | `[frontend, sprint-3]` | Shown in the detail sheet. A single word works too, and so do words separated by commas: `tags: frontend, sprint-3`. Hashtags at the end of the title add to them. |
 | `collapsed` | `true` / `false` | `true` | Hides the node's children (they show as a "+N" count) until you fly into it. |
 | `link` | URL, or `#id` | `https://example.com` | Offered as a button when the node is in focus. Same as a link in the title. `#id` goes to another node (see [Links between nodes](#links-between-nodes)). |
@@ -208,6 +252,7 @@ tags: [frontend, sprint-3]
 | `video` | URL, or `{ src, provider, thumbnail, caption }` | `https://youtu.be/…` | The node's video. `provider`: `youtube`, `vimeo` or `native`. |
 | `audio` | URL, or `{ src, caption }` | `memos/kickoff.m4a` | The node's sound: a voice memo, music or a recording, played in the detail sheet and the media viewer. Its caption goes in its own value. |
 | `embed` | URL, or `{ src, caption }` | `https://example.com/demo` | A page shown in a frame in the detail sheet. |
+| `files` | a list of URLs, or of `{ src, name, type, size }` | `[media/plan.pdf]` | Files the idea holds: a paperclip on its planet, and a list in the detail sheet (see [Files](#files)). |
 | `caption` | text | `The summit at dawn.` | Caption for the media line just above it, or for the one image, video or embed set next to it. Anywhere else, for the node's video, embed or image (in that order). Never a sound's: that goes in its `audio` value. |
 | `id` | text | `launch` | The node's id, instead of one made from its text (see [Node ids](#node-ids)). |
 | `type` | text | `milestone` | The node's type. A type your code defines sets its look, content and actions (see [Extending](extending.md#node-types)). Any case. |
@@ -227,6 +272,23 @@ Any other key is kept as a **custom attribute** in `node.attrs`, for your own co
 | todo (gray) | `todo`, `to do`, `planned`, `backlog`, `next`, `open` |
 
 Other words get a neutral dot. Checkboxes set `todo` (`[ ]`), `done` (`[x]`) and `active` (`[/]`).
+
+### Dates
+
+`due` gives an idea a date: a day, or a day and a time of day, as `YYYY-MM-DD` and `HH:MM` (24 hours) after it.
+
+```markdown
+# Trip
+## Book the flights <!-- orbit due: 2026-11-20 -->
+## Hotel deposit <!-- orbit due: 2026-11-20 09:30 -->
+- [x] Passport photos <!-- orbit due: 2026-11-16 -->
+```
+
+- **Local time, with no time zone.** `09:30` is half past nine wherever the map is read, as a date written in a paper diary is: a map shared across time zones keeps its dates as written.
+- **Shown small:** a chip inside the idea's planet, at its bottom ("Today", "Tomorrow", "Fri", "Nov 20", or its time when it's today), in the map's language; the detail sheet and the outline show it in full. Once its day is over, or its time has come, it takes the theme's attention color (`--orbit-overdue`), unless the idea's status is done (see [Statuses](#statuses)): a done idea is never overdue.
+- **Written by Orbit** as `due: "2026-11-20"` or `due: "2026-11-20 09:30"`, quoted, so YAML readers take it as text. It reads unquoted too, with a `T` before the time (`2026-11-20T09:30`, as programs write it) and with single figures (`2026-1-5 9:30`), all of them read as Orbit writes them. Seconds and time zones aren't part of it.
+- **A date that doesn't exist**, such as February 30th or 24:00, or any other value, is kept as written, as a custom attribute, with an `invalid-attributes` note, and not shown.
+- **Versions from before dates** keep `due` as a custom attribute and write it back as it was: through their own edits too, renamed, checked off, colored and moved, and in their YAML (see [Changing the format](#changing-the-format)).
 
 ### Colors
 
@@ -315,13 +377,13 @@ A document says which version of the format it's written for with `schemaVersion
 
 - **Older documents are upgraded as they're read.** When the format changes, Orbit brings documents written for the version before up to date as it reads them (a `format-upgraded` note says so), and the next save writes them as the new version, changing only what the upgrade changed.
 - **Newer documents are read as well as they can be,** and reported with `unsupported-schema-version`, an error: apps should open them without letting them be edited. Nothing in them is lost by saving, in either flavor: they're written back as they were, and an edit writes again only the ideas and options it changes. An edit that would replace what this version can't read is refused instead, with an error, so an idea can't be added under one whose ideas are written in a newer version's form. What this version doesn't know of them isn't understood, though. A map on screen has the report in `getDocument().diagnostics`, and isn't edited on the map even when it's `editable` (a console warning says why). Its editing methods still work, for an app that knows what it's changing, and [map tools](map-tools.md) refuse to change it.
-- **Node types have versions of their own,** for the fields their nodes keep in attributes: `type: task@2` says a node was written for version 2 of `task`, and none means 1. A type that changes its fields says so with `version` and brings older nodes up to date with `upgrade` (see [Extending Orbit](extending.md#versions)); a node written for a newer version of its type is left as it is.
+- **Node types have versions of their own,** for the fields their nodes keep in attributes: `type: task@2` says a node was written for version 2 of `task`, and none means 1. A type that changes its fields says so with `version` and brings older nodes up to date with `upgrade` (see [Extending Orbit](extending.md#versions)); a node written for a newer version of its type is left as it is. A version goes up to 9007199254740991, the largest whole number JavaScript holds exactly: a `type` with a bigger one is reported with `invalid-attributes` and kept as written, but not used, since it would come back with other digits, so its node is a plain idea.
 
 ### Changing the format
 
 Maps outlive the version of Orbit that wrote them. Older and newer versions read them, and so do apps that bundle a copy of their own. So each change to the format is one of three kinds:
 
-- **Something older versions can do without:** a new attribute (like `paletteColor`, or `audio`, for which a sound has no media line of its own) or a new document option. An older version keeps the attribute as a custom one, and the option as an unknown frontmatter key, which it reports. It writes both back unchanged and draws the map as it did before. No new version of the format is needed.
+- **Something older versions can do without:** a new attribute (like `paletteColor`, `due`, `files`, or `audio`, for which a sound has no media line of its own) or a new document option. An older version keeps the attribute as a custom one, and the option as an unknown frontmatter key, which it reports. It writes both back unchanged and draws the map as it did before. No new version of the format is needed. `tests/fixtures/releases/kept/` holds what released versions write from today's maps, which say more than they read, and the tests check they keep it: Orbit 0.4.0 keeps every date and every file, through its own edits too.
   - The same goes for a new field in a picture, video, sound or embed (like a picture's `motion`, which makes it a live photo): every version keeps the fields it doesn't read in those, says nothing about them, and writes them back with the value, as an attribute. It writes them right after `src` in markdown, and first in YAML, so Orbit writes a new field there too, and a map reads back the same in every version. Orbit 0.3.0, and every Orbit that Orbit for Android has bundled, read a map with live photos without a word, show their stills, and write each motion back byte for byte: as it is, after they rename or color the live photo and change other ideas, and through their YAML. Up to 0.3.0, though, an edit to the value itself (a new caption through `updateNode`) drops the fields a version doesn't read, a live photo's motion included; later versions keep them.
 - **Something an older version would misread:**
   - a new kind of value for an attribute it already reads: Orbit 0.1.0 takes `color: 3` for a color and draws it wrong, without a word;

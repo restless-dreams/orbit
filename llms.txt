@@ -10,7 +10,7 @@
 - Share a map as one web page, which opens in any browser, offline: `npx @restless-dreams/orbit export --html map.md --out map.html`.
 - Let people build the map on the map with `editable: true` (a + in the orbit, text typed inside nodes), and save what they make with `map.toMarkdown()` on the `edit` event.
 - Let a language model read and change a map with `createMapTools(map)`: `tools.for('anthropic' | 'openai' | 'openai-chat' | 'gemini')` lists the tools for its API, and `tools.run(name, input).text` is each call's result.
-- Maps speak the page's language (`lang`): English and Spanish are built in, `registerLanguage` adds more.
+- Maps speak the page's language (`lang`): English, Spanish and Brazilian Portuguese are built in, `registerLanguage` adds more.
 - Themes: `paper` (default), `night`, `glass`, `glass-night`, `cosmos`, `blueprint`, `ink`, `contrast`, `flat`, `flat-night`, `material`, `material-night`, `liquid`, `liquid-night`, `auto`. Pass `theme: 'night'` or `theme: { preset: 'night', tokens: { … } }`, or set `--orbit-*` CSS custom properties.
 
 ## Docs
@@ -24,7 +24,7 @@
 - [Editing](https://github.com/restless-dreams/orbit/blob/main/docs/editing.md): context menus on a long press, adding, renaming, moving and removing nodes on the map, and saving the result as orbit-md
 - [Map tools for AI](https://github.com/restless-dreams/orbit/blob/main/docs/map-tools.md): tools for any model to read and change a map, on screen or on a server, for each provider's API and MCP
 - [Maps from other apps](https://github.com/restless-dreams/orbit/blob/main/docs/import-export.md): bringing in OPML, FreeMind, Freeplane and XMind maps with their notes, links and pictures, what each warning means, and writing OPML
-- [Languages](https://github.com/restless-dreams/orbit/blob/main/docs/languages.md): maps in the page's language, English and Spanish built in, adding languages and changing single words
+- [Languages](https://github.com/restless-dreams/orbit/blob/main/docs/languages.md): maps in the page's language, English, Spanish and Brazilian Portuguese built in, adding languages and changing single words
 - [Pictures, videos and sounds](https://github.com/restless-dreams/orbit/blob/main/docs/media.md): the media viewer, its keys, live photos, sounds in Orbit's own player, YouTube and Vimeo, sound and autoplay, and opening, playing and following media from code
 - [Coding agents](https://github.com/restless-dreams/orbit/blob/main/docs/agents.md): the skill, validation as JSON, and messages for setup mistakes
 - [Compatibility](https://github.com/restless-dreams/orbit/blob/main/docs/compatibility.md): what each version keeps working, the public surface, and how changes are deprecated

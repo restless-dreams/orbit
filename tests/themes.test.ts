@@ -10,7 +10,7 @@ import {
   themeTokens,
   type OrbitThemeName,
 } from '../src/core/themes';
-import { contrastRatio } from '../src/core/engine/colors';
+import { contrastRatio, resolveColor } from '../src/core/engine/colors';
 import { backdrops, color, over, worstLabelContrast } from './theme-contrast';
 
 const THEMES = Object.keys(ORBIT_THEME_PRESETS) as OrbitThemeName[];
@@ -28,6 +28,16 @@ describe.each(THEMES)('the %s theme', (name) => {
   test('keeps labels at WCAG AA contrast (4.5:1) on every node color and shade', () => {
     const worst = worstLabelContrast(tokens);
     expect({ passes: worst.ratio >= 4.5, where: worst.where }).toEqual({ passes: true, where: worst.where });
+  });
+
+  test('writes a past date in a color that reads on its chip, on the map and in the detail sheet (4.5:1)', () => {
+    const overdue = color(resolveColor(tokens.overdue, tokens));
+
+    for (const backdrop of backdrops(tokens)) {
+      expect(contrastRatio(overdue, over(color(tokens['control-background']), 1, backdrop))).toBeGreaterThanOrEqual(4.5);
+      const sheet = over(color(tokens['sheet-background']), 1, backdrop);
+      expect(contrastRatio(overdue, over(color(tokens['chip-background']), 1, sheet))).toBeGreaterThanOrEqual(4.5);
+    }
   });
 
   test('keeps page text and control text readable', () => {

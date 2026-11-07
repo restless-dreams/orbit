@@ -1,4 +1,4 @@
-/**
+/*!
  * Where English words break across lines: Liang's hyphenation patterns for
  * American English, `hyph-en-us` from the hyph-utf8 package
  * (https://www.hyphenation.org/tex), with its exceptions.

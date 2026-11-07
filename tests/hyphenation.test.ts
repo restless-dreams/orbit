@@ -30,6 +30,17 @@ describe('hyphenation', () => {
     expect(broken('Fotosíntesis'.normalize('NFD'), 'es')).toBe(broken('Fotosíntesis', 'es').normalize('NFD'));
   });
 
+  test('Portuguese words break by syllable, accents and all, in Brazil and Portugal alike', () => {
+    expect(broken('Fotossíntese', 'pt')).toBe('Fo-tos-sín-tese');
+    expect(broken('Notificações', 'pt-BR')).toBe('No-ti-fi-ca-ções');
+    expect(broken('Inconstitucionalmente', 'pt-BR')).toBe('In-cons-ti-tu-ci-o-nal-mente');
+    // Never fewer than three letters after the hyphen, as Portuguese typesetting has it: not "Pla-ne-ja-men-to".
+    expect(broken('Planejamento', 'pt-PT')).toBe('Pla-ne-ja-mento');
+    // The patterns' exceptions win.
+    expect(broken('software', 'pt-BR')).toBe('soft-ware');
+    expect(broken('Fotossíntese'.normalize('NFD'), 'pt')).toBe(broken('Fotossíntese', 'pt').normalize('NFD'));
+  });
+
   test('a language without patterns has none, and another can add its own', () => {
     expect(hasHyphenation('de')).toBe(false);
     expect(hyphenationPoints(Array.from('Donaudampfschiff'), 'de')).toBeNull();
@@ -49,8 +60,10 @@ describe('hyphenation', () => {
     const lines = (text: string, language: string) => insideLabelLayout('planet', 20, text, false, undefined, true, 0, language)?.lines ?? [];
     // A planet too small for "Photosynthesis" on one line: it breaks between syllables, in English…
     expect(lines('Photosynthesis', 'en').map((line) => line.replace('…', ''))).toSatisfy((shown: string[]) => /^(Pho|Photo|Photosyn|Photosynthe)-$/.test(shown[0]));
-    // …and in Spanish.
+    // …in Spanish…
     expect(lines('Notificaciones', 'es').map((line) => line.replace('…', ''))).toSatisfy((shown: string[]) => /^(No|Noti|Notifi|Notifica|Notificacio)-$/.test(shown[0]));
+    // …and in Portuguese.
+    expect(lines('Configurações', 'pt-BR').map((line) => line.replace('…', ''))).toSatisfy((shown: string[]) => /^(Con|Confi|Configu|Configura)-$/.test(shown[0]));
   });
 
   test('a long word breaks to keep its name larger, rather than shrink it whole, once the map is still', () => {
@@ -62,6 +75,9 @@ describe('hyphenation', () => {
     // In Spanish too.
     expect(fit(42, 'Investigación', false, 'es')).toMatchObject({ fontSize: 10.5, lines: ['Investigación'] });
     expect(fit(42, 'Investigación', true, 'es')).toMatchObject({ fontSize: 13, lines: ['Investi-', 'gación'] });
+    // And in Portuguese.
+    expect(fit(45, 'Sincronização', false, 'pt-BR')).toMatchObject({ fontSize: 11, lines: ['Sincronização'] });
+    expect(fit(45, 'Sincronização', true, 'pt-BR')).toMatchObject({ fontSize: 13, lines: ['Sincro-', 'nização'] });
   });
 
   test('a word stays whole when breaking it would show it only a little larger, and breaks once at most', () => {

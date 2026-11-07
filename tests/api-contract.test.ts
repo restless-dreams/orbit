@@ -43,7 +43,8 @@ const MAP = `# Root
 ## Gamma
 ![A picture](https://example.com/gamma.jpg)
 ## Delta
-<!-- orbit video: "https://example.com/clip.mp4" -->`;
+<!-- orbit video: "https://example.com/clip.mp4" -->
+## Epsilon <!-- orbit files: [media/plan.pdf] -->`;
 
 const HOLD = 20;
 
@@ -112,6 +113,17 @@ const TRIGGERS: Record<OrbitEventName, (map: Mounted) => void | Promise<void>> =
     Object.defineProperty(video, 'duration', { value: 30, configurable: true });
     video.dispatchEvent(new Event('loadedmetadata'));
   },
+  spotlight: ({ renderer }) => {
+    renderer.spotlight('alpha');
+  },
+  'file-open': ({ host, renderer }) => {
+    // The file opens in a new tab: here, in no tab at all.
+    const opening = spyOn(window, 'open').mockImplementation(() => null);
+    renderer.focusNode('epsilon');
+    click(host.querySelector('.orbit-action--files')!);
+    click(host.querySelector('dialog.orbit-sheet[open] button.orbit-sheet__file')!);
+    opening.mockRestore();
+  },
 };
 
 /** The `on…` option for an event: `onFocusChange` for `focus-change`. */
@@ -124,6 +136,7 @@ const CALLED_WITH: Partial<Record<OrbitEventName, (detail: Record<string, unknow
   'node-click': (detail) => [detail.node],
   action: (detail) => [{ node: detail.node, action: detail.action, sourceEvent: detail.sourceEvent }],
   'spin-settle': (detail) => [detail.node],
+  'file-open': (detail) => [{ node: detail.node, file: detail.file, index: detail.index, sourceEvent: detail.sourceEvent }],
 };
 
 describe('every event', () => {

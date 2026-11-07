@@ -27,12 +27,14 @@ export { importXMind } from './other-apps/xmind.js';
 export { IMPORT_ERROR_CODES, IMPORT_WARNING_CODES, OrbitImportError } from './other-apps/ideas.js';
 export type { OrbitImportErrorCode, OrbitImportWarning, OrbitImportWarningCode } from './other-apps/ideas.js';
 export type { OrbitImport, OrbitImportedMap, OrbitImportFormat, OrbitImportOptions } from './other-apps/reading.js';
-export { renderNoteMarkdown } from './ui/note-markdown.js';
-export type { NoteRenderContext as OrbitNoteOptions } from './ui/note-markdown.js';
+export { renderNoteMarkdown, setNoteCheckbox } from './ui/note-markdown.js';
+export type { NoteCheck as OrbitNoteCheck, NoteRenderContext as OrbitNoteOptions } from './ui/note-markdown.js';
 export type { OrbitMapOptions } from './create.js';
 export { defineOrbitMapElement, hydrateOrbitBlocks, renderOrbitElement, renderOrbitMarkdownBlocks } from './auto-render.js';
 export type { OrbitAutoRenderOptions, OrbitDOMEventMap, OrbitMapElement, OrbitRenderErrorDetail } from './auto-render.js';
 export { findNodeById, getNodePath } from './utils.js';
+export { parseDue } from './dates.js';
+export type { OrbitDue } from './dates.js';
 export { ORBIT_THEME_PRESETS, THEME_TOKENS, isOrbitThemePreset, isThemeName, isThemePreset, registerTheme, themeNames, themeTokens } from './themes.js';
 export type { OrbitThemeName, OrbitThemeToken, OrbitThemeTokens } from './themes.js';
 export { MATERIAL_SEED, materialTheme } from './material.js';
@@ -54,17 +56,23 @@ export type {
   OrbitEditorEvent,
   OrbitEventMap,
   OrbitEventName,
+  OrbitFile,
+  OrbitFileOpenDetail,
+  OrbitFileOpenEvent,
   OrbitInsets,
   OrbitMediaEvent,
   OrbitMediaOptions,
   OrbitMediaState,
   OrbitMotion,
   OrbitNewNode,
+  OrbitNodeCircle,
   OrbitNodeContextEvent,
   OrbitNodeDragEvent,
   OrbitNodeInput,
   OrbitRendererTheme,
   OrbitSpinOptions,
+  OrbitSpotlightEvent,
+  OrbitSpotlightOptions,
   OrbitThemePreset,
   OrbitZoomOptions,
   OrbitRendererOptions,

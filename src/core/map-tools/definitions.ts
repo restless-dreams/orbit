@@ -73,7 +73,7 @@ export interface ToolSpec {
 }
 
 /** The attributes `update_node` sets and `clear` removes. */
-export const ATTRIBUTES = ['note', 'status', 'priority', 'tags', 'icon', 'color', 'link', 'image', 'video', 'audio', 'embed', 'collapsed'] as const;
+export const ATTRIBUTES = ['note', 'status', 'priority', 'due', 'tags', 'icon', 'color', 'link', 'image', 'video', 'audio', 'embed', 'collapsed'] as const;
 
 export type ToolAttribute = (typeof ATTRIBUTES)[number];
 
@@ -136,6 +136,7 @@ export const TOOL_SPECS: readonly ToolSpec[] = [
       note: { type: 'string', description: 'Its note, in markdown, for details and longer text. Replaces the note it has.' },
       status: { type: 'string', description: 'todo, active, done or blocked, which show a colored dot, or any other word.' },
       priority: { type: 'number', description: 'A number, such as 1 for the most important.' },
+      due: { type: 'string', description: 'Its date, such as 2026-11-20, or a date and a time of day, such as 2026-11-20 09:30, in the reader\'s local time.' },
       tags: { type: 'list', description: 'All its tags, as words: they replace the ones it has.' },
       icon: { type: 'string', description: 'An emoji shown before its title.' },
       color: { type: 'string', description: 'A CSS color, such as #E8A33D or tomato: its children take shades of it. Nodes without one take the theme\'s colors, so set it only when asked.' },
@@ -178,6 +179,7 @@ export const TOOL_SPECS: readonly ToolSpec[] = [
     },
     synonyms: {
       ...NODE_SYNONYMS, title: 'text', name: 'text', label: 'text', notes: 'note', description: 'note', details: 'note', state: 'status',
+      date: 'due', deadline: 'due', due_date: 'due', duedate: 'due', when: 'due',
       tag: 'tags', labels: 'tags', emoji: 'icon', colour: 'color', url: 'link', href: 'link', picture: 'image', photo: 'image',
       remove: 'clear', unset: 'clear', delete: 'clear',
     },

@@ -27,7 +27,7 @@ What ships this year, written by hand.
 Six weeks of interviews before we commit to scope.
 - [x] User interviews #ux
 - [/] Survey <!-- orbit color: "#E5484D" -->
-- [ ] Competitor teardown #market #q3
+- [ ] Competitor teardown #market #q3 <!-- orbit due: "2026-12-04 17:00" -->
 - Questions to answer
   > - Who buys it?
   > - Why now?
@@ -38,12 +38,22 @@ Six weeks of interviews before we commit to scope.
 collapsed: false
 type: "milestone@2"
 id: build-phase
-owner: Ana
 due: "2026-11-01"
+owner: Ana
 -->
 - Frontend <!-- orbit icon: ★, paletteColor: 3 -->
   - App shell
-  - Offline sync <!-- orbit status: blocked -->
+  - Offline sync
+    <!-- orbit
+    status: blocked
+    files:
+      - src: media/sync-protocol.pdf
+        name: "Sync protocol, v2.pdf"
+        type: application/pdf
+        size: 482133
+        pages: 12
+      - src: media/sync-notes.txt
+    -->
     Waits on the [backend](#backend) sync API.
 - Backend <!-- orbit noteFormat: plain -->
   Plain text, shown as written: *not emphasis*.
@@ -57,6 +67,11 @@ due: "2026-11-01"
 - Demo page
   [embed](https://example.com/demo)
   <!-- orbit contentType: embed -->
+- Press kit
+  <!-- orbit
+  files:
+    - src: media/press-kit.zip
+  -->
 - [Read the research](#research)
 - Old poster
   > ![Kept as text](images/old.png)

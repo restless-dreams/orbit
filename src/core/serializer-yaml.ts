@@ -2,7 +2,7 @@ import type { OrbitDocument, OrbitDocumentOptions, OrbitNode } from './types.js'
 import { currentDocumentOptions, DOCUMENT_OPTION_KEYS } from './document-options.js';
 import { assignKey, emitYaml, type YamlValue } from './yaml-mini.js';
 import { nodesWithExplicitIds } from './utils.js';
-import { mediaExtras, motionValue, unreadAttributes } from './node-attributes.js';
+import { filesValue, mediaExtras, motionValue, unreadAttributes } from './node-attributes.js';
 import { ideaName, newerFormatError, writtenSchemaVersion } from './format-upgrades.js';
 import { nodeFields } from './document-source.js';
 import { unreadParts, yamlSource, type YamlNodeRecord, type YamlSource } from './yaml-source.js';
@@ -179,6 +179,16 @@ const nodeEntries = (n: OrbitNode, explicitId: boolean): Record<string, YamlValu
     if (n.noteFormat && n.noteFormat !== 'markdown') {
       obj.noteFormat = n.noteFormat;
     }
+  }
+
+  // Where versions from before dates write it, with the attributes they don't read: a map keeps its order whichever writes it.
+  if (n.due) {
+    obj.due = n.due;
+  }
+
+  // Also where versions from before files write it.
+  if (n.files) {
+    obj.files = filesValue(n.files) as YamlValue;
   }
 
   if (n.attrs) {

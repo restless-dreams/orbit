@@ -76,6 +76,7 @@
                 "id": "competitor-teardown",
                 "text": "Competitor teardown",
                 "attributes": {
+                  "due": "2026-12-04 17:00",
                   "status": "todo",
                   "tags": [
                     "market",
@@ -136,6 +137,17 @@
                     "id": "offline-sync",
                     "text": "Offline sync",
                     "attributes": {
+                      "files": [
+                        {
+                          "name": "Sync protocol, v2.pdf",
+                          "size": 482133,
+                          "src": "media/sync-protocol.pdf",
+                          "type": "application/pdf"
+                        },
+                        {
+                          "src": "media/sync-notes.txt"
+                        }
+                      ],
                       "note": "Waits on the [backend](#backend) sync API.",
                       "noteFormat": "markdown",
                       "status": "blocked"
@@ -187,6 +199,18 @@
                   "embed": {
                     "src": "https://example.com/demo"
                   }
+                },
+                "children": []
+              },
+              {
+                "id": "press-kit",
+                "text": "Press kit",
+                "attributes": {
+                  "files": [
+                    {
+                      "src": "media/press-kit.zip"
+                    }
+                  ]
                 },
                 "children": []
               },
@@ -366,6 +390,7 @@
                 "id": "competitor-teardown",
                 "text": "Competitor teardown",
                 "attributes": {
+                  "due": "2026-12-04 17:00",
                   "status": "todo",
                   "tags": [
                     "market",
@@ -426,6 +451,17 @@
                     "id": "offline-sync",
                     "text": "Offline sync",
                     "attributes": {
+                      "files": [
+                        {
+                          "name": "Sync protocol, v2.pdf",
+                          "size": 482133,
+                          "src": "media/sync-protocol.pdf",
+                          "type": "application/pdf"
+                        },
+                        {
+                          "src": "media/sync-notes.txt"
+                        }
+                      ],
                       "note": "Waits on the [backend](#backend) sync API.",
                       "noteFormat": "markdown",
                       "status": "blocked"
@@ -477,6 +513,18 @@
                   "embed": {
                     "src": "https://example.com/demo"
                   }
+                },
+                "children": []
+              },
+              {
+                "id": "press-kit",
+                "text": "Press kit",
+                "attributes": {
+                  "files": [
+                    {
+                      "src": "media/press-kit.zip"
+                    }
+                  ]
                 },
                 "children": []
               },
@@ -619,6 +667,18 @@
             "id": "research",
             "text": "Research",
             "attributes": {
+              "due": "2026-11-20",
+              "files": [
+                {
+                  "name": "Interviews (all 24).xlsx",
+                  "size": 91200,
+                  "src": "media/interviews.xlsx",
+                  "type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                },
+                {
+                  "src": "media/consent.pdf"
+                }
+              ],
               "priority": 2,
               "status": "done",
               "tags": [
@@ -656,6 +716,7 @@
                 "id": "frontend",
                 "text": "Frontend",
                 "attributes": {
+                  "due": "2026-11-21 09:30",
                   "link": "#research",
                   "paletteColor": 2
                 },
@@ -759,6 +820,18 @@
             "id": "research",
             "text": "Research",
             "attributes": {
+              "due": "2026-11-20",
+              "files": [
+                {
+                  "name": "Interviews (all 24).xlsx",
+                  "size": 91200,
+                  "src": "media/interviews.xlsx",
+                  "type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                },
+                {
+                  "src": "media/consent.pdf"
+                }
+              ],
               "priority": 2,
               "status": "done",
               "tags": [
@@ -796,6 +869,7 @@
                 "id": "frontend",
                 "text": "Frontend",
                 "attributes": {
+                  "due": "2026-11-21 09:30",
                   "link": "#research",
                   "paletteColor": 2
                 },
@@ -880,13 +954,22 @@
             "id": "markets",
             "text": "Markets",
             "attributes": {
+              "note": "Saturday morning, early:\n\n- [x] Feira da Ladra\n- [x] LX Factory\n\n| Market | Opens |\n| :--- | ---: |\n| Feira da Ladra | 9:00 |\n| Mercado da Ribeira \\| Time Out | 10:00 |",
+              "noteFormat": "markdown",
               "paletteColor": 5
             },
             "children": [
               {
                 "id": "fado-in-alfama",
                 "text": "Fado in Alfama",
-                "attributes": {},
+                "attributes": {
+                  "due": "2026-05-16 21:30",
+                  "files": [
+                    {
+                      "src": "media/fado-tickets.pdf"
+                    }
+                  ]
+                },
                 "children": []
               }
             ]
@@ -917,6 +1000,12 @@
                 "id": "tascas",
                 "text": "Tascas",
                 "attributes": {
+                  "due": "2026-05-16 20:30",
+                  "files": [
+                    {
+                      "src": "media/menu.pdf"
+                    }
+                  ],
                   "note": "Book a table for eight.",
                   "noteFormat": "markdown"
                 },
@@ -943,7 +1032,17 @@
           {
             "id": "galleries",
             "text": "Galleries",
-            "attributes": {},
+            "attributes": {
+              "due": "2026-05-17",
+              "files": [
+                {
+                  "name": "Museum pass.pdf",
+                  "size": 48213,
+                  "src": "media/museum-pass.pdf",
+                  "type": "application/pdf"
+                }
+              ]
+            },
             "children": [
               {
                 "id": "gulbenkian",
@@ -963,6 +1062,13 @@
             "id": "beaches",
             "text": "Beaches",
             "attributes": {
+              "due": "2026-05-18",
+              "files": [
+                {
+                  "name": "Tides, May.csv",
+                  "src": "media/tides.csv"
+                }
+              ],
               "status": "done"
             },
             "children": []
@@ -972,6 +1078,15 @@
             "text": "Music",
             "attributes": {
               "color": "#E5484D",
+              "due": "2026-05-16 22:00",
+              "files": [
+                {
+                  "src": "media/setlist.docx"
+                },
+                {
+                  "src": "media/tickets.pdf"
+                }
+              ],
               "tags": [
                 "evening"
               ]

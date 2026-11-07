@@ -10,7 +10,7 @@
 - Share a map as one web page, which opens in any browser, offline: `npx @restless-dreams/orbit export --html map.md --out map.html`.
 - Let people build the map on the map with `editable: true` (a + in the orbit, text typed inside nodes), and save what they make with `map.toMarkdown()` on the `edit` event.
 - Let a language model read and change a map with `createMapTools(map)`: `tools.for('anthropic' | 'openai' | 'openai-chat' | 'gemini')` lists the tools for its API, and `tools.run(name, input).text` is each call's result.
-- Maps speak the page's language (`lang`): English and Spanish are built in, `registerLanguage` adds more.
+- Maps speak the page's language (`lang`): English, Spanish and Brazilian Portuguese are built in, `registerLanguage` adds more.
 - Themes: `paper` (default), `night`, `glass`, `glass-night`, `cosmos`, `blueprint`, `ink`, `contrast`, `flat`, `flat-night`, `material`, `material-night`, `liquid`, `liquid-night`, `auto`. Pass `theme: 'night'` or `theme: { preset: 'night', tokens: { … } }`, or set `--orbit-*` CSS custom properties.
 
 ## Docs
@@ -24,7 +24,7 @@
 - [Editing](https://github.com/restless-dreams/orbit/blob/main/docs/editing.md): context menus on a long press, adding, renaming, moving and removing nodes on the map, and saving the result as orbit-md
 - [Map tools for AI](https://github.com/restless-dreams/orbit/blob/main/docs/map-tools.md): tools for any model to read and change a map, on screen or on a server, for each provider's API and MCP
 - [Maps from other apps](https://github.com/restless-dreams/orbit/blob/main/docs/import-export.md): bringing in OPML, FreeMind, Freeplane and XMind maps with their notes, links and pictures, what each warning means, and writing OPML
-- [Languages](https://github.com/restless-dreams/orbit/blob/main/docs/languages.md): maps in the page's language, English and Spanish built in, adding languages and changing single words
+- [Languages](https://github.com/restless-dreams/orbit/blob/main/docs/languages.md): maps in the page's language, English, Spanish and Brazilian Portuguese built in, adding languages and changing single words
 - [Pictures, videos and sounds](https://github.com/restless-dreams/orbit/blob/main/docs/media.md): the media viewer, its keys, live photos, sounds in Orbit's own player, YouTube and Vimeo, sound and autoplay, and opening, playing and following media from code
 - [Coding agents](https://github.com/restless-dreams/orbit/blob/main/docs/agents.md): the skill, validation as JSON, and messages for setup mistakes
 - [Compatibility](https://github.com/restless-dreams/orbit/blob/main/docs/compatibility.md): what each version keeps working, the public surface, and how changes are deprecated
@@ -56,9 +56,11 @@ Mind maps written in markdown and explored like a solar system.
 - Readable at any size: labels stay crisp, sized for reading and in high contrast.
 - Fourteen themes, from pastel paper and a field of stars to flat, Material and liquid glass, each restylable with CSS custom properties, and Material themes built from any color.
 - First-class pictures, live photos, videos, sounds, embeds and multi-line notes per node: pictures, videos and sounds open over the whole window, to zoom into and to play (a live photo plays its motion over its picture), and the rest in a built-in detail sheet, unless you handle `onAction` yourself.
+- Dates on ideas, a day or a day and a time: small on each planet ("Today", "Fri", "Nov 20"), in full in the detail sheet and the list, and in an attention color once past, unless the idea is done.
+- Files on ideas, any file: a paperclip on the planet with how many, and a list in the detail sheet with each one's kind and size, which an app opens its own way (`file-open`).
 - Built on the map: a + in the orbit adds ideas, typed right inside their planet, and nodes can be renamed, dragged and saved back as markdown.
 - Ready for AI: tools any model calls to read a map and change it, for Anthropic, OpenAI, Gemini, MCP and the providers that follow OpenAI's API, with every change animated on the map.
-- Keyboard and screen-reader friendly: one tab stop, arrow-key navigation, a list view of the whole map, and announcements as you move, in English, Spanish or any language you add.
+- Keyboard and screen-reader friendly: one tab stop, arrow-key navigation, a list view of the whole map, and announcements as you move, in English, Spanish, Brazilian Portuguese or any language you add.
 - Framework-agnostic core with no dependencies; React wrapper at `@restless-dreams/orbit/react`; `marked` extension at `@restless-dreams/orbit/marked`.
 - Made for coding agents too: the docs in one file (`llms-full.txt`), an agent skill, validation as JSON, and problems reported with the fix.
 
@@ -212,7 +214,7 @@ With [Bun](https://bun.sh) installed, `bun install`, then `bun run verify` runs 
 
 ## License
 
-[MIT](LICENSE). Orbit includes the hyphenation patterns of the [hyph-utf8 package](https://www.hyphenation.org/tex) for American English (Copyright (C) 1990, 2004, 2005 Gerard D.C. Kuiken; copying and distribution are permitted in any medium without royalty provided the copyright notice and this notice are preserved) and Spanish (Copyright (C) 1993, 1997 Javier Bezos, 2001-2019 Javier Bezos, CervanTeX; MIT license), with their notices in `src/core/hyphenation/`.
+[MIT](LICENSE). Orbit includes the hyphenation patterns of the [hyph-utf8 package](https://www.hyphenation.org/tex) for American English (Copyright (C) 1990, 2004, 2005 Gerard D.C. Kuiken; copying and distribution are permitted in any medium without royalty provided the copyright notice and this notice are preserved), Spanish (Copyright (C) 1993, 1997 Javier Bezos, 2001-2019 Javier Bezos, CervanTeX; MIT license) and Portuguese (Copyright (C) 1987, 1994, 1996, 2015 Pedro J. de Rezende, 1996, 2015 J. Joao Dias Almeida, 2024 Leonardo Araujo and Aline Benevides; BSD 3-clause license), with their notices in `src/core/hyphenation/` and in the built code that carries them.
 
 ---
 
@@ -472,7 +474,7 @@ const renderer = new OrbitSVGRenderer(host, {
 });
 ```
 
-The focused node shows a button for each kind of content it has, then your own [actions](extending.md#actions). They sit under it, or, where its planets crowd it (as they do on a phone), under the whole orbit, which is then fitted to leave them room: they never cover a planet. When `onAction` isn't provided (or doesn't return `false`), "View picture", "Play video" and "Play sound" open the [media viewer](#pictures-and-videos), and the other buttons the built-in detail sheet: a panel along the right edge on wide screens and a bottom sheet on phones (swipe down to close), with the node's media, note, status and tags, and arrows to step through its siblings. YouTube and Vimeo links play through their embeddable players (`youtube-nocookie.com/embed/…`, `player.vimeo.com/video/…`). Links open in a new tab.
+The focused node shows a button for each kind of content it has, then your own [actions](extending.md#actions). They sit under it, or, where its planets crowd it (as they do on a phone), under the whole orbit, which is then fitted to leave them room: they never cover a planet. When `onAction` isn't provided (or doesn't return `false`), "View picture", "Play video" and "Play sound" open the [media viewer](#pictures-and-videos), and the other buttons the built-in detail sheet: a panel along the right edge on wide screens and a bottom sheet on phones (swipe down to close), with the node's media, note, files, status and tags, and arrows to step through its siblings. YouTube and Vimeo links play through their embeddable players (`youtube-nocookie.com/embed/…`, `player.vimeo.com/video/…`). Links open in a new tab.
 
 Notes are markdown and are rendered safely (no raw HTML). Opt-out flags: `showActionButtons: false`, `showDetailSheet: false` and `showMediaViewer: false`. Custom note rendering: `noteRenderer: (note, ctx) => '<p>...</p>'`. The HTML it returns is used as is, so sanitize it if the note content is untrusted.
 
@@ -505,6 +507,21 @@ map.on('media-state', ({ node, playing, time }) => tellThePresenter(node.id, pla
 ```
 
 `openMedia` works whatever `showMediaViewer` and `showDetailSheet` say. On a map that isn't interactive, the viewer is the page's to drive: no buttons, no video controls, and no input of its own. [Pictures, videos and sounds](media.md) covers the keys, YouTube and Vimeo, sound and autoplay, and the events.
+
+## Files
+
+An idea can hold files: a PDF, a spreadsheet, a ticket, any file (`files`, see [Map format](format.md#files)). Its planet wears a paperclip at its upper left, with how many from two on, and its description says so ("has 2 files"). In focus, it offers "Show files", which opens the detail sheet at them: a row for each, with its kind's icon, its name, and its kind and size under it ("PDF · 48 kB").
+
+A file pressed there opens its address in a new tab, resolved against `baseUrl`, as a link does: only an address on the web or relative to the map ever opens. An app that keeps the files itself, as one on a phone does, takes the press with `onFileOpen` returning `false` or the `file-open` event's `preventDefault()`, and opens the file its own way:
+
+```ts
+map.on('file-open', (event) => {
+  event.preventDefault();
+  openInAnotherApp(event.node.id, event.file.src, event.file.type);
+});
+```
+
+Where the files can't be opened from, as in a web page made without them, `openFiles: false` lists them without opening them, and the sheet says they stayed with the map. `exportWebPage` makes its pages so. Prints and PDFs ([`renderPrintLayout`](#printing-and-pdf)) name each file, its kind and its size.
 
 ## Extending
 
@@ -558,6 +575,33 @@ A node in focus keeps a faint place in its orbit for each hidden idea, in that i
 
 Hiding is only how the map looks: the map, `toMarkdown()` and its events don't change, and nothing is edited. Ids the map doesn't have, and nodes with no ideas under them, are left out. A node keeps its ideas hidden when an edit renames it, and new text for the map keeps the nodes it still has hidden. With no ids, `revealChildren()` shows every hidden idea. Both return whether anything changed, and `<orbit-map>` and the React wrapper's ref have them too.
 
+## Bringing a node up close
+
+`spotlight(id, options?)` brings a node up close, for something of your own to lie over it: a surface to draw on, say, or a picture to frame. The camera flies until the node fills most of the map, the rest of the map dims under the sheet's backdrop, and the node's name, icon, badges and its type's content step aside, leaving its color and its picture. `endSpotlight()` flies the camera back where it was, and the map brightens again.
+
+```ts
+const map = createOrbitMap(element, markdown, { editable: true });
+
+map.on('spotlight', ({ phase, x, y, radius }) => {
+  if (phase === 'rest') {
+    canvas.style.cssText = `left: ${x - radius}px; top: ${y - radius}px; width: ${radius * 2}px; height: ${radius * 2}px`;
+    canvas.hidden = false;
+  }
+});
+
+map.spotlight('summit', { share: 0.8, insets: { bottom: 96 } }); // 80% of the room above a 96 px toolbar
+// …and when the drawing is done:
+canvas.hidden = true;
+map.updateNode('summit', { image: { src: drawing } });
+map.endSpotlight();
+```
+
+`share` is how much of the room the node fills across, along the room's shorter side (0.86 by default), and `insets` the room your own controls take while it's up close, as the `insets` option says for the map; the node is held in the middle of what's left. The map's own `insets` stay as they are.
+
+The `spotlight` event says where the node's circle is, in px from the map's top left: on each frame of the flight to it (`move`), once it lands (`rest`), and once the flight back lands (`end`). While the node is up close the map takes no gestures, keys or presses, the orbit doesn't drift, and the camera holds the node where it landed, whatever changes under it: an edit to the node, a new picture included, keeps its circle where it is, and a map that changes size fits it again and says where it rests now (`rest` again). A node that leaves the view, as an edit removes it, is let go of, and so is one when `flyTo`, `overview` or `setViewMode` take the map somewhere else. Bringing another node up close flies there, and `endSpotlight()` still flies back where the camera was before the first. With reduced motion, the camera moves at once, and the map dims with a fade.
+
+`spotlight` returns false when the current view doesn't draw the node. `getNodeCircle(id)` says where any node is drawn on screen now, or null. `<orbit-map>` and the React wrapper's ref have all three.
+
 What follows the view leaves hidden ideas out: the map, the outline, the media viewer's steps through the map's pictures, videos and sounds, and `toSVGString()`, which exports the view with the faint places. A node whose ideas are hidden has no + to add one either, and `editNewNode` returns false there: reveal them first. What reads the map itself reads every idea: `toMarkdown()`, `renderToSVGString`, prints (a map's web page and `renderPrintLayout`) and [map tools](map-tools.md), so a language model reading the map sees the hidden ideas too.
 
 ## Interaction
@@ -572,7 +616,7 @@ A map has two views. **Focus** puts one node at the center (the sun) with its ch
 - **Assistive technology:** the list button shows the whole map as a nested list, which screen readers can also browse at any time, and moves are announced. When the reader asks for reduced motion, views cross-fade instead of flying and a flicked orbit doesn't coast.
 - **Pictures, videos and sounds:** "View picture", "Play video" and "Play sound" open them over the whole window, to zoom into a picture (the wheel, a pinch, a double click or tap) and to play a video or a sound; the arrows and swipes step through every picture, video and sound of the map. See [Pictures and videos](#pictures-and-videos).
 - **Editing:** on `editable` maps, the + in the orbit adds an idea and a long press, a right click or F2 edits a node's text. A long press, a right click, or the context menu key (or Shift+F10) also fires `node-context`, for a menu of your own. A node held still lifts: drag it onto another node to move it there, or along the orbit to a new place. With `editingKeys`, Tab, Shift+Enter and Delete add and remove ideas from the keyboard. See [Editing on the map](#editing-on-the-map).
-- **Programmatic:** `renderer.setOptions(options)` changes the options it's given, such as the theme or the language, and keeps the others (see [Theming](theming.md) and [Languages](languages.md)); `renderer.getSVGElement()` is the map's `<svg>`. `renderer.flyTo(id)` (in focus mode), `renderer.overview()`, `renderer.focusNode(id)` (keeps the current view), `renderer.setViewMode(mode)`, `renderer.zoomBy(factor)`, `renderer.fit()`, `renderer.spin(degreesPerSecond)`, `renderer.getFocusPath()`, `renderer.getFocusedNode()`, `renderer.getViewMode()`, `renderer.getNodeColor(id)` for the color a node is drawn with, to match a list or legend beside the map, `renderer.getNodeAt(x, y)` and `renderer.setDropTarget(id)` for drops from elsewhere (see [Drops from elsewhere](editing.md#drops-from-elsewhere)), `renderer.hideChildren(ids)` and `renderer.revealChildren(ids?)` to keep ideas for later (see [Hiding ideas to reveal later](#hiding-ideas-to-reveal-later)), and `renderer.openMedia(id)`, `closeMedia()`, `playMedia()`, `pauseMedia()`, `seekMedia(seconds)` and `unmuteMedia()` for the media viewer.
+- **Programmatic:** `renderer.setOptions(options)` changes the options it's given, such as the theme or the language, and keeps the others (see [Theming](theming.md) and [Languages](languages.md)); `renderer.getSVGElement()` is the map's `<svg>`. `renderer.flyTo(id)` (in focus mode), `renderer.overview()`, `renderer.focusNode(id)` (keeps the current view), `renderer.setViewMode(mode)`, `renderer.zoomBy(factor)`, `renderer.fit()`, `renderer.spin(degreesPerSecond)`, `renderer.getFocusPath()`, `renderer.getFocusedNode()`, `renderer.getViewMode()`, `renderer.getNodeColor(id)` for the color a node is drawn with, to match a list or legend beside the map, `renderer.getNodeAt(x, y)` and `renderer.setDropTarget(id)` for drops from elsewhere (see [Drops from elsewhere](editing.md#drops-from-elsewhere)), `renderer.hideChildren(ids)` and `renderer.revealChildren(ids?)` to keep ideas for later (see [Hiding ideas to reveal later](#hiding-ideas-to-reveal-later)), `renderer.spotlight(id, options?)`, `renderer.endSpotlight()` and `renderer.getNodeCircle(id)` for something of your own over a node (see [Bringing a node up close](#bringing-a-node-up-close)), and `renderer.openMedia(id)`, `closeMedia()`, `playMedia()`, `pauseMedia()`, `seekMedia(seconds)` and `unmuteMedia()` for the media viewer.
 
 ## Events
 
@@ -596,6 +640,8 @@ element.addEventListener('orbit-focus-change', (event) => event.detail.node);
 | `node-drag` | `orbit-node-drag` | `{ phase, node, parent, index }`: a node dragged somewhere else, as it leaves its place (`start`), when where it would go changes (`over`), and when it's let go (`end`) |
 | `media-open`, `media-close` | `orbit-media-open`, `orbit-media-close` | `{ node, kind, index, total }`: the media viewer opened (or stepped) on a node's picture (`kind: 'image'`), video (`'video'`) or sound (`'audio'`), `index` of `total` in reading order, or closed |
 | `media-state` | `orbit-media-state` | `{ node, kind, playing, time, duration, ended, muted }`: the viewer's video, sound or live photo's motion (`kind`: `video`, `audio` or `image`) started, paused, moved on, ended or was muted; while it plays, its time a few times a second |
+| `file-open` | `orbit-file-open` | `{ node, file, index, sourceEvent }`: one of a node's files was opened in the detail sheet; `preventDefault()` keeps it from opening in a new tab, for an app to open it its way |
+| `spotlight` | `orbit-spotlight` | `{ phase, node, x, y, radius }`: where a node `spotlight` brought up close is on screen, its circle's center and radius in px, as the camera flies to it or back (`move`), once it rests there and whenever it rests somewhere else (`rest`), and once it's back in its place (`end`) |
 | | `orbit-error` | `{ message, line, error, diagnostics }`, on elements whose map couldn't be drawn |
 
 The `on…` options hear the same, a few in a shape of their own:
@@ -606,8 +652,9 @@ The `on…` options hear the same, a few in a shape of their own:
 | `onViewModeChange` | `(mode)` |
 | `onNodeClick` | `(node)` |
 | `onAction` | `({ node, action, sourceEvent })`; returning `false` skips the built-in viewer, sheet or link, and the `action` event with it |
+| `onFileOpen` | `({ node, file, index, sourceEvent })`; returning `false` keeps the file from opening in a new tab, and skips the `file-open` event with it |
 | `onSpinSettle` | `(node)` |
-| `onNodeContext`, `onEdit`, `onEditorOpen`, `onEditorClose`, `onNodeDrag`, `onMediaOpen`, `onMediaClose`, `onMediaState` | the event's detail |
+| `onNodeContext`, `onEdit`, `onEditorOpen`, `onEditorClose`, `onNodeDrag`, `onMediaOpen`, `onMediaClose`, `onMediaState`, `onSpotlight` | the event's detail |
 
 A callback that throws doesn't stop the map, as a listener that throws doesn't: the error is reported (`reportError`, or thrown on its own afterwards), and the event still reaches the `on()` listeners and the DOM.
 
@@ -682,7 +729,28 @@ import { renderNoteMarkdown } from '@restless-dreams/orbit';
 caption.replaceChildren(renderNoteMarkdown(node.note ?? '', { baseUrl }));
 ```
 
-Options: `baseUrl`, where relative links and pictures resolve from, and `resolveLink(href)`, whether a `#id` link points at a node of the map (links to missing nodes show as plain text).
+Options: `baseUrl`, where relative links and pictures resolve from, `resolveLink(href)`, whether a `#id` link points at a node of the map (links to missing nodes show as plain text), and `onCheck`.
+
+A note's checklists show as checkboxes, which change only with `onCheck`: it's called when someone checks or unchecks one, with the box's `line` in the note (from 0) and whether it's `checked` now. `setNoteCheckbox(note, line, checked)` gives the note with that one box changed and every other character as it was, or `null` when the note has no box on that line, as after it changed. Save it with `updateNode`, as the detail sheet does on an editable map: it's an edit like any other, and saving changes just that line of the file.
+
+```ts
+import { findNodeById, renderNoteMarkdown, setNoteCheckbox } from '@restless-dreams/orbit';
+
+const showNote = (id) => {
+  const note = findNodeById(map.getDocument().root, id)?.note ?? '';
+  caption.replaceChildren(renderNoteMarkdown(note, {
+    onCheck: ({ line, checked }) => {
+      const changed = setNoteCheckbox(findNodeById(map.getDocument().root, id)?.note ?? '', line, checked);
+
+      if (changed === null) {
+        showNote(id); // The note changed since it showed: show it as it is.
+      } else {
+        map.updateNode(id, { note: changed });
+      }
+    },
+  }));
+};
+```
 
 ## Renderer options
 
@@ -698,6 +766,7 @@ Options: `baseUrl`, where relative links and pictures resolve from, and `resolve
 | `showControls` | `true` | Breadcrumbs, view switch, list button and zoom buttons. |
 | `showActionButtons` / `showDetailSheet` | `true` | Content buttons under the focused node / the built-in detail sheet. |
 | `showMediaViewer` | `true` | Pictures, videos and sounds open in the media viewer, over the whole window; `false` keeps them in the detail sheet. |
+| `openFiles` | `true` | The detail sheet's files open, each in a new tab unless `onFileOpen` or the `file-open` event takes it; `false` lists them without opening them, and says they stayed with the map, as a web page made without them does. |
 | `editable` | `false` | A + in the orbit to add ideas, text edited inside nodes (long press, right click or F2), and nodes dragged somewhere else. |
 | `editingKeys` | `false` | Mind-map keys on editable maps: Tab adds an idea under a node, Shift+Enter beside it, and Delete removes it; while typing, Tab and Shift+Tab go a level down and up. |
 | `longPressDelay` | `500` | Milliseconds a touch holds still on a node before it is a long press; apps can pass their platform's own. |
@@ -711,7 +780,7 @@ Options: `baseUrl`, where relative links and pictures resolve from, and `resolve
 | `language` | the page's | The language of the map's buttons, sheets and announcements: a tag like `'es'` ([Languages](languages.md)). By default, the closest `lang` attribute around the map. |
 | `strings` | | Words to change on this map only: `{ zoomIn: 'Closer' }`. |
 | `baseUrl` | | Resolves relative image, video, sound and link URLs: an `http`, `https` or `file` address, or a relative one. Joined to a base of any other kind, such as `javascript:`, they stay relative. |
-| `onNodeClick`, `onFocusChange`, `onViewModeChange`, `onAction`, `onSpinSettle`, `onNodeContext`, `onEdit`, `onEditorOpen`, `onEditorClose`, `onNodeDrag`, `onMediaOpen`, `onMediaClose`, `onMediaState` | | Callbacks (see [Events](#events)). |
+| `onNodeClick`, `onFocusChange`, `onViewModeChange`, `onAction`, `onSpinSettle`, `onNodeContext`, `onEdit`, `onEditorOpen`, `onEditorClose`, `onNodeDrag`, `onMediaOpen`, `onMediaClose`, `onMediaState`, `onFileOpen`, `onSpotlight` | | Callbacks (see [Events](#events)). |
 | `noteRenderer` | | Renders note markdown to HTML yourself. |
 | `nodeTypes`, `actions`, `statuses`, `nodeTypeFor` | | Node types, buttons of your own, status words, and the type a node that names none is drawn as (see [Extending](#extending)). |
 
@@ -732,7 +801,7 @@ Use `-` as the file to read from stdin, and `--help` after any command for its o
 
 ## Languages
 
-Maps speak the language of the page they're on: the buttons, the detail sheet, the media viewer and everything screen readers hear. English and Spanish are built in; `registerLanguage` adds others, and the `language` and `strings` options pick a language or change single words for one map.
+Maps speak the language of the page they're on: the buttons, the detail sheet, the media viewer and everything screen readers hear. English, Spanish and Brazilian Portuguese are built in; `registerLanguage` adds others, and the `language` and `strings` options pick a language or change single words for one map.
 
 ```ts
 import { createOrbitMap, registerLanguage } from '@restless-dreams/orbit';
@@ -811,8 +880,10 @@ The complete reference for writing Orbit maps. A map is a tree: one root, and no
   - [Notes](#notes)
   - [Links between nodes](#links-between-nodes)
   - [Media](#media)
+  - [Files](#files)
   - [Attributes](#attributes)
   - [Statuses](#statuses)
+  - [Dates](#dates)
 - [Document options](#document-options)
 - [YAML](#yaml)
 - [Which flavor a document is](#which-flavor-a-document-is)
@@ -879,18 +950,27 @@ A note is longer text shown in the detail sheet, as markdown. Everything under a
 
 - Under a list item, indent the note under it, as you would write anything under a heading. A line right after the item, with no blank line between, continues the item too.
 - To keep a list inside a note, instead of making it children, quote it with `>`: headings and bullets inside a quote stay note text.
+- **Checklists:** a quoted list's `[ ]` and `[x]` items show as checkboxes, at any depth. On an editable map, checking one in the detail sheet changes just that box's line of the file.
+- **Tables** are GitHub's: a header row, then a row of dashes with as many cells, a colon at either end of the dashes aligning the column. A `|` in a cell is written `\|`, or inside code. A table wider than the sheet scrolls sideways.
 
 ```markdown
 # Launch
 ## Research
 Questions to answer:
-> - Who buys it?
-> - Why now?
+> - [x] Who buys it?
+> - [ ] Why now?
+
+| Market | Size | Growth |
+| :--- | ---: | :---: |
+| Students | 2.1M | **fast** |
+| Teams | 340K | steady |
 
 - Frontend
   Vite and React. Ships behind the beta flag.
 - Backend
 ```
+
+Tables and checklists are note text to every version of Orbit: versions before them show them as written, and keep them when they save.
 
 ### Links between nodes
 
@@ -968,6 +1048,38 @@ A sound (a voice memo, music, a recording) is only ever an attribute, with its c
 
 Sounds have no line of their own: a link to an `.mp3` on its own line stays note text, as it always has, and a `caption` beside `audio` stays with the node's video, embed or picture. So versions from before sounds read every map exactly as they did: they keep `audio` as a custom attribute, write it back as it was, and play nothing (see [Changing the format](#changing-the-format)).
 
+### Files
+
+An idea can hold files: a PDF, a spreadsheet, a ticket, any file. They're the `files` attribute, a list, each file its address or its address with what Orbit shows of it without opening it:
+
+```markdown
+# Trip
+## Tickets
+<!-- orbit
+files:
+  - src: media/boarding-pass.pdf
+    name: Boarding pass.pdf
+    type: application/pdf
+    size: 48213
+  - src: media/hotel.docx
+    name: "Hotel: booking, final.docx"
+-->
+- Visa <!-- orbit files: [media/visa.pdf] -->
+```
+
+| Field | Value | |
+| --- | --- | --- |
+| `src` | URL | The file's address. Relative ones resolve against `baseUrl`, as every media address does. |
+| `name` | text | Its name as people know it, which its address may not keep. Without one, the last part of its address. |
+| `type` | a media type | Such as `application/pdf`: what kind of file it is. Without one, its name's extension says. |
+| `size` | a number of bytes | How big it is, shown beside its kind ("PDF · 48 kB"). |
+
+- **On the map:** its planet wears a paperclip at its upper left, with how many from two on. The detail sheet lists them, each with its kind's icon, its name, and its kind and size; prints and PDFs name them too. Opening one is the page's to do (see [Files](guide.md#files)).
+- **One file alone** reads as a list of one: `files: media/visa.pdf`.
+- **Fields Orbit doesn't read** in a file stay with it, as a picture's do, and so does a `size` that isn't a number of bytes. A list with a file Orbit can't read (one without an address) is kept as written, with an `invalid-attributes` note, and not shown.
+- **Written by Orbit** after `due`, with each file's fields and its address first, as `src`, even one written alone: so every file's address is on a line of its own, `src: media/…`, in markdown and YAML alike.
+- **Versions from before files** keep `files` as a custom attribute, without a word, and write it back as it was: through their own edits too, renamed, checked off, colored and moved, and in their YAML (see [Changing the format](#changing-the-format)).
+
 ### Attributes
 
 Attributes go in an HTML comment that starts with `orbit` (in any case, with or without a colon after it), written as YAML:
@@ -1000,6 +1112,7 @@ tags: [frontend, sprint-3]
 | `icon` | emoji or short symbol | `🚀`, `"★"` | Shown before the text. Same as an emoji at the start of the title. |
 | `status` | text | `active`, `done`, `blocked` | Shown in the detail sheet; some words get a colored dot (see [Statuses](#statuses)). |
 | `priority` | number | `1` | Shown in the detail sheet. |
+| `due` | a date, or a date and a time | `2026-11-20`, `"2026-11-20 09:30"` | The idea's date, in local time: shown small on its planet, in the detail sheet and the outline (see [Dates](#dates)). |
 | `tags` | list of text | `[frontend, sprint-3]` | Shown in the detail sheet. A single word works too, and so do words separated by commas: `tags: frontend, sprint-3`. Hashtags at the end of the title add to them. |
 | `collapsed` | `true` / `false` | `true` | Hides the node's children (they show as a "+N" count) until you fly into it. |
 | `link` | URL, or `#id` | `https://example.com` | Offered as a button when the node is in focus. Same as a link in the title. `#id` goes to another node (see [Links between nodes](#links-between-nodes)). |
@@ -1009,6 +1122,7 @@ tags: [frontend, sprint-3]
 | `video` | URL, or `{ src, provider, thumbnail, caption }` | `https://youtu.be/…` | The node's video. `provider`: `youtube`, `vimeo` or `native`. |
 | `audio` | URL, or `{ src, caption }` | `memos/kickoff.m4a` | The node's sound: a voice memo, music or a recording, played in the detail sheet and the media viewer. Its caption goes in its own value. |
 | `embed` | URL, or `{ src, caption }` | `https://example.com/demo` | A page shown in a frame in the detail sheet. |
+| `files` | a list of URLs, or of `{ src, name, type, size }` | `[media/plan.pdf]` | Files the idea holds: a paperclip on its planet, and a list in the detail sheet (see [Files](#files)). |
 | `caption` | text | `The summit at dawn.` | Caption for the media line just above it, or for the one image, video or embed set next to it. Anywhere else, for the node's video, embed or image (in that order). Never a sound's: that goes in its `audio` value. |
 | `id` | text | `launch` | The node's id, instead of one made from its text (see [Node ids](#node-ids)). |
 | `type` | text | `milestone` | The node's type. A type your code defines sets its look, content and actions (see [Extending](extending.md#node-types)). Any case. |
@@ -1028,6 +1142,23 @@ Any other key is kept as a **custom attribute** in `node.attrs`, for your own co
 | todo (gray) | `todo`, `to do`, `planned`, `backlog`, `next`, `open` |
 
 Other words get a neutral dot. Checkboxes set `todo` (`[ ]`), `done` (`[x]`) and `active` (`[/]`).
+
+### Dates
+
+`due` gives an idea a date: a day, or a day and a time of day, as `YYYY-MM-DD` and `HH:MM` (24 hours) after it.
+
+```markdown
+# Trip
+## Book the flights <!-- orbit due: 2026-11-20 -->
+## Hotel deposit <!-- orbit due: 2026-11-20 09:30 -->
+- [x] Passport photos <!-- orbit due: 2026-11-16 -->
+```
+
+- **Local time, with no time zone.** `09:30` is half past nine wherever the map is read, as a date written in a paper diary is: a map shared across time zones keeps its dates as written.
+- **Shown small:** a chip inside the idea's planet, at its bottom ("Today", "Tomorrow", "Fri", "Nov 20", or its time when it's today), in the map's language; the detail sheet and the outline show it in full. Once its day is over, or its time has come, it takes the theme's attention color (`--orbit-overdue`), unless the idea's status is done (see [Statuses](#statuses)): a done idea is never overdue.
+- **Written by Orbit** as `due: "2026-11-20"` or `due: "2026-11-20 09:30"`, quoted, so YAML readers take it as text. It reads unquoted too, with a `T` before the time (`2026-11-20T09:30`, as programs write it) and with single figures (`2026-1-5 9:30`), all of them read as Orbit writes them. Seconds and time zones aren't part of it.
+- **A date that doesn't exist**, such as February 30th or 24:00, or any other value, is kept as written, as a custom attribute, with an `invalid-attributes` note, and not shown.
+- **Versions from before dates** keep `due` as a custom attribute and write it back as it was: through their own edits too, renamed, checked off, colored and moved, and in their YAML (see [Changing the format](#changing-the-format)).
 
 ### Colors
 
@@ -1116,13 +1247,13 @@ A document says which version of the format it's written for with `schemaVersion
 
 - **Older documents are upgraded as they're read.** When the format changes, Orbit brings documents written for the version before up to date as it reads them (a `format-upgraded` note says so), and the next save writes them as the new version, changing only what the upgrade changed.
 - **Newer documents are read as well as they can be,** and reported with `unsupported-schema-version`, an error: apps should open them without letting them be edited. Nothing in them is lost by saving, in either flavor: they're written back as they were, and an edit writes again only the ideas and options it changes. An edit that would replace what this version can't read is refused instead, with an error, so an idea can't be added under one whose ideas are written in a newer version's form. What this version doesn't know of them isn't understood, though. A map on screen has the report in `getDocument().diagnostics`, and isn't edited on the map even when it's `editable` (a console warning says why). Its editing methods still work, for an app that knows what it's changing, and [map tools](map-tools.md) refuse to change it.
-- **Node types have versions of their own,** for the fields their nodes keep in attributes: `type: task@2` says a node was written for version 2 of `task`, and none means 1. A type that changes its fields says so with `version` and brings older nodes up to date with `upgrade` (see [Extending Orbit](extending.md#versions)); a node written for a newer version of its type is left as it is.
+- **Node types have versions of their own,** for the fields their nodes keep in attributes: `type: task@2` says a node was written for version 2 of `task`, and none means 1. A type that changes its fields says so with `version` and brings older nodes up to date with `upgrade` (see [Extending Orbit](extending.md#versions)); a node written for a newer version of its type is left as it is. A version goes up to 9007199254740991, the largest whole number JavaScript holds exactly: a `type` with a bigger one is reported with `invalid-attributes` and kept as written, but not used, since it would come back with other digits, so its node is a plain idea.
 
 ### Changing the format
 
 Maps outlive the version of Orbit that wrote them. Older and newer versions read them, and so do apps that bundle a copy of their own. So each change to the format is one of three kinds:
 
-- **Something older versions can do without:** a new attribute (like `paletteColor`, or `audio`, for which a sound has no media line of its own) or a new document option. An older version keeps the attribute as a custom one, and the option as an unknown frontmatter key, which it reports. It writes both back unchanged and draws the map as it did before. No new version of the format is needed.
+- **Something older versions can do without:** a new attribute (like `paletteColor`, `due`, `files`, or `audio`, for which a sound has no media line of its own) or a new document option. An older version keeps the attribute as a custom one, and the option as an unknown frontmatter key, which it reports. It writes both back unchanged and draws the map as it did before. No new version of the format is needed. `tests/fixtures/releases/kept/` holds what released versions write from today's maps, which say more than they read, and the tests check they keep it: Orbit 0.4.0 keeps every date and every file, through its own edits too.
   - The same goes for a new field in a picture, video, sound or embed (like a picture's `motion`, which makes it a live photo): every version keeps the fields it doesn't read in those, says nothing about them, and writes them back with the value, as an attribute. It writes them right after `src` in markdown, and first in YAML, so Orbit writes a new field there too, and a map reads back the same in every version. Orbit 0.3.0, and every Orbit that Orbit for Android has bundled, read a map with live photos without a word, show their stills, and write each motion back byte for byte: as it is, after they rename or color the live photo and change other ideas, and through their YAML. Up to 0.3.0, though, an edit to the value itself (a new caption through `updateNode`) drops the fields a version doesn't read, a live photo's motion included; later versions keep them.
 - **Something an older version would misread:**
   - a new kind of value for an attribute it already reads: Orbit 0.1.0 takes `color: 3` for a color and draws it wrong, without a word;
@@ -1484,7 +1615,7 @@ For `<orbit-map>`, set them on the element (`orbit-map { --orbit-surface: … }`
 | Page | `--orbit-surface` (background color), `--orbit-surface-pattern` (CSS background layers drawn over it, or `none`), `--orbit-text`, `--orbit-muted-text` |
 | Node colors | `--orbit-color-root`, `--orbit-color-1` … `--orbit-color-7` (one per top-level branch, in order), `--orbit-shade-light` and `--orbit-shade-dark` (what deeper nodes are mixed toward) |
 | Planets | `--orbit-node-fill-opacity`, `--orbit-moon-opacity`, `--orbit-node-highlight` (the lit side), `--orbit-node-terminator` (where light turns to shadow), `--orbit-node-shading` (the far edge), `--orbit-node-shade-circle` (where the shading spreads, see below), `--orbit-note-indicator` |
-| Rims | `--orbit-node-stroke`, `--orbit-node-stroke-tint`, `--orbit-node-stroke-width` (in pixels; in a crowded orbit, a planet's rim is 4% of its radius per pixel, so it grows and shrinks with it), `--orbit-badge-stroke` (around status dots and content markers, which grow with their nodes) |
+| Rims | `--orbit-node-stroke`, `--orbit-node-stroke-tint`, `--orbit-node-stroke-width` (in pixels; in a crowded orbit, a planet's rim is 4% of its radius per pixel, so it grows and shrinks with it), `--orbit-badge-stroke` (around status dots and content markers, which grow with their nodes, and the paperclip and count of a planet's files, on `--orbit-note-indicator`: keep them 4.5:1 apart) |
 | Shadow or glow | `--orbit-node-shadow`, `--orbit-node-shadow-tint`, `--orbit-node-shadow-opacity`, `--orbit-node-shadow-offset`, `--orbit-node-shadow-size`, `--orbit-sun-shadow-opacity`, `--orbit-sun-shadow-size` |
 | The sun's halo | `--orbit-sun-halo`, `--orbit-sun-halo-tint`, `--orbit-sun-halo-opacity`, `--orbit-sun-halo-width`, `--orbit-sun-halo-dash`, `--orbit-sun-halo-size` |
 | Orbits | `--orbit-ring-stroke`, `--orbit-ring-tint`, `--orbit-ring-opacity`, `--orbit-ring-width`, `--orbit-ring-dash` |
@@ -1494,8 +1625,9 @@ For `<orbit-map>`, set them on the element (`orbit-map { --orbit-surface: … }`
 | Controls | `--orbit-control-background`, `--orbit-control-border`, `--orbit-control-text`, `--orbit-control-muted-text`, `--orbit-control-active-background`, `--orbit-control-active-text`, `--orbit-control-shadow`, `--orbit-control-blur` |
 | Tooltip | `--orbit-tooltip-background`, `--orbit-tooltip-text` |
 | Content buttons | `--orbit-action-background`, `--orbit-action-border`, `--orbit-action-text`, `--orbit-action-shadow` |
-| Detail sheet and media viewer | `--orbit-sheet-background` (behind the viewer's media too), `--orbit-sheet-text`, `--orbit-sheet-muted-text`, `--orbit-sheet-border`, `--orbit-sheet-backdrop`, `--orbit-sheet-shadow` (under the viewer's videos too), `--orbit-sheet-blur`, `--orbit-chip-background`, `--orbit-chip-text`, `--orbit-link-text`. The viewer's buttons are the controls', and so is a live photo's mark; a sound's play button and slider, and a live photo's mark while it plays, take `--orbit-control-active-background` and `--orbit-control-active-text`. |
+| Detail sheet and media viewer | `--orbit-sheet-background` (behind the viewer's media too), `--orbit-sheet-text`, `--orbit-sheet-muted-text`, `--orbit-sheet-border`, `--orbit-sheet-backdrop`, `--orbit-sheet-shadow` (under the viewer's videos too), `--orbit-sheet-blur`, `--orbit-chip-background`, `--orbit-chip-text`, `--orbit-link-text`. The viewer's buttons are the controls', and so is a live photo's mark; a sound's play button and slider, and a live photo's mark while it plays, take `--orbit-control-active-background` and `--orbit-control-active-text`, as a note's checked boxes do. A note's tables take the sheet's border, and the chip background behind their header row. |
 | Status colors | `--orbit-status-active`, `--orbit-status-done`, `--orbit-status-blocked`, `--orbit-status-todo`, `--orbit-status-neutral` |
+| Dates | `--orbit-overdue`: a date that's past while its idea isn't done, on its planet's chip, in the detail sheet and in the outline (each theme's red, at 4.5:1 or more on the chips). The chips on the planets are the controls' colors, as a "+N" is. |
 | Error card | `--orbit-error-background`, `--orbit-error-border`, `--orbit-error-text` |
 
 The list is also exported as `THEME_TOKENS`, and `themeTokens(name)` returns a theme's values, for example to style the rest of your page to match:
@@ -1900,6 +2032,7 @@ With `editable`:
   - Enter saves, and Escape leaves the text as it was. Tapping anywhere else saves.
   - A moon flies into its planet's orbit first, so its text has room. In the overview, small nodes get a field floating over them, at a size you can read.
 - **Nodes dragged somewhere else** (see [Dragging nodes](#dragging-nodes)).
+- **Checklists in notes checked off.** A note's checkboxes change in the detail sheet, with a press or the space bar. Each one is an edit of that one box in the note: it fires `edit` (`kind: 'update'`), and saving changes just its line of the file. On maps that aren't editable, the boxes show but don't change.
 
 `<orbit-map editable>` and `<OrbitMindMap editable>` turn it on too.
 
@@ -2029,7 +2162,7 @@ To let a language model make these changes, see [Map tools for AI](map-tools.md)
 
 `editNode` and `editNewNode` return false, and the others `null`, when there's nothing to do: an id that isn't in the map, removing or moving the root, or moving a node inside itself. `editNewNode` also returns false for a node whose ideas are hidden ([Hiding ideas to reveal later](guide.md#hiding-ideas-to-reveal-later)), which has no + either: a new idea would be typed out of sight, among the ideas the page keeps for later, so reveal them first. They work on any interactive map. `editable` adds the ways people edit by themselves: the +, editing on a long press, a right click, the context menu key or F2, and dragging.
 
-Besides `text`, `addNode` and `updateNode` take the node's attributes: `icon`, `color`, `paletteColor`, `status`, `priority`, `tags`, `collapsed`, `type`, `typeVersion`, `link`, `note`, `noteFormat`, `image`, `video`, `audio`, `embed`, and `attrs` for your own. They read them as a file's are, so the format's shorthands work: a picture, video, sound or embed can be its address (`{ image: 'summit.jpg' }`), and so can a live photo's motion (`{ image: { src: 'summit.jpg', motion: 'summit-motion.mp4' } }`); tags can be `'web, mobile'`, and a type `'task@2'`. A value Orbit can't read, such as a picture without an address, throws a `TypeError` that says what it takes, and the map stays as it was.
+Besides `text`, `addNode` and `updateNode` take the node's attributes: `icon`, `color`, `paletteColor`, `status`, `priority`, `due`, `tags`, `collapsed`, `type`, `typeVersion`, `link`, `note`, `noteFormat`, `image`, `video`, `audio`, `embed`, `files`, and `attrs` for your own. They read them as a file's are, so the format's shorthands work: a picture, video, sound or embed can be its address (`{ image: 'summit.jpg' }`), and so can a live photo's motion (`{ image: { src: 'summit.jpg', motion: 'summit-motion.mp4' } }`) and each of an idea's files (`{ files: ['media/plan.pdf', { src: 'media/budget.xlsx', name: 'Budget.xlsx', size: 48213 }] }`, a list that replaces the idea's, and keeps the fields Orbit doesn't read of a file given again by its address); tags can be `'web, mobile'`, a type `'task@2'`, and a date `'2026-11-20T09:30'`, which the node keeps as `'2026-11-20 09:30'`. A value Orbit can't read, such as a picture without an address or a day that doesn't exist, throws a `TypeError` that says what it takes, and the map stays as it was. `undefined` takes an attribute off: `updateNode('flights', { due: undefined })`.
 
 - **Ids come from the text,** as when a map is read from markdown: "Night markets" is `night-markets`, and a second "Ideas" is `ideas-2`. New text gives a node a new id, so the saved file needs no `id` attribute. A node keeps its id when a `#id` link points at it, or when the id was set by hand. Read a node's current id from what the method returns.
 - **Titles are one line:** line breaks become spaces, typed or pasted.
@@ -2236,9 +2369,9 @@ For anything else, such as the Vercel AI SDK or LangChain, build the tools from 
 | --- | --- | --- |
 | `read_map` | The map as an outline: each node's title, id and attributes, and the start of its note. A big map is cut short, whole levels first, with what's left out counted. | `node_id` (to read one branch), `depth` |
 | `find_nodes` | Searches titles, notes and tags, in any case and with or without accents, and statuses by what they mean: `done` finds `shipped` too. | `query`, `status`, `tag` |
-| `read_node` | Everything about one node: its whole note, its picture, video or page, where it is, its children, and the nodes that link to it. | `node_id` |
+| `read_node` | Everything about one node: its whole note, its picture, video or page, its files, where it is, its children, and the nodes that link to it. | `node_id` |
 | `add_nodes` | Adds nodes, or whole branches, written as a markdown list. | `parent_id`, `outline`, `index` |
-| `update_node` | Changes a title or attributes, and `clear` removes attributes. | `node_id`, `text`, `note`, `status`, `priority`, `tags`, `icon`, `color`, `link`, `image`, `video`, `audio`, `embed`, `collapsed`, `clear` |
+| `update_node` | Changes a title or attributes, and `clear` removes attributes. | `node_id`, `text`, `note`, `status`, `priority`, `due`, `tags`, `icon`, `color`, `link`, `image`, `video`, `audio`, `embed`, `collapsed`, `clear` |
 | `move_node` | Moves a branch under another node, or to another place among its siblings. | `node_id`, `parent_id`, `index` |
 | `reorder_children` | Puts all the children of a node in a new order at once: to sort them, or to group them. | `parent_id`, `order` |
 | `remove_node` | Removes a branch. Never the root. | `node_id` |
@@ -2607,7 +2740,7 @@ Two attributes only Orbit reads say what the text alone can't: `_noteFormat` whe
 
 # Languages
 
-Orbit speaks the language of the page it's on: its buttons, the detail sheet, the media viewer, the list of the map, its messages and everything screen readers hear about the map. English and Spanish are built in. You can add any other language, change single words, or pick a language for one map.
+Orbit speaks the language of the page it's on: its buttons, the detail sheet, the media viewer, the list of the map, its messages and everything screen readers hear about the map. English, Spanish and Brazilian Portuguese are built in. You can add any other language, change single words, or pick a language for one map.
 
 Only Orbit's own words change. The text of a map is the author's, and so are the status words written in it, except the four a file writes for a task's state: `todo`, `active`, `done` and `blocked` are said and shown in the map's language ("En curso" for `status: active` in Spanish, from `statusTodo` and the rest). Any other word, such as `review`, shows as written. Problems Orbit reports about a map's source (in the console, `orbit validate` and diagnostics) stay in English: they're for the map's author and their tools.
 
@@ -2635,13 +2768,13 @@ createOrbitMap(element, markdown, { language: 'es' });
 
 The map then says its language with a `lang` attribute, so screen readers read its words in it. On `<orbit-map>`, set its `lang` attribute, as on any element: `<orbit-map lang="es">`.
 
-Languages are [BCP 47 tags](https://www.rfc-editor.org/info/bcp47). A regional tag speaks its language with the region's numbers and plurals: `es-MX` and `es-ES` both speak Spanish, writing 24,000 and 24.000. A language Orbit doesn't have speaks English, and so does a map on a page that names none.
+Languages are [BCP 47 tags](https://www.rfc-editor.org/info/bcp47). A regional tag speaks its language with the region's numbers and plurals: `es-MX` and `es-ES` both speak Spanish, writing 24,000 and 24.000. Orbit's Portuguese is Brazil's, `pt-BR`, which `pt` speaks too, and so does `pt-PT`, with Portugal's numbers and plurals, until a page adds Portugal's own words (below). A language Orbit doesn't have speaks English, and so does a map on a page that names none.
 
 Changing the language later, with `setOptions({ language })`, the `language` prop or the element's `lang` attribute, writes the map's words again where they are.
 
 ## Adding a language
 
-`registerLanguage` adds a language for every map, by its tag. Words it leaves out are English, or, for a regional tag like `pt-BR`, its base language's (`pt`) when Orbit has it:
+`registerLanguage` adds a language for every map, by its tag. Words it leaves out are English, or, for a regional tag like `pt-PT`, its base language's (`pt`) when Orbit has it:
 
 ```ts
 import { registerLanguage } from '@restless-dreams/orbit';
@@ -2656,17 +2789,18 @@ registerLanguage('fr', {
 });
 ```
 
-It returns a function that takes the language away again. Registering a language Orbit already has changes its words for every map: `registerLanguage('es', { video: 'Vídeo' })`. `languageTags()` lists the languages maps can speak.
+It returns a function that takes the language away again. Registering a language Orbit already has changes its words for every map: `registerLanguage('es', { video: 'Vídeo' })`. A region of one starts from it and changes only what it gives: `registerLanguage('pt-PT', { overview: 'Vista geral' })` speaks Portugal's word there and Brazil's everywhere else, while `pt-BR` keeps its own. `languageTags()` lists the languages maps can speak.
 
 ### Placeholders, plurals and lists
 
 - **Placeholders:** words in braces (`{name}`, `{count}`) are filled in for you. Keep them in a translation, in whatever order the language needs.
 - **Plurals:** text with a number is an object of plural forms, one for each [plural category](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/PluralRules/select) the language uses (`zero`, `one`, `two`, `few`, `many`) and `other`, which is required and covers any form left out.
 - **Numbers and lists:** numbers are written the way the language writes them, and lists like "has note, image, and link" are joined the language's way ("tiene nota, imagen y enlace").
+- **Dates:** an idea's date is written the language's way too ("Fri, Nov 20", "vie, 20 nov"), with the days of the week, months and times of its region (`en-GB` writes 24-hour times); a tag can ask for an hour cycle of its own (`en-US-u-hc-h23`). Only "Today", "Tomorrow" and "Yesterday", which planets show, are words of Orbit's.
 
 ## Where long words break
 
-A name too long for its node is cut across lines, and a long word in it breaks with a hyphen where the map's language breaks it: "Pho-to-syn-the-sis", "No-ti-fi-ca-cio-nes", never "Photosy-nthesis". When the name then fits, the word breaks where its lines come out most even ("Electroen- / cephalography", not "Electroencephalogra- / phy"); a name cut short anyway breaks as late as it can, to show the most of it. A long word also breaks rather than shrink its name whole, once, when that shows the name at least 2 px larger: "Investi- / gación" at the planet's own size, not "Investigación" at its smallest. While the map moves, names keep the fit they had; the larger one comes once it's still. Orbit knows where English and Spanish words break, from the hyphenation patterns TeX uses (hyph-utf8's American English and Spanish), and leaves at least two letters before a hyphen and, in English, three after it. The language is the map's, from the `language` option or the page's `lang`, whether Orbit has its words or not.
+A name too long for its node is cut across lines, and a long word in it breaks with a hyphen where the map's language breaks it: "Pho-to-syn-the-sis", "No-ti-fi-ca-cio-nes", never "Photosy-nthesis". When the name then fits, the word breaks where its lines come out most even ("Electroen- / cephalography", not "Electroencephalogra- / phy"); a name cut short anyway breaks as late as it can, to show the most of it. A long word also breaks rather than shrink its name whole, once, when that shows the name at least 2 px larger: "Investi- / gación" at the planet's own size, not "Investigación" at its smallest. While the map moves, names keep the fit they had; the larger one comes once it's still. Orbit knows where English, Spanish and Portuguese words break, from the hyphenation patterns TeX uses (hyph-utf8's American English, Spanish and Portuguese), and leaves at least two letters before a hyphen and, in English and Portuguese, three after it: "Con-fi-gu-ra-ções", "Pla-ne-ja-mento". The language is the map's, from the `language` option or the page's `lang`, whether Orbit has its words or not.
 
 `registerHyphenation` adds another language's patterns, such as its `hyph-<language>.pat.txt` and `.hyp.txt` from the [hyph-utf8 package](https://www.hyphenation.org/tex), whose files say each one's license:
 
@@ -2698,108 +2832,130 @@ A map that's just a list, or has several top headings, and has no title gets a r
 
 ## Every word
 
-| Key | English | Spanish |
-| --- | --- | --- |
-| `mindMap` | Mind map | Mapa mental |
-| `mindMapRole` | mind map | mapa mental |
-| `untitled` | Untitled | Sin título |
-| `untitledMap` | Untitled map | Mapa sin título |
-| `emptyMap` | This map is empty | Este mapa está vacío |
-| `emptyMapHint` | Start it with a # heading or a bullet list | Empiézalo con un encabezado # o una lista con viñetas |
-| `mapNotDrawn` | This map couldn’t be drawn | No se pudo dibujar este mapa |
-| `mapNotDrawnReason` | The map could not be drawn. | No se pudo dibujar el mapa. |
-| `problemOnLine` | Line {line}: {message} | Línea {line}: {message} |
-| `mapPath` | Map path | Ruta del mapa |
-| `back` | Back | Atrás |
-| `backTo` | Back to {name} | Volver a {name} |
-| `backToParent` | Back to the idea above | Volver a la idea superior |
-| `view` | View | Vista |
-| `focus` | Focus | Enfoque |
-| `overview` | Overview | Vista general |
-| `showOutline` | Show the map as a list | Mostrar el mapa como lista |
-| `zoom` | Zoom | Zoom |
-| `zoomIn` | Zoom in | Acercar |
-| `zoomOut` | Zoom out | Alejar |
-| `fitMap` | Fit the map | Ajustar el mapa |
-| `scrollToZoom` | Use {key} + scroll to zoom the map | Usa {key} + desplazamiento para acercar o alejar el mapa |
-| `outline` | Map outline | Esquema del mapa |
-| `overviewAnnouncement` | Overview of the whole map | Vista general de todo el mapa |
-| `ideaCount` | one: {count} item; other: {count} items | one: {count} idea; many: {count} ideas; other: {count} ideas |
-| `hiddenIdeaCount` | one: {count} hidden idea; other: {count} hidden ideas | one: {count} idea oculta; many: {count} ideas ocultas; other: {count} ideas ocultas |
-| `revealed` | {name}: {list} | {name}: {list} |
-| `added` | Added {name} | Se agregó {name} |
-| `removed` | Deleted {name} | Se eliminó {name} |
-| `moved` | Moved {name} to {parent} | Se movió {name} a {parent} |
-| `movedToTop` | Moved {name} to the top | Se movió {name} al nivel superior |
-| `anIdea` | an idea | una idea |
-| `status` | status: {status} | estado: {status} |
-| `statusLabel` | Status: {status} | Estado: {status} |
-| `statusTodo` | To do | Por hacer |
-| `statusActive` | In progress | En curso |
-| `statusDone` | Done | Hecho |
-| `statusBlocked` | Blocked | Bloqueado |
-| `has` | has {list} | tiene {list} |
-| `hasDetails` | details | detalles |
-| `hasNote` | note | nota |
-| `hasImage` | picture | imagen |
-| `hasVideo` | video | video |
-| `hasAudio` | sound | audio |
-| `hasEmbed` | web page | página web |
-| `hasLink` | link | enlace |
-| `textOf` | Text of {name} | Texto de {name} |
-| `newIdeaFor` | New idea for {name} | Idea nueva en {name} |
-| `newIdea` | New idea | Idea nueva |
-| `addIdeaTo` | Add an idea to {name} | Agregar una idea a {name} |
-| `moveHere` | Move {name} here | Mover {name} aquí |
-| `thisIdea` | this idea | esta idea |
-| `theIdea` | the idea | la idea |
-| `ideaActions` | {name} actions | Acciones de {name} |
-| `ideaActionsUntitled` | Idea actions | Acciones de la idea |
-| `showDetails` | Show details | Ver detalles |
-| `viewImage` | View picture | Ver imagen |
-| `viewImageOf` | View picture: {description} | Ver imagen: {description} |
-| `viewLivePhoto` | View live photo | Ver foto en vivo |
-| `viewLivePhotoOf` | View live photo: {description} | Ver foto en vivo: {description} |
-| `playVideo` | Play video | Reproducir video |
-| `playAudio` | Play sound | Reproducir audio |
-| `openEmbed` | Open web page | Abrir página web |
-| `readNote` | Read note | Leer nota |
-| `openLink` | Open link | Abrir enlace |
-| `goTo` | Go to {name} | Ir a {name} |
-| `seeIdea` | See {name} | Ver {name} |
-| `details` | Details | Detalles |
-| `close` | Close | Cerrar |
-| `previous` | Previous | Anterior |
-| `next` | Next | Siguiente |
-| `present` | Present | Presentar |
-| `priority` | Priority {priority} | Prioridad {priority} |
-| `expand` | Expand | Ampliar |
-| `expandVideo` | Expand the video | Ampliar el video |
-| `expandAudio` | Expand the sound | Ampliar el audio |
-| `picture` | Picture | Imagen |
-| `video` | Video | Video |
-| `audio` | Sound | Audio |
-| `position` | {index} of {total} | {index} de {total} |
-| `fitPicture` | Fit the picture | Ajustar la imagen |
-| `live` | Live | En vivo |
-| `playLivePhoto` | Play the live photo | Reproducir la foto en vivo |
-| `holdToPlay` | Hold to play | Mantén presionado para reproducirla |
-| `pictureUnavailable` | This picture can’t be shown. | No se puede mostrar esta imagen. |
-| `videoUnavailable` | This video can’t be played. | No se puede reproducir este video. |
-| `audioUnavailable` | This sound can’t be played. | No se puede reproducir este audio. |
-| `videoUnavailableHere` | This video can’t be played here. | Este video no se puede reproducir aquí. |
-| `openPictureInNewTab` | Open the picture in a new tab | Abrir la imagen en una pestaña nueva |
-| `openVideoInNewTab` | Open the video in a new tab | Abrir el video en una pestaña nueva |
-| `openAudioInNewTab` | Open the sound in a new tab | Abrir el audio en una pestaña nueva |
-| `play` | Play | Reproducir |
-| `pause` | Pause | Pausar |
-| `mute` | Turn the sound off | Silenciar |
-| `unmute` | Turn the sound on | Activar el sonido |
-| `skipBack` | one: Back {count} second; other: Back {count} seconds | one: Retroceder {count} segundo; many: Retroceder {count} segundos; other: Retroceder {count} segundos |
-| `skipForward` | one: Forward {count} second; other: Forward {count} seconds | one: Avanzar {count} segundo; many: Avanzar {count} segundos; other: Avanzar {count} segundos |
-| `playbackPosition` | Position | Posición |
-| `timeOf` | {time} of {duration} | {time} de {duration} |
-| `watchOn` | Watch on {provider} | Ver en {provider} |
+| Key | English | Spanish | Portuguese (Brazil) |
+| --- | --- | --- | --- |
+| `mindMap` | Mind map | Mapa mental | Mapa mental |
+| `mindMapRole` | mind map | mapa mental | mapa mental |
+| `untitled` | Untitled | Sin título | Sem título |
+| `untitledMap` | Untitled map | Mapa sin título | Mapa sem título |
+| `emptyMap` | This map is empty | Este mapa está vacío | Este mapa está vazio |
+| `emptyMapHint` | Start it with a # heading or a bullet list | Empiézalo con un encabezado # o una lista con viñetas | Comece com um título # ou uma lista com marcadores |
+| `mapNotDrawn` | This map couldn’t be drawn | No se pudo dibujar este mapa | Não foi possível desenhar este mapa |
+| `mapNotDrawnReason` | The map could not be drawn. | No se pudo dibujar el mapa. | Não foi possível desenhar o mapa. |
+| `problemOnLine` | Line {line}: {message} | Línea {line}: {message} | Linha {line}: {message} |
+| `mapPath` | Map path | Ruta del mapa | Caminho do mapa |
+| `back` | Back | Atrás | Voltar |
+| `backTo` | Back to {name} | Volver a {name} | Voltar para {name} |
+| `backToParent` | Back to the idea above | Volver a la idea superior | Voltar para a ideia acima |
+| `view` | View | Vista | Visualização |
+| `focus` | Focus | Enfoque | Foco |
+| `overview` | Overview | Vista general | Visão geral |
+| `showOutline` | Show the map as a list | Mostrar el mapa como lista | Mostrar o mapa como lista |
+| `zoom` | Zoom | Zoom | Zoom |
+| `zoomIn` | Zoom in | Acercar | Aumentar o zoom |
+| `zoomOut` | Zoom out | Alejar | Diminuir o zoom |
+| `fitMap` | Fit the map | Ajustar el mapa | Ajustar o mapa |
+| `scrollToZoom` | Use {key} + scroll to zoom the map | Usa {key} + desplazamiento para acercar o alejar el mapa | Use {key} + rolagem para aplicar zoom ao mapa |
+| `outline` | Map outline | Esquema del mapa | Tópicos do mapa |
+| `overviewAnnouncement` | Overview of the whole map | Vista general de todo el mapa | Visão geral do mapa inteiro |
+| `ideaCount` | one: {count} item; other: {count} items | one: {count} idea; many: {count} ideas; other: {count} ideas | one: {count} ideia; many: {count} ideias; other: {count} ideias |
+| `hiddenIdeaCount` | one: {count} hidden idea; other: {count} hidden ideas | one: {count} idea oculta; many: {count} ideas ocultas; other: {count} ideas ocultas | one: {count} ideia oculta; many: {count} ideias ocultas; other: {count} ideias ocultas |
+| `revealed` | {name}: {list} | {name}: {list} | {name}: {list} |
+| `added` | Added {name} | Se agregó {name} | Ideia adicionada: {name} |
+| `removed` | Deleted {name} | Se eliminó {name} | Ideia excluída: {name} |
+| `moved` | Moved {name} to {parent} | Se movió {name} a {parent} | Ideia movida para {parent}: {name} |
+| `movedToTop` | Moved {name} to the top | Se movió {name} al nivel superior | Ideia movida para o nível superior: {name} |
+| `anIdea` | an idea | una idea | sem título |
+| `status` | status: {status} | estado: {status} | status: {status} |
+| `statusLabel` | Status: {status} | Estado: {status} | Status: {status} |
+| `statusTodo` | To do | Por hacer | A fazer |
+| `statusActive` | In progress | En curso | Em andamento |
+| `statusDone` | Done | Hecho | Concluído |
+| `statusBlocked` | Blocked | Bloqueado | Bloqueado |
+| `date` | date: {date} | fecha: {date} | data: {date} |
+| `dateLabel` | Date: {date} | Fecha: {date} | Data: {date} |
+| `overdue` | overdue | vencida | atrasada |
+| `overdueLabel` | Overdue: {date} | Vencida: {date} | Atrasada: {date} |
+| `today` | Today | Hoy | Hoje |
+| `tomorrow` | Tomorrow | Mañana | Amanhã |
+| `yesterday` | Yesterday | Ayer | Ontem |
+| `has` | has {list} | tiene {list} | tem {list} |
+| `hasDetails` | details | detalles | detalhes |
+| `hasNote` | note | nota | nota |
+| `hasImage` | picture | imagen | imagem |
+| `hasVideo` | video | video | vídeo |
+| `hasAudio` | sound | audio | áudio |
+| `hasEmbed` | web page | página web | página da web |
+| `hasLink` | link | enlace | link |
+| `fileCount` | one: {count} file; other: {count} files | one: {count} archivo; many: {count} archivos; other: {count} archivos | one: {count} arquivo; many: {count} arquivos; other: {count} arquivos |
+| `textOf` | Text of {name} | Texto de {name} | Texto de {name} |
+| `newIdeaFor` | New idea for {name} | Idea nueva en {name} | Nova ideia em {name} |
+| `newIdea` | New idea | Idea nueva | Nova ideia |
+| `addIdeaTo` | Add an idea to {name} | Agregar una idea a {name} | Adicionar uma ideia a {name} |
+| `moveHere` | Move {name} here | Mover {name} aquí | Mover {name} para cá |
+| `thisIdea` | this idea | esta idea | esta ideia |
+| `theIdea` | the idea | la idea | a ideia |
+| `ideaActions` | {name} actions | Acciones de {name} | Ações de {name} |
+| `ideaActionsUntitled` | Idea actions | Acciones de la idea | Ações da ideia |
+| `showDetails` | Show details | Ver detalles | Ver detalhes |
+| `viewImage` | View picture | Ver imagen | Ver imagem |
+| `viewImageOf` | View picture: {description} | Ver imagen: {description} | Ver imagem: {description} |
+| `viewLivePhoto` | View live photo | Ver foto en vivo | Ver foto ao vivo |
+| `viewLivePhotoOf` | View live photo: {description} | Ver foto en vivo: {description} | Ver foto ao vivo: {description} |
+| `playVideo` | Play video | Reproducir video | Reproduzir vídeo |
+| `playAudio` | Play sound | Reproducir audio | Reproduzir áudio |
+| `openEmbed` | Open web page | Abrir página web | Abrir página da web |
+| `readNote` | Read note | Leer nota | Ler nota |
+| `openLink` | Open link | Abrir enlace | Abrir link |
+| `showFiles` | Show files | Ver archivos | Ver arquivos |
+| `files` | Files | Archivos | Arquivos |
+| `openFile` | Open {name} | Abrir {name} | Abrir {name} |
+| `filesStayed` | The files stayed with the map: they aren’t in this page. | Los archivos se quedaron con el mapa: no están en esta página. | Os arquivos ficaram com o mapa: eles não estão nesta página. |
+| `filePdf` | PDF | PDF | PDF |
+| `fileDocument` | Document | Documento | Documento |
+| `fileSpreadsheet` | Spreadsheet | Hoja de cálculo | Planilha |
+| `filePresentation` | Presentation | Presentación | Apresentação |
+| `fileImage` | Picture | Imagen | Imagem |
+| `fileVideo` | Video | Video | Vídeo |
+| `fileAudio` | Sound | Audio | Áudio |
+| `fileArchive` | Archive | Archivo comprimido | Arquivo compactado |
+| `fileText` | Text | Texto | Texto |
+| `fileOther` | File | Archivo | Arquivo |
+| `goTo` | Go to {name} | Ir a {name} | Ir para {name} |
+| `seeIdea` | See {name} | Ver {name} | Veja {name} |
+| `details` | Details | Detalles | Detalhes |
+| `close` | Close | Cerrar | Fechar |
+| `previous` | Previous | Anterior | Anterior |
+| `next` | Next | Siguiente | Próximo |
+| `present` | Present | Presentar | Apresentar |
+| `priority` | Priority {priority} | Prioridad {priority} | Prioridade {priority} |
+| `expand` | Expand | Ampliar | Expandir |
+| `expandVideo` | Expand the video | Ampliar el video | Expandir o vídeo |
+| `expandAudio` | Expand the sound | Ampliar el audio | Expandir o áudio |
+| `picture` | Picture | Imagen | Imagem |
+| `video` | Video | Video | Vídeo |
+| `audio` | Sound | Audio | Áudio |
+| `position` | {index} of {total} | {index} de {total} | {index} de {total} |
+| `fitPicture` | Fit the picture | Ajustar la imagen | Ajustar a imagem |
+| `live` | Live | En vivo | Ao vivo |
+| `playLivePhoto` | Play the live photo | Reproducir la foto en vivo | Reproduzir a foto ao vivo |
+| `holdToPlay` | Hold to play | Mantén presionado para reproducirla | Mantenha pressionado para reproduzir |
+| `pictureUnavailable` | This picture can’t be shown. | No se puede mostrar esta imagen. | Não é possível mostrar esta imagem. |
+| `videoUnavailable` | This video can’t be played. | No se puede reproducir este video. | Não é possível reproduzir este vídeo. |
+| `audioUnavailable` | This sound can’t be played. | No se puede reproducir este audio. | Não é possível reproduzir este áudio. |
+| `videoUnavailableHere` | This video can’t be played here. | Este video no se puede reproducir aquí. | Este vídeo não pode ser reproduzido aqui. |
+| `openPictureInNewTab` | Open the picture in a new tab | Abrir la imagen en una pestaña nueva | Abrir a imagem em uma nova guia |
+| `openVideoInNewTab` | Open the video in a new tab | Abrir el video en una pestaña nueva | Abrir o vídeo em uma nova guia |
+| `openAudioInNewTab` | Open the sound in a new tab | Abrir el audio en una pestaña nueva | Abrir o áudio em uma nova guia |
+| `play` | Play | Reproducir | Reproduzir |
+| `pause` | Pause | Pausar | Pausar |
+| `mute` | Turn the sound off | Silenciar | Desativar o som |
+| `unmute` | Turn the sound on | Activar el sonido | Ativar o som |
+| `skipBack` | one: Back {count} second; other: Back {count} seconds | one: Retroceder {count} segundo; many: Retroceder {count} segundos; other: Retroceder {count} segundos | one: Voltar {count} segundo; many: Voltar {count} segundos; other: Voltar {count} segundos |
+| `skipForward` | one: Forward {count} second; other: Forward {count} seconds | one: Avanzar {count} segundo; many: Avanzar {count} segundos; other: Avanzar {count} segundos | one: Avançar {count} segundo; many: Avançar {count} segundos; other: Avançar {count} segundos |
+| `playbackPosition` | Position | Posición | Posição |
+| `timeOf` | {time} of {duration} | {time} de {duration} | {time} de {duration} |
+| `watchOn` | Watch on {provider} | Ver en {provider} | Assistir no {provider} |
 
 `OrbitStrings` in the [API reference](api/README.md) says where each one shows.
 
@@ -2827,7 +2983,7 @@ The map is one tab stop: Tab moves into the map and out of it again, and the arr
 | `F2` | Edit the focused node's text where it is ([editing](editing.md)) | The same |
 | Context menu key, `Shift` `F10` | The map's own menu for the focused node, when the page has one | The same |
 
-The focused node has a visible ring and shows a tooltip with its full text, status and the start of its note. The breadcrumbs, the view switch, the list button, the zoom buttons and the content buttons under the focused node are ordinary buttons, reached with Tab.
+The focused node has a visible ring and shows a tooltip with its full text, status, date and the start of its note. The breadcrumbs, the view switch, the list button, the zoom buttons and the content buttons under the focused node are ordinary buttons, reached with Tab.
 
 In the media viewer, `←` and `→` step through the map's pictures, videos and sounds (or pan a zoomed picture), `Home` and `End` go to the first and last, `+`, `−` and `0` zoom a picture, `Space` or `K` plays or pauses a video or sound, and held on a live photo plays its motion until it's let go, `J` and `L` go ten seconds back and on, `M` turns a sound off and on, and `Escape` closes it. Its buttons are ordinary buttons too ([Keys](media.md#keys)), and a sound's slider takes the arrow keys, Page Up and Page Down, Home and End.
 
@@ -2835,12 +2991,14 @@ In the media viewer, `←` and `→` step through the map's pictures, videos and
 
 - Everything below is said in the map's language: the page's, or the one its `language` option names ([Languages](languages.md)). A map whose `language` option names one says so with a `lang` attribute, so screen readers read its words in that language on a page in another.
 - The map is a group named after the document's title (or `ariaLabel`), with the role description "mind map".
-- Each node is a button whose name says what it is: its text, its status, how many items it holds and what content it has ("Discovery, 4 items, has note"). The focused node is marked as the current one.
+- Each node is a button whose name says what it is: its text, its status, its date in full and whether it's overdue, how many items it holds and what content it has ("Discovery, date: Friday, November 20, 2026, overdue, 4 items, has note and 2 files"). A planet's paperclip is part of its picture, which screen readers skip: they hear its files in its name. The focused node is marked as the current one. A date's chip on its planet is hidden from screen readers, which hear the date in the name.
 - A visually hidden outline lists the whole map as nested lists, so screen readers can browse every node without moving the map. The list button shows the same outline to everyone.
 - Moving around is announced: "Discovery, 4 items", or "Overview of the whole map". So are edits made on the map: "Added Night markets", "Removed Beaches".
 - Ideas hidden for later (`hideChildren`) stay out of the outline and the media viewer as well as the map, and the node they're under says how many there are, in its name and in the outline: "Ser, 3 hidden ideas". When they show, the reader hears them: "Ser: soy, eres, and es".
 - The detail sheet is a modal dialog: focus moves into it, Escape closes it, and focus returns to the button that opened it.
+- In a note, a checklist's boxes are checkboxes named by their items' text, reached with Tab and checked with the space bar on an editable map, and shown as unavailable on others. A table's header cells name its columns, and a table wider than the sheet scrolls sideways, inside the note.
 - So is the media viewer, named after the node it shows. A picture's description (its alt text) is the picture's name, and also shows under it. The counter ("2 of 5", with the node's title) is read out as you step, and a video's own controls are the browser's or its site's.
+- An idea's files in the detail sheet are a list under a heading, each a button named for what it does and what the file is ("Open Boarding pass.pdf, PDF, 48 kB"); where they can't open, as in a web page made without them, they're plain rows, and a line says why.
 - A sound's player is a group named after the sound, with buttons that say what they do ("Play", "Pause", "Back 10 seconds", "Mute") and a slider that says where the sound is ("0:42 of 3:10"), in the map's language.
 - A map shared as a web page ([A map as a web page](guide.md#a-map-as-a-web-page)) presents from its Present button: focus moves to the shown idea's title, the caption is a live region, read out as you step, and Escape gives focus back to the button.
 - A live photo's mark is a button, "Play the live photo", whose tooltip, "Hold to play", screen readers read after it: held, or with the space bar held, it plays the motion until it's let go, and pressed once, it plays it through. The motion itself is hidden from them, as it shows nothing the picture's description doesn't say. In the detail sheet, the picture's button says it's a live photo ("View live photo: …").
@@ -2862,7 +3020,7 @@ When the reader asks for reduced motion (`prefers-reduced-motion: reduce`):
 - Labels meet WCAG AA contrast (4.5:1) in every built-in theme, on every branch color and shade, including where a planet's shading or a translucent planet's background shows through. A test checks this for every theme. Labels use whichever of the theme's dark and light text has more contrast with the node, custom colors included.
 - The `contrast` theme is for readers who need more: black outlines and text, bold labels, solid orbits and no shading, with labels above 7:1 (AAA).
 - Labels too long for their node show in full in the tooltip and the outline.
-- In forced-colors mode (Windows High Contrast), rims and the focus ring use system colors.
+- In forced-colors mode (Windows High Contrast), rims, the focus ring and the checkboxes in notes use system colors.
 
 ## Touch
 
@@ -2879,6 +3037,7 @@ When the reader asks for reduced motion (`prefers-reduced-motion: reduce`):
 - Give the map a title in its frontmatter (`title: Product roadmap`), or pass `ariaLabel`.
 - Keep node text short; put details in notes, which are read in full in the detail sheet.
 - Prefer statuses (`<!-- orbit status: blocked -->`) over color alone to convey state: statuses are announced and shown as words in the detail sheet.
+- A past date isn't told by its color alone either: the detail sheet, the outline and the tooltip say "Overdue" in words, and screen readers hear it with the node's name.
 
 ---
 

@@ -24,7 +24,7 @@ What ships this year, written by hand.
 Six weeks of interviews before we commit to scope.
 - [x] User interviews #ux
 - [/] Survey <!-- orbit color: "#E5484D" -->
-- [ ] Competitor teardown #market #q3
+- [ ] Competitor teardown #market #q3 <!-- orbit due: "2026-12-04 17:00" -->
 - Questions to answer
   > - Who buys it?
   > - Why now?
@@ -41,6 +41,15 @@ tags: [engineering, sprint-3]
 - App shell
 - Offline sync <!-- orbit status: blocked -->
   Waits on the [backend](#backend) sync API.
+  <!-- orbit
+  files:
+    - src: media/sync-protocol.pdf
+      name: Sync protocol, v2.pdf
+      type: application/pdf
+      size: 482133
+      pages: 12
+    - media/sync-notes.txt
+  -->
 ### Backend
 <!-- orbit noteFormat: plain -->
 Plain text, shown as written: *not emphasis*.
@@ -52,6 +61,7 @@ Plain text, shown as written: *not emphasis*.
   [![A frame](images/thumbnail.jpg)](https://vimeo.com/76979871)
   <!-- orbit caption: Ninety seconds -->
 - Demo page <!-- orbit embed: https://example.com/demo -->
+- Press kit <!-- orbit files: media/press-kit.zip -->
 - [Read the research](#research)
 - Old poster
   ![Kept as text](images/old.png)

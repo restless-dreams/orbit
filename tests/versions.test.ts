@@ -28,16 +28,16 @@ describe('format versions', () => {
   });
 
   it('an older map is upgraded as it\'s read, and saving writes only what the upgrade changed', () => {
-    const text = '---\ntheme: night\n---\n# Plan\n## A <!-- orbit due: 2026-11-01 -->\n## B\n';
+    const text = '---\ntheme: night\n---\n# Plan\n## A <!-- orbit owner: Ana -->\n## B\n';
     const document = parseOrbit(text);
     const diagnostics = new DiagnosticCollector(false);
-    // A format change that renames `due` to `deadline`.
+    // A format change that renames `owner` to `assignee`.
     upgradeFormat(document, diagnostics, undefined, [{
       from: 1,
       upgrade: (upgraded) => {
         const visit = (node: OrbitNode): void => {
-          if (node.attrs && 'due' in node.attrs) {
-            node.attrs = { deadline: node.attrs.due };
+          if (node.attrs && 'owner' in node.attrs) {
+            node.attrs = { assignee: node.attrs.owner };
           }
 
           node.children.forEach(visit);
@@ -48,7 +48,7 @@ describe('format versions', () => {
     }]);
     expect(document.options.schemaVersion).toBe(2);
     expect(diagnostics.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(['format-upgraded']);
-    expect(serializeOrbitMarkdown(document)).toBe('---\ntheme: night\nschemaVersion: 2\n---\n# Plan\n## A <!-- orbit deadline: "2026-11-01" -->\n## B\n');
+    expect(serializeOrbitMarkdown(document)).toBe('---\ntheme: night\nschemaVersion: 2\n---\n# Plan\n## A <!-- orbit assignee: Ana -->\n## B\n');
   });
 
   it('keys of other apps (or a newer Orbit) are kept, in both flavors', () => {
@@ -200,17 +200,17 @@ describe('the version a map is written with', () => {
 });
 
 // The first real change to the format, rehearsed: a step from 1 to 2 that
-// renames the `due` attribute to `deadline`, run through the parsers, the
+// renames an `owner` attribute to `assignee`, run through the parsers, the
 // writers and the renderer as a real one would be, then taken away again
 // to read what it wrote as an older Orbit does.
 describe('a change of the format, rehearsed', () => {
-  const renameDue: FormatUpgrade = {
+  const renameOwner: FormatUpgrade = {
     from: 1,
     upgrade: (document) => {
       const visit = (node: OrbitNode): void => {
-        if (node.attrs && 'due' in node.attrs) {
-          const { due, ...rest } = node.attrs;
-          node.attrs = { ...rest, deadline: due };
+        if (node.attrs && 'owner' in node.attrs) {
+          const { owner, ...rest } = node.attrs;
+          node.attrs = { ...rest, assignee: owner };
         }
 
         node.children.forEach(visit);
@@ -221,27 +221,27 @@ describe('a change of the format, rehearsed', () => {
   };
 
   beforeEach(() => {
-    FORMAT_UPGRADES.push(renameDue);
+    FORMAT_UPGRADES.push(renameOwner);
   });
 
   afterEach(() => {
-    FORMAT_UPGRADES.splice(FORMAT_UPGRADES.indexOf(renameDue), 1);
+    FORMAT_UPGRADES.splice(FORMAT_UPGRADES.indexOf(renameOwner), 1);
   });
 
   const asAnOlderOrbit = <Result>(read: () => Result): Result => {
-    FORMAT_UPGRADES.splice(FORMAT_UPGRADES.indexOf(renameDue), 1);
+    FORMAT_UPGRADES.splice(FORMAT_UPGRADES.indexOf(renameOwner), 1);
 
     try {
       return read();
     } finally {
-      FORMAT_UPGRADES.push(renameDue);
+      FORMAT_UPGRADES.push(renameOwner);
     }
   };
 
   it('an older map is upgraded as it\'s read, and saved as version 2, with or without frontmatter', () => {
-    const withFrontmatter = parseOrbit('---\ntheme: night\n---\n# Plan\n## A <!-- orbit due: 2026-11-01 -->\n## B\n');
+    const withFrontmatter = parseOrbit('---\ntheme: night\n---\n# Plan\n## A <!-- orbit owner: Ana -->\n## B\n');
     expect(codes(withFrontmatter)).toEqual(['format-upgraded']);
-    expect(serializeOrbitMarkdown(withFrontmatter)).toBe('---\ntheme: night\nschemaVersion: 2\n---\n# Plan\n## A <!-- orbit deadline: "2026-11-01" -->\n## B\n');
+    expect(serializeOrbitMarkdown(withFrontmatter)).toBe('---\ntheme: night\nschemaVersion: 2\n---\n# Plan\n## A <!-- orbit assignee: Ana -->\n## B\n');
     const without = parseOrbit('# Plan\n## A\n## B\n');
     const saved = serializeOrbitMarkdown(without);
     expect(saved).toContain('schemaVersion: 2');
@@ -250,26 +250,26 @@ describe('a change of the format, rehearsed', () => {
   });
 
   it('a map made in code is written as version 2, in both flavors', () => {
-    const document: OrbitDocument = { root: { id: 'plan', text: 'Plan', level: 0, children: [{ id: 'a', text: 'A', level: 1, children: [], attrs: { deadline: 'soon' } }] }, options: {}, warnings: [] };
+    const document: OrbitDocument = { root: { id: 'plan', text: 'Plan', level: 0, children: [{ id: 'a', text: 'A', level: 1, children: [], attrs: { assignee: 'Ana' } }] }, options: {}, warnings: [] };
 
     for (const written of [serializeOrbitMarkdown(document), serializeOrbitYAML(document)]) {
       expect(written).toContain('schemaVersion: 2');
       const reread = parseOrbit(written);
       // Read back as what it is, not as version 1 to upgrade again.
       expect(codes(reread)).toEqual([]);
-      expect(reread.root.children[0].attrs).toEqual({ deadline: 'soon' });
+      expect(reread.root.children[0].attrs).toEqual({ assignee: 'Ana' });
     }
   });
 
   it('what it saves reads back without being upgraded again, and saves the same', () => {
-    const saved = serializeOrbitMarkdown(parseOrbit('# Plan\n## A <!-- orbit due: 2026-11-01 -->\n'));
+    const saved = serializeOrbitMarkdown(parseOrbit('# Plan\n## A <!-- orbit owner: Ana -->\n'));
     const reread = parseOrbit(saved);
     expect(codes(reread)).toEqual([]);
     expect(serializeOrbitMarkdown(reread)).toBe(saved);
   });
 
   it('an older Orbit opens what it saved as newer: reported, kept, and not edited on the map', () => {
-    const saved = serializeOrbitMarkdown(parseOrbit('# Plan\n## A <!-- orbit due: 2026-11-01 -->\n## B\n'));
+    const saved = serializeOrbitMarkdown(parseOrbit('# Plan\n## A <!-- orbit owner: Ana -->\n## B\n'));
     const warn = spyOn(console, 'warn').mockImplementation(() => undefined);
 
     try {
@@ -352,6 +352,58 @@ describe('node type versions', () => {
     unregister.push(registerNodeType('ring', { version: 2, render: (shown, element) => { element.textContent = shown.text; } }));
     const { host } = mount('# Map\n## Later <!-- orbit type: ring@2 -->\n');
     expect(host.querySelector('.orbit-node-content[data-orbit-for="later"]')?.textContent).toBe('Later');
+  });
+
+  describe('a version past the whole numbers JavaScript holds exactly', () => {
+    // Past Number.MAX_SAFE_INTEGER a number comes back with other digits, and past 309 digits as Infinity.
+    const huge = '9'.repeat(20);
+    const longest = '1'.repeat(400);
+
+    it('keeps its digits when its idea\'s attributes are written again, in markdown', () => {
+      const text = `# Map\n## Save <!-- orbit type: goal@${huge} -->\n## Read <!-- orbit type: book@${longest} -->\n`;
+      const { renderer } = mount(text);
+      // A new status writes the idea's attributes again; new text alone leaves them as they were written.
+      renderer.updateNode('save', { status: 'done' });
+      renderer.updateNode('read', { text: 'Read more', status: 'done' });
+      // The longest goes on lines of its own, as any attributes too long for one line do.
+      const save = `## Save <!-- orbit status: done, type: goal@${huge} -->\n`;
+      const read = `## Read more\n<!-- orbit\nstatus: done\ntype: "book@${longest}"\n-->\n`;
+      expect(renderer.toMarkdown()).toBe(`# Map\n${save}${read}`);
+      // And written whole, with nothing kept from the text it was read from.
+      expect(serializeOrbitMarkdown(renderer.getDocument()!, { keepSource: false })).toBe(`# Map\n\n${save}\n${read}`);
+    });
+
+    it('keeps its digits when its idea is written again, in YAML, and in the markdown a YAML map becomes', () => {
+      const text = `title: Map\nnodes:\n  - text: Map\n    children:\n      - text: Save\n        type: "goal@${huge}"\n      - text: Read\n        type: "book@${longest}"\n`;
+      const { renderer } = mount(text);
+      renderer.updateNode('save', { text: 'Save more' });
+      renderer.updateNode('read', { text: 'Read more' });
+      expect(serializeOrbitYAML(renderer.getDocument()!)).toBe(text.replace('text: Save', 'text: Save more').replace('text: Read', 'text: Read more'));
+      const markdown = serializeOrbitMarkdown(renderer.getDocument()!);
+      expect(markdown).toBe(`---\ntitle: Map\n---\n\n# Map\n\n## Save more <!-- orbit type: goal@${huge} -->\n\n## Read more\n<!-- orbit\ntype: "book@${longest}"\n-->\n`);
+      expect(parseOrbit(markdown).root.children.map((node) => node.attrs?.type)).toEqual([`goal@${huge}`, `book@${longest}`]);
+    });
+
+    it('is kept as written, but not read: its idea is drawn as a plain one, and Orbit says why', () => {
+      const document = parseOrbit(`# Map\n## Save <!-- orbit type: goal@${huge} -->\n## Plan <!-- orbit type: goal@${Number.MAX_SAFE_INTEGER} -->\n`);
+      const [save, plan] = document.root.children;
+      expect(save.type).toBeUndefined();
+      expect(save.typeVersion).toBeUndefined();
+      expect(save.attrs).toEqual({ type: `goal@${huge}` });
+      expect(document.diagnostics?.filter((diagnostic) => diagnostic.code === 'invalid-attributes').map((diagnostic) => [diagnostic.message, diagnostic.severity, diagnostic.line])).toEqual([
+        [`type must be one word, with a version up to ${Number.MAX_SAFE_INTEGER}; kept as written, but not used`, 'warning', 2],
+      ]);
+      // The largest it holds exactly is read as any other.
+      expect([plan.type, plan.typeVersion]).toEqual(['goal', Number.MAX_SAFE_INTEGER]);
+    });
+
+    it('is refused when it\'s given to an idea, rather than written with other digits', () => {
+      const { renderer } = mount('# Map\n## Save\n');
+      expect(() => renderer.updateNode('save', { type: `goal@${huge}` })).toThrow(`A node's type is one word, with a version up to ${Number.MAX_SAFE_INTEGER}, like { type: 'goal@2' }`);
+      expect(() => renderer.updateNode('save', { type: 'goal', typeVersion: Number(huge) })).toThrow(`A node's typeVersion is a whole number from 1 to ${Number.MAX_SAFE_INTEGER}, like { typeVersion: 2 }`);
+      expect(() => renderer.addNode('map', { text: 'Read', type: `book@${longest}` })).toThrow("A node's type is one word, with a version up to");
+      expect(renderer.toMarkdown()).toBe('# Map\n## Save\n');
+    });
   });
 
   it('documents read without a map can be upgraded too', () => {

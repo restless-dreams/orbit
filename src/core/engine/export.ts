@@ -7,9 +7,10 @@
 import type { Display, DisplayNode } from './display.js';
 import { worldToScreen, type Viewport } from './camera.js';
 import { mixOklab, parseColor, prefersLightText, resolveColor, splitAlpha, toHex } from './colors.js';
-import { SHADE_STOPS, SHADOW_BLUR, drawsFlat, insideLabelLayout, nodeThumbnail, readShadeCircle, ringPath } from './views.js';
+import { FILES_BADGE, PAPERCLIP, SHADE_STOPS, SHADOW_BLUR, drawsFlat, filesBadgeWidth, filesBesideSound, insideLabelLayout, nodeThumbnail, readShadeCircle, ringPath } from './views.js';
 import { labelOrder, outsideLabelBox, planLabels, type PlannedLabel } from './labels.js';
 import { hasMediaSource } from '../media.js';
+import { nodeFiles } from '../files.js';
 import { statusTone } from '../ui/detail-sheet.js';
 import type { MapExtensions } from '../extensions.js';
 import type { OrbitWords } from '../languages.js';
@@ -376,7 +377,7 @@ const halo = (center: { x: number; y: number }, radius: number, own: string, the
   return [`<circle cx="${round(center.x)}" cy="${round(center.y)}" r="${round(radius * theme.number('sun-halo-size', 1.15))}" fill="none" ${paint('stroke', stroke, opacity)} stroke-width="${width}"${dash}/>`];
 };
 
-/** Status dot, content marker, and video and sound badges, placed as on the live map. */
+/** Status dot, content marker, and video, sound and files badges, placed as on the live map. */
 const badges = (node: DisplayNode, center: { x: number; y: number }, radius: number, theme: ThemeReader, extensions?: MapExtensions): string[] => {
   const parts: string[] = [];
   const stroke = paint('stroke', theme.token('badge-stroke', '#ffffff'));
@@ -405,9 +406,10 @@ const badges = (node: DisplayNode, center: { x: number; y: number }, radius: num
     parts.push(`<path d="M${round(x - 0.32 * size)} ${round(y - 0.48 * size)} L${round(x + 0.52 * size)} ${round(y)} L${round(x - 0.32 * size)} ${round(y + 0.48 * size)} Z" fill="#ffffff"/>`);
   }
 
+  // Where the map draws it: at the upper left beside a video, when the node's date is at the bottom (see `NodeView`).
   if (hasSound) {
     const x = center.x + (hasVideo ? -0.72 : 0.72) * radius;
-    const y = center.y + 0.72 * radius;
+    const y = center.y + (hasVideo && node.node.due !== undefined ? -0.72 : 0.72) * radius;
     const badge = 0.17 * radius;
     const bar = (offset: number, half: number) => `M${round(x + offset * badge)} ${round(y - half * badge)} V${round(y + half * badge)}`;
     parts.push(`<circle cx="${round(x)}" cy="${round(y)}" r="${round(badge)}" ${paint('fill', theme.token('note-indicator', '#1b2333'))} ${stroke} stroke-width="${round(0.04 * radius)}"/>`);
@@ -416,6 +418,26 @@ const badges = (node: DisplayNode, center: { x: number; y: number }, radius: num
 
   if (!hasVideo && !hasSound && (node.node.note || hasMediaSource(node.node.image) || hasMediaSource(node.node.embed) || node.node.link || extensions?.nodeType(node.node)?.details)) {
     parts.push(`<circle cx="${round(center.x + 0.72 * radius)}" cy="${round(center.y + 0.72 * radius)}" r="${round(0.13 * radius)}" ${paint('fill', theme.token('note-indicator', '#1b2333'))} ${stroke} stroke-width="${round(0.04 * radius)}"/>`);
+  }
+
+  const files = nodeFiles(node.node).length;
+
+  // Its files: a paperclip at the upper left, and their count beside it from two on (see `filesBadge`), the count's text at its own size.
+  if (files > 0) {
+    const place = hasSound && hasVideo && node.node.due !== undefined ? filesBesideSound() : FILES_BADGE;
+    const x = center.x + place.x * radius;
+    const y = center.y + place.y * radius;
+    const badge = FILES_BADGE.scale * radius;
+    const glyph = theme.token('badge-stroke', '#ffffff');
+    const pill = filesBadgeWidth(files);
+    parts.push(`<g transform="translate(${round(x)} ${round(y)}) scale(${round(badge)})">`
+      + `<rect x="-1" y="-1" width="${round(2 + pill)}" height="2" rx="1" ${paint('fill', theme.token('note-indicator', '#1b2333'))} ${stroke} stroke-width="0.2"/>`
+      + `<path d="${PAPERCLIP}" fill="none" ${paint('stroke', glyph)} stroke-width="0.17" stroke-linecap="round" stroke-linejoin="round"/></g>`);
+
+    if (files > 1) {
+      const font = escapeXml(theme.value('label-font', theme.value('font-family', 'sans-serif')));
+      parts.push(`<text x="${round(x + (0.8 + pill / 2) * badge)}" y="${round(y)}" text-anchor="middle" dominant-baseline="central" font-family="${font}" font-size="${round(1.35 * badge)}" font-weight="700" ${paint('fill', glyph)}>${files}</text>`);
+    }
   }
 
   return parts;

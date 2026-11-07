@@ -74,7 +74,6 @@
     const opened = map.openMedia('launch');
     await frame();
     const showing = document.querySelector('dialog.orbit-viewer[open]') !== null;
-    map.closeMedia();
     return opened && showing;
   });
   await check('edits on the map, and saves only what changed', () => {
@@ -82,6 +81,33 @@
     map.updateNode('research', { status: 'done' });
     const saved = map.toMarkdown();
     return saved.includes('## Celebrate') && saved.includes('## Research <!-- orbit status: done -->') && saved.startsWith('# Launch\n![The poster](img/mountain.jpg)\n');
+  });
+  await check('brings an idea up close, dimming the rest, and back', () => {
+    const said = [];
+    const stop = map.on('spotlight', ({ phase }) => said.push(phase));
+    const brought = map.spotlight('research', { insets: { bottom: 100 } });
+    const circle = map.getNodeCircle('research');
+    const dimmed = document.querySelector('#map .orbit__spotlight') !== null;
+    map.endSpotlight();
+    stop();
+    return brought && dimmed && Math.round(circle.x) === 400 && Math.round(circle.y) === 250 && said.join(' ') === 'rest end'
+      && document.querySelector('#map .orbit__spotlight') === null;
+  });
+  await check('shows a note\'s checklist and table, and checks a box in place', async () => {
+    map.updateNode('ship', { note: 'Before launch:\n\n- [ ] Press kit\n- [x] Pricing\n\n| Plan | Price |\n| :--- | ---: |\n| Team | $8 |' });
+    map.flyTo('ship');
+    await frame();
+    document.querySelector('.orbit-action--note').click();
+    await frame();
+    const sheet = document.querySelector('dialog.orbit-sheet[open]');
+    const box = sheet && sheet.querySelector('input[type="checkbox"]');
+    const cell = sheet && sheet.querySelector('.orbit-note__table td:last-child');
+    const drawn = box !== null && getComputedStyle(box).appearance === 'none' && box.getBoundingClientRect().width === 18
+      && cell !== null && getComputedStyle(cell).textAlign === 'right';
+    box.click();
+    const saved = map.toMarkdown();
+    sheet.close();
+    return drawn && saved.includes('> - [x] Press kit') && saved.includes('> - [x] Pricing');
   });
   await check('exports the view as an SVG', () => map.toSVGString().startsWith('<svg'));
   await check('draws a map without a renderer', () => renderToSVGString(MAP, { width: 600, height: 400, view: 'all' }).startsWith('<svg'));

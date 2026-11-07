@@ -12,6 +12,7 @@
  *   bun scripts/release-fixtures.ts                      this checkout, into releases/next
  *   bun scripts/release-fixtures.ts --version 0.2.0      this checkout, into releases/0.2.0, when releasing it
  *   bun scripts/release-fixtures.ts --orbit <path to a build's dist/index.js> --version 0.1.0
+ *   bun scripts/release-fixtures.ts --orbit <0.4.0's dist/index.js> --version kept/0.4.0   after a change to the sources
  */
 
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -54,7 +55,7 @@ export interface FixtureNode {
 
 /** A node's own fields, besides `id`, `text`, `attrs` and `children`, in the versions so far. */
 export const NODE_FIELDS = [
-  'icon', 'color', 'paletteColor', 'status', 'priority', 'tags', 'collapsed', 'type', 'typeVersion', 'link', 'note', 'noteFormat', 'image', 'video', 'audio', 'embed',
+  'icon', 'color', 'paletteColor', 'status', 'priority', 'due', 'tags', 'collapsed', 'type', 'typeVersion', 'link', 'note', 'noteFormat', 'image', 'video', 'audio', 'embed', 'files',
 ] as const;
 
 /** A node as a fixture records it: everything it says, its own fields and custom attributes together. */
@@ -161,6 +162,9 @@ const editTrip = (orbit: OrbitModule, source: string): string => {
     renderer.updateNode('beaches', { status: 'done' });
     renderer.updateNode('music', { color: '#E5484D', tags: ['evening'] });
     renderer.updateNode('tascas', { note: 'Book a table for eight.' });
+    // A box of a note's checklist checked, as the detail sheet checks one: that box alone changes.
+    const markets = orbit.parseOrbit(source).root.children.find((node) => node.id === 'markets');
+    renderer.updateNode('markets', { note: String(markets?.note).replace('- [ ] Feira da Ladra', '- [x] Feira da Ladra') });
     // A caption changed the way an app changes one: the value rebuilt from the fields it knows.
     renderer.updateNode('gulbenkian', { image: { src: 'images/gulbenkian.jpg', alt: 'The garden pond', caption: 'The garden' } });
     renderer.updateNode('pasteis-de-nata', { image: { src: 'images/nata.jpg', motion: { src: 'images/nata.mp4', still: 1.2 }, caption: 'Still warm' } });

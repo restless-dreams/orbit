@@ -14,9 +14,11 @@ Mind maps written in markdown and explored like a solar system.
 - Readable at any size: labels stay crisp, sized for reading and in high contrast.
 - Fourteen themes, from pastel paper and a field of stars to flat, Material and liquid glass, each restylable with CSS custom properties, and Material themes built from any color.
 - First-class pictures, live photos, videos, sounds, embeds and multi-line notes per node: pictures, videos and sounds open over the whole window, to zoom into and to play (a live photo plays its motion over its picture), and the rest in a built-in detail sheet, unless you handle `onAction` yourself.
+- Dates on ideas, a day or a day and a time: small on each planet ("Today", "Fri", "Nov 20"), in full in the detail sheet and the list, and in an attention color once past, unless the idea is done.
+- Files on ideas, any file: a paperclip on the planet with how many, and a list in the detail sheet with each one's kind and size, which an app opens its own way (`file-open`).
 - Built on the map: a + in the orbit adds ideas, typed right inside their planet, and nodes can be renamed, dragged and saved back as markdown.
 - Ready for AI: tools any model calls to read a map and change it, for Anthropic, OpenAI, Gemini, MCP and the providers that follow OpenAI's API, with every change animated on the map.
-- Keyboard and screen-reader friendly: one tab stop, arrow-key navigation, a list view of the whole map, and announcements as you move, in English, Spanish or any language you add.
+- Keyboard and screen-reader friendly: one tab stop, arrow-key navigation, a list view of the whole map, and announcements as you move, in English, Spanish, Brazilian Portuguese or any language you add.
 - Framework-agnostic core with no dependencies; React wrapper at `@restless-dreams/orbit/react`; `marked` extension at `@restless-dreams/orbit/marked`.
 - Made for coding agents too: the docs in one file (`llms-full.txt`), an agent skill, validation as JSON, and problems reported with the fix.
 
@@ -170,4 +172,4 @@ With [Bun](https://bun.sh) installed, `bun install`, then `bun run verify` runs 
 
 ## License
 
-[MIT](LICENSE). Orbit includes the hyphenation patterns of the [hyph-utf8 package](https://www.hyphenation.org/tex) for American English (Copyright (C) 1990, 2004, 2005 Gerard D.C. Kuiken; copying and distribution are permitted in any medium without royalty provided the copyright notice and this notice are preserved) and Spanish (Copyright (C) 1993, 1997 Javier Bezos, 2001-2019 Javier Bezos, CervanTeX; MIT license), with their notices in `src/core/hyphenation/`.
+[MIT](LICENSE). Orbit includes the hyphenation patterns of the [hyph-utf8 package](https://www.hyphenation.org/tex) for American English (Copyright (C) 1990, 2004, 2005 Gerard D.C. Kuiken; copying and distribution are permitted in any medium without royalty provided the copyright notice and this notice are preserved), Spanish (Copyright (C) 1993, 1997 Javier Bezos, 2001-2019 Javier Bezos, CervanTeX; MIT license) and Portuguese (Copyright (C) 1987, 1994, 1996, 2015 Pedro J. de Rezende, 1996, 2015 J. Joao Dias Almeida, 2024 Leonardo Araujo and Aline Benevides; BSD 3-clause license), with their notices in `src/core/hyphenation/` and in the built code that carries them.
