@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { parseOrbitMarkdown } from '../src/core/parser-markdown';
+import { CLOSING_HASHES, HEADER, hiddenComments, LIST_ITEM, parseOrbitMarkdown, TRAILING_TAG } from '../src/core/parser-markdown';
 import { serializeOrbitMarkdown } from '../src/core/serializer-markdown';
 
 describe('parser-markdown header trees', () => {
@@ -486,5 +486,95 @@ describe('parser-markdown document frontmatter', () => {
     const doc = parseOrbitMarkdown(`---\nrings: false\n---\n# A`, { strict: false });
     expect(doc.options.showRings).toBeUndefined();
     expect(doc.warnings.some((w) => /unknown.*rings|rings.*unknown/i.test(w))).toBe(true);
+  });
+});
+
+describe('parser-markdown lines of spaces', () => {
+  it('reads a heading or bullet followed only by spaces in time linear in its length', () => {
+    // As `\s+(.*\S)`, 40,000 spaces after the marker took two seconds, and 200,000 would take a minute.
+    const spaces = ' '.repeat(200_000);
+    const started = performance.now();
+    const doc = parseOrbitMarkdown(`# Root\n1. ${spaces}x${spaces}\n- ${spaces}\n## ${spaces}\n`);
+    expect(performance.now() - started).toBeLessThan(2_000);
+    expect(doc.root.children[0].text).toBe('x');
+  });
+
+  it('matches the lines the patterns written with `\\s+(.*\\S)` matched, with the same parts', () => {
+    const before = {
+      heading: /^ {0,3}(#{1,6})\s+(.*\S)\s*$/,
+      item: /^(\s*)(?:[-*+]|\d{1,9}[.)])\s+(.*\S)\s*$/,
+    };
+    const pieces = ['', ' ', '  ', '    ', '\t', '\n', '\r', ' ', ' ', '　', 'a', 'é', '-', '*', '+', '#', '##', '1', '1234567890', '.', ')', '<!--'];
+    // A small linear congruential generator, so every run checks the same lines.
+    let seed = 7;
+
+    const next = (limit: number): number => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed % limit;
+    };
+
+    let matched = 0;
+
+    for (let count = 0; count < 40_000; count += 1) {
+      const line = Array.from({ length: 1 + next(9) }, () => pieces[next(pieces.length)]).join('');
+
+      for (const [pattern, old] of [[HEADER, before.heading], [LIST_ITEM, before.item]] as const) {
+        const expected = old.exec(line);
+        expect(JSON.stringify(pattern.exec(line))).toBe(JSON.stringify(expected));
+        matched += expected ? 1 : 0;
+      }
+    }
+
+    // Enough of them are headings and list items for the parts to be compared too.
+    expect(matched).toBeGreaterThan(2_000);
+  });
+
+  it('reads a heading or bullet with a long run of spaces inside it in time linear in its length', () => {
+    // The tag, closing `##` and comment patterns tried each of the spaces as their start: 40,000 took six seconds, and 100,000 would take half a minute.
+    const spaces = ' '.repeat(100_000);
+    const tabs = '\t'.repeat(100_000);
+    const started = performance.now();
+    const doc = parseOrbitMarkdown(`# Root\n## a${spaces}b\n- c${spaces}d\n- e${tabs}f\n- g${spaces}<!-- h\n- i${spaces}<!-- j -->${spaces}k\n`);
+    expect(performance.now() - started).toBeLessThan(2_000);
+    const [heading] = doc.root.children;
+    expect(heading.text === `a${spaces}b`).toBe(true);
+    expect(heading.children.map((child) => child.text === `c${spaces}d` || child.text === `e${tabs}f` || child.text === `g${spaces}<!-- h` || child.text === 'i k')).toEqual([true, true, true, true]);
+  });
+
+  it('finds the tags, closing hashes and comments the patterns trying every space found, in the same places', () => {
+    const before = {
+      tag: /\s+#([\p{L}\p{N}_][\p{L}\p{N}_/-]*)$/u,
+      closing: /\s+#+$/,
+      comment: /(\s*)(?<!\\)<!--([\s\S]*?)-->(\s*)/g,
+    };
+    const pieces = ['', ' ', '  ', '\t', '\n', '\u00a0', '\u3000', 'a', 'é', '1', '_', '/', '-', '#', '##', ' #', '#a', '<!--', '-->', '<!-', '\\', 'x'];
+    // A linear congruential generator, read from its high bits, so every run checks the same lines.
+    let seed = 7;
+
+    const next = (limit: number): number => {
+      seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+      return (seed >>> 16) % limit;
+    };
+
+    const place = (match: RegExpExecArray | null) => match && [match.index, ...match];
+    const found = { tag: 0, closing: 0, comment: 0 };
+
+    for (let count = 0; count < 40_000; count += 1) {
+      const line = Array.from({ length: 1 + next(12) }, () => pieces[next(pieces.length)]).join('');
+      const tag = place(before.tag.exec(line));
+      const closing = place(before.closing.exec(line));
+      const comments = Array.from(line.matchAll(before.comment), (match) => ({ start: match.index, end: match.index + match[0].length, body: match[2], spaced: match[1] !== '' || match[3] !== '' }));
+      expect(JSON.stringify(place(TRAILING_TAG.exec(line)))).toBe(JSON.stringify(tag));
+      expect(JSON.stringify(place(CLOSING_HASHES.exec(line)))).toBe(JSON.stringify(closing));
+      expect(JSON.stringify(hiddenComments(line))).toBe(JSON.stringify(comments));
+      found.tag += tag ? 1 : 0;
+      found.closing += closing ? 1 : 0;
+      found.comment += comments.length;
+    }
+
+    // Enough of each are found for where they start and what they hold to be compared too.
+    expect(found.tag).toBeGreaterThan(1_000);
+    expect(found.closing).toBeGreaterThan(2_000);
+    expect(found.comment).toBeGreaterThan(1_000);
   });
 });

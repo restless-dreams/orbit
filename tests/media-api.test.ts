@@ -140,6 +140,16 @@ describe('openMedia', () => {
     expect(new URL(openViewer(host)!.querySelector('iframe')!.src).searchParams.has('start')).toBe(false);
     restore();
   });
+
+  test('a video file sent somewhere before it knows its length starts there, not at startAt', () => {
+    const { host, renderer } = mount(MAP);
+    renderer.openMedia('both', { kind: 'video', autoplay: false, startAt: 30 });
+    const video = openViewer(host)!.querySelector('video')!;
+    expect(renderer.seekMedia(5)).toBe(true);
+    Object.defineProperty(video, 'duration', { value: 90, configurable: true });
+    video.dispatchEvent(new Event('loadedmetadata'));
+    expect(video.currentTime).toBe(5);
+  });
 });
 
 describe('unmuteMedia', () => {

@@ -302,6 +302,8 @@ class FilePlayer implements MediaPlayer {
 
   seek(seconds: number): void {
     if (Number.isFinite(seconds)) {
+      // A seek before the video knows its length is where it starts instead.
+      this.startAt = 0;
       this.element.currentTime = Math.max(0, seconds);
     }
   }

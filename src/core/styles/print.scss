@@ -72,7 +72,8 @@
     height: 0.6em;
     margin-inline-end: 0.4em;
     border-radius: 50%;
-    background: var(--orbit-print-dot);
+    // A color, from the map: as a background, a url() written there would load.
+    background-color: var(--orbit-print-dot);
     vertical-align: 0.05em;
   }
 
@@ -98,7 +99,7 @@
       height: 6pt;
       margin-inline-end: 4pt;
       border-radius: 50%;
-      background: var(--orbit-print-status);
+      background-color: var(--orbit-print-status);
       vertical-align: 0.05em;
     }
   }

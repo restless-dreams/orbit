@@ -16,7 +16,7 @@ import { COUNT_HEIGHT, COUNT_POSITION, DATE_CHIP_INSET, NodeLabel, measureCount,
 import { isOverdue, nodeDue } from '../dates.js';
 import { labelOrder, planLabels, type Box, type PlannedLabel, type Point } from '../engine/labels.js';
 import { worldToScreen } from '../engine/camera.js';
-import { prefersLightText, resolveColor } from '../engine/colors.js';
+import { backdropColor, prefersLightText, resolveColor, type Rgb } from '../engine/colors.js';
 import { overlayTransform } from '../browser.js';
 import { round } from './numbers.js';
 
@@ -115,7 +115,7 @@ export class LabelPainter {
   private readonly lightText = new Map<string, { color: string; light: boolean }>();
 
   /** The theme's label colors, resolved when first needed after each theme change. */
-  private textColors: { light: string; dark: string; root: string } | null = null;
+  private textColors: { light: string; dark: string; root: string; backdrop: Rgb } | null = null;
 
   constructor(layer: HTMLDivElement, fonts: LabelFonts, host: LabelHost) {
     this.layer = layer;
@@ -416,18 +416,19 @@ export class LabelPainter {
 
     const fill = this.host.nodeView(entry.id)?.resolvedFill() ?? '';
     const text = this.textColors ??= this.resolveTextColors();
-    const light = fill !== '' && prefersLightText(fill, text.light, entry.role === 'sun' ? text.root : text.dark);
+    const light = fill !== '' && prefersLightText(fill, text.light, entry.role === 'sun' ? text.root : text.dark, text.backdrop);
     this.lightText.set(entry.id, { color: entry.color, light });
     return light;
   }
 
-  /** The theme's label colors as plain values. */
-  private resolveTextColors(): { light: string; dark: string; root: string } {
+  /** The theme's label colors as plain values, and what translucent nodes are seen over. */
+  private resolveTextColors(): { light: string; dark: string; root: string; backdrop: Rgb } {
     const tokens = this.host.themeTokens();
     return {
       light: resolveColor(tokens['node-text-inverse'], tokens),
       dark: resolveColor(tokens['node-text'], tokens),
       root: resolveColor(tokens['root-text'], tokens),
+      backdrop: backdropColor(tokens),
     };
   }
 

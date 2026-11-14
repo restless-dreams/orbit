@@ -22,6 +22,22 @@ describe('older browsers', () => {
     expect(branch.children.map((child) => colors.get(child.id))).toEqual(['ONE', 'ONE', 'ONE']);
   });
 
+  it('draws colors it can\'t read in hex instead, where Orbit reads them', () => {
+    const tree = parseOrbit('---\npalette: [hwb(0 0% 0%), lab(15 50 -80)]\n---\n# Root\n## A <!-- orbit color: "color(display-p3 0 0 0.5)" -->\n## B\n## C <!-- orbit color: "var(--brand)" -->').root;
+    const [first, second, third] = tree.children;
+    expect(assignNodeColors(tree, ['hwb(0 0% 0%)', 'lab(15 50 -80)']).get(first.id)).toBe('color(display-p3 0 0 0.5)');
+
+    // An older WebView: no hwb() (Chromium 101), and no lab() or color() (Chromium 111).
+    browser.drawsColor = (color) => !/^(?:hwb|lab|lch|oklab|oklch|color)\(/.test(color);
+    browser.mixesColors = false;
+    const colors = assignNodeColors(tree, ['hwb(0 0% 0%)', 'lab(15 50 -80)']);
+    expect(colors.get(tree.id)).toBe('#ff0000');
+    expect(colors.get(first.id)).toBe('#000085');
+    expect(colors.get(second.id)).toBe('#00009e');
+    // A color only the page can tell is left to it.
+    expect(colors.get(third.id)).toBe('var(--brand)');
+  });
+
   it('centers overlays through the transform that places them without the translate property', () => {
     expect(overlayTransform(10, 20, '-50%, 0')).toBe('translate3d(10px, 20px, 0)');
 

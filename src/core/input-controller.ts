@@ -63,6 +63,15 @@ export interface GestureCallbacks {
   onHold(point: Point, target: EventTarget | null): boolean;
 
   /**
+   * A touch or pen held as a long press that no one took, let go within the
+   * slop of where it began. Browsers send no click after their own long
+   * press, and a phone that stalls as it's touched can make one of a short
+   * tap. Returns whether the map took it as a tap: a click that comes
+   * anyway is then swallowed.
+   */
+  onHeldTap(point: Point, target: EventTarget | null): boolean;
+
+  /**
    * The lifted node follows the press: `move` as it moves, then `drop` where
    * it's let go (moved or not), or `cancel` when the press is taken away.
    */
@@ -110,6 +119,9 @@ export class InputController {
   /** The press became a long press: lifting it is no tap. */
   private pressTaken = false;
 
+  /** The press was held as a long press, Orbit's or the browser's: the browser sends no click when it lifts. */
+  private held = false;
+
   /** The held press lifted a node: moving it drags the node. */
   private lifted = false;
 
@@ -132,6 +144,7 @@ export class InputController {
     element.addEventListener('wheel', this.handleWheel as EventListener, { passive: false });
     element.addEventListener('touchmove', this.handleTouchMove as EventListener, { passive: false });
     element.addEventListener('dblclick', this.handleDoubleClick as EventListener);
+    element.addEventListener('contextmenu', this.handleContextMenu);
     // Capture phase so the click that ends a drag never reaches node listeners.
     element.addEventListener('click', this.handleClickCapture as EventListener, true);
   }
@@ -150,6 +163,7 @@ export class InputController {
     element.removeEventListener('wheel', this.handleWheel as EventListener);
     element.removeEventListener('touchmove', this.handleTouchMove as EventListener);
     element.removeEventListener('dblclick', this.handleDoubleClick as EventListener);
+    element.removeEventListener('contextmenu', this.handleContextMenu);
     element.removeEventListener('click', this.handleClickCapture as EventListener, true);
     this.element = null;
     this.reset();
@@ -166,6 +180,7 @@ export class InputController {
 
     this.cancelLongPress();
     this.pressTaken = false;
+    this.held = false;
     this.lifted = false;
     this.pointers.clear();
     this.gestureRectangle = null;
@@ -272,6 +287,7 @@ export class InputController {
     this.lastPoint = point;
     this.engaged = false;
     this.pressTaken = false;
+    this.held = false;
     const drag = this.callbacks.dragGesture(point);
     this.gesture = drag === 'none' ? 'tap' : drag;
 
@@ -288,6 +304,7 @@ export class InputController {
         return;
       }
 
+      this.held = true;
       // A mouse has its right click for menus: held still, it only lifts.
       const taken = !mouse && this.callbacks.onLongPress(point, target);
       const lifted = this.callbacks.onHold(point, target);
@@ -487,23 +504,38 @@ export class InputController {
         this.callbacks.onPanEnd(event.timeStamp, cancelled);
       }
     } else if (event.pointerType !== 'mouse' && event.type === 'pointerup' && !this.pressTaken) {
-      this.detectDoubleTap(point, event.timeStamp, event.target);
+      const doubled = this.detectDoubleTap(point, event.timeStamp, event.target);
+      const still = this.startPoint !== null && Math.hypot(point.x - this.startPoint.x, point.y - this.startPoint.y) < TOUCH_SLOP;
+
+      // No click follows a long press: the map takes it as a tap itself, unless it caught a spin.
+      if (this.held && still && !doubled && !this.suppressNextClick && this.callbacks.onHeldTap(point, event.target)) {
+        this.suppressNextClick = true;
+      }
     }
 
     this.reset();
   };
 
-  private detectDoubleTap(point: Point, time: number, target: EventTarget | null): void {
+  /** Reports a double tap and returns whether this tap made one. */
+  private detectDoubleTap(point: Point, time: number, target: EventTarget | null): boolean {
     const previous = this.lastTap;
 
     if (previous && time - previous.time < DOUBLE_TAP_TIME && Math.hypot(point.x - previous.point.x, point.y - previous.point.y) < DOUBLE_TAP_DISTANCE) {
       this.lastTap = null;
       this.callbacks.onDoubleTap(point, target);
-      return;
+      return true;
     }
 
     this.lastTap = { time, point };
+    return false;
   }
+
+  /** The browser's own long press, which it sends as a context menu while the finger is still down. */
+  private readonly handleContextMenu = (): void => {
+    if (this.pointers.size === 1 && !this.engaged) {
+      this.held = true;
+    }
+  };
 
   private readonly handleDoubleClick = (event: MouseEvent): void => {
     if (!this.callbacks.isInteractive()) {

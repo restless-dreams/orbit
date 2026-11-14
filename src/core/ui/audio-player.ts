@@ -194,6 +194,8 @@ export class AudioPlayer implements MediaPlayer {
     }
 
     const duration = this.state.duration;
+    // A seek before the sound knows its length is where it starts instead.
+    this.startAt = 0;
     this.audio.currentTime = Math.max(0, duration === null ? seconds : Math.min(seconds, duration));
     this.draw();
   }

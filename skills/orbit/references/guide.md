@@ -639,6 +639,7 @@ The full list is exported as `THEME_TOKENS`, and `themeTokens(name)` returns a t
 Orbit is made for current browsers, and draws in older ones down to Chromium 99, which some phones' WebViews still run: every change is checked in Chromium 99 itself. A few effects need newer CSS, and older browsers get plainer versions instead of broken ones:
 
 - without `color-mix()` (Chromium 111, Safari 16.2, Firefox 113), sibling ideas keep their branch's color instead of a shade of it, and rims, rings, shadows and halos take the theme's own colors;
+- without `hwb()` (Chromium 101, Firefox 96), or `lab()`, `lch()`, `oklab()`, `oklch()` and `color()` (Chromium 111, Safari 15.4, Firefox 113), a node or palette color written in one is drawn in the sRGB color it stands for;
 - without the `translate` property (Chromium 104), overlays are centered through their transform;
 - without the `dvh` unit (Chromium 108), the detail sheet sizes by `vh`.
 

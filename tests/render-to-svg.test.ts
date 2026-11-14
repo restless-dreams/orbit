@@ -5,6 +5,7 @@ import { join, relative, sep } from 'node:path';
 import { renderToSVGString } from '../src/index';
 import { parseOrbit } from '../src/core/dispatch';
 import { mixOklab, parseColor, toHex } from '../src/core/engine/colors';
+import { themeTokens } from '../src/core/themes';
 
 const MAP = `---
 title: Launch plan
@@ -199,6 +200,47 @@ color: Tomato
     // A name on a navy planet is the theme's light text.
     const navy = Array.from(document.querySelectorAll('text')).find((text) => text.textContent === 'Navy');
     expect(navy?.getAttribute('fill')).toBe('#ffffff');
+  });
+
+  test('draws every CSS color form as a plain color, with the label that reads on it', () => {
+    // Each a dark navy, written in a form CSS reads: each wants light text, and each child's shade is a plain color too.
+    const forms = ['hsl(240 100% 25%)', 'hsl(240, 100%, 25%)', 'hsla(240, 100%, 25%, 1)', 'hwb(240 0% 50%)', 'lab(15 50 -80)', 'lch(15 90 300)', 'oklch(30% 0.19 264)', 'color(display-p3 0 0 0.5)', 'color(rec2020 0 0 0.45)'];
+
+    for (const form of forms) {
+      const svg = renderToSVGString(`# Root\n## Deep\n<!-- orbit\ncolor: "${form}"\n-->\n### Under\n### Beside\n`, { theme: 'paper', focus: 'deep' });
+      const document = parse(svg);
+      const paints = Array.from(document.querySelectorAll('*')).flatMap((element) => ['fill', 'stroke', 'stop-color'].map((name) => element.getAttribute(name) ?? 'none'));
+      expect(`${form}: ${paints.filter((paint) => !/^(#[0-9a-f]{6}|none|url\(#[\w-]+\))$/.test(paint)).join(' ') || 'plain'}`).toBe(`${form}: plain`);
+      const deep = Array.from(document.querySelectorAll('text')).find((text) => text.textContent === 'Deep');
+      expect(`${form}: ${deep?.getAttribute('fill')}`).toBe(`${form}: #ffffff`);
+    }
+  });
+
+  test('a translucent color\'s label reads on what shows through it', () => {
+    // Navy at 20% is a pale disc on paper's white page, and a dark one on night's sky.
+    const label = (theme: string, color: string) => {
+      const svg = renderToSVGString(`# Root\n## Deep\n<!-- orbit\ncolor: "${color}"\n-->\n### Under\n`, { theme, focus: 'deep' });
+      return Array.from(parse(svg).querySelectorAll('text')).find((text) => text.textContent === 'Deep')?.getAttribute('fill');
+    };
+
+    expect(label('paper', '#00008033')).toBe(themeTokens('paper')['root-text'].toLowerCase());
+    expect(label('paper', 'rgb(0 0 128 / 20%)')).toBe(themeTokens('paper')['root-text'].toLowerCase());
+    expect(label('night', '#00008033')).toBe(themeTokens('night')['node-text-inverse'].toLowerCase());
+    expect(label('paper', '#000080')).toBe(themeTokens('paper')['node-text-inverse'].toLowerCase());
+  });
+
+  test('draws a node whose color nests mixes thousands deep quickly, in its color as written', () => {
+    // Read level by level, a color nested 12,000 deep took ten seconds to export.
+    let color = 'red';
+
+    for (let level = 0; level < 12_000; level += 1) {
+      color = `color-mix(in oklab, ${color} 50%, blue)`;
+    }
+
+    const started = performance.now();
+    const svg = renderToSVGString(`# Root\n## Deep <!-- orbit color: "${color}" -->\n`, { theme: 'paper' });
+    expect(performance.now() - started).toBeLessThan(2_000);
+    expect(Array.from(parse(svg).querySelectorAll('circle')).some((circle) => circle.getAttribute('fill') === color)).toBe(true);
   });
 
   test('keeps the theme\'s background: the wallpaper glass shows through, stars, a grid', () => {

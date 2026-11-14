@@ -1,9 +1,9 @@
 /**
- * Small color helpers: parse the formats browsers report for computed
- * colors and the colors CSS knows by name, mix in OKLab like CSS
- * `color-mix(in oklab, …)`, measure WCAG contrast to choose label colors,
- * and resolve the map's theme tokens into plain hex colors for exports that
- * leave the page.
+ * Small color helpers: parse the colors CSS writes (by name, in hex, and the
+ * color functions of CSS Color 4, as people write them and browsers report
+ * them), mix in OKLab like CSS `color-mix(in oklab, …)`, measure WCAG
+ * contrast to choose label colors, and resolve the map's theme tokens into
+ * plain hex colors for exports that leave the page.
  */
 
 /** sRGB channels and alpha, each 0–1. */
@@ -74,11 +74,30 @@ const namedColor = (name: string): string | undefined => {
  * `1-2` doesn't match, so it never becomes a NaN channel.
  */
 const NUMBER = String.raw`[-+]?(?:\d*\.\d+|\d+)(?:e[-+]?\d+)?`;
-const RGB = new RegExp(String.raw`^rgba?\(\s*(${NUMBER})(%?)[\s,]+(${NUMBER})(%?)[\s,]+(${NUMBER})(%?)(?:\s*[,/]\s*(${NUMBER})(%?))?\s*\)$`);
-const SRGB = new RegExp(String.raw`^color\(srgb\s+(${NUMBER})\s+(${NUMBER})\s+(${NUMBER})(?:\s*\/\s*(${NUMBER})(%?))?\s*\)$`);
-const OKLAB = new RegExp(String.raw`^oklab\(\s*(${NUMBER})(%?)\s+(${NUMBER})\s+(${NUMBER})(?:\s*\/\s*(${NUMBER})(%?))?\s*\)$`);
-const OKLCH = new RegExp(String.raw`^oklch\(\s*(${NUMBER})(%?)\s+(${NUMBER})\s+(${NUMBER})(?:deg)?(?:\s*\/\s*(${NUMBER})(%?))?\s*\)$`);
 
+/** A color function's argument: a number with its unit, if any, or `none`. */
+const ARGUMENT = new RegExp(String.raw`^(?:(${NUMBER})(%|deg|grad|rad|turn)?|none)$`);
+
+/** A color function with what's inside its parentheses. */
+const COLOR_FUNCTION = /^([a-z-]+)\(([^()]*)\)$/;
+
+/** The functions that may also be written with commas, as CSS first wrote them: `rgb(255, 128, 0)`. */
+const COMMA_FUNCTIONS = new Set(['rgb', 'rgba', 'hsl', 'hsla']);
+
+/** A number in a color function, and its unit: `%`, an angle's, `''` for none, or `none` for a missing component, which counts as 0. */
+interface Argument {
+  value: number;
+  unit: string;
+}
+
+/**
+ * Reads a CSS color: a name, hex, or `rgb()`, `hsl()`, `hwb()`, `lab()`,
+ * `lch()`, `oklab()`, `oklch()` or `color()` in any of CSS's predefined
+ * spaces (`srgb`, `srgb-linear`, `display-p3`, `a98-rgb`, `prophoto-rgb`,
+ * `rec2020`, `xyz`, `xyz-d50`, `xyz-d65`), in sRGB. A color sRGB can't show
+ * keeps channels outside 0–1, as CSS mixes it; it's shown clipped. `null`
+ * for anything else, such as `var()`, `currentcolor` or a mix.
+ */
 export const parseColor = (input: string): Rgb | null => {
   const value = input.trim().toLowerCase();
   const named = namedColor(value);
@@ -87,48 +106,250 @@ export const parseColor = (input: string): Rgb | null => {
     return parseHex(named);
   }
 
-  let match = /^#([0-9a-f]{3,8})$/.exec(value);
+  const hex = /^#([0-9a-f]{3,8})$/.exec(value);
 
-  if (match) {
-    return parseHex(match[1]);
+  if (hex) {
+    return parseHex(hex[1]);
   }
 
-  match = RGB.exec(value);
+  const call = COLOR_FUNCTION.exec(value);
+  return call ? readColorFunction(call[1], call[2]) : null;
+};
 
-  if (match) {
-    // A channel is out of 255, or out of 100 when written as a percentage.
-    const channel = (amount: string, percent: string) => Number(amount) / (percent === '%' ? 100 : 255);
-    return {
-      red: channel(match[1], match[2]),
-      green: channel(match[3], match[4]),
-      blue: channel(match[5], match[6]),
-      alpha: readAlpha(match[7], match[8]),
-    };
+const readColorFunction = (name: string, inside: string): Rgb | null => {
+  let words: string[];
+  let alphaText: string | undefined;
+
+  if (inside.includes(',')) {
+    if (!COMMA_FUNCTIONS.has(name) || inside.includes('/')) {
+      return null;
+    }
+
+    words = inside.split(',').map((word) => word.trim());
+    alphaText = words.length === 4 ? words.pop() : undefined;
+  } else {
+    const [channels, alpha, ...more] = inside.split('/');
+
+    if (more.length > 0) {
+      return null;
+    }
+
+    words = channels.trim().split(/\s+/);
+    alphaText = alpha?.trim();
   }
 
-  match = SRGB.exec(value);
+  const space = name === 'color' ? words.shift() : undefined;
+  const parts = words.map(readArgument);
+  const alpha = alphaText === undefined ? { value: 1, unit: '' } : readArgument(alphaText);
+  const written = parts.length === 3 && alpha !== null && parts.every((part): part is Argument => part !== null);
 
-  if (match) {
-    return { red: Number(match[1]), green: Number(match[2]), blue: Number(match[3]), alpha: readAlpha(match[4], match[5]) };
+  // Missing components (`none`) came with the syntax that has no commas.
+  if (!written || (inside.includes(',') && [...parts, alpha].some((part) => part.unit === 'none')) || !isAmount(alpha)) {
+    return null;
   }
 
-  match = OKLAB.exec(value);
+  const color = colorChannels(name, space, parts);
+  const opacity = alpha.unit === '%' ? alpha.value / 100 : alpha.value;
+  return color && color.every(Number.isFinite) ? { red: color[0], green: color[1], blue: color[2], alpha: Math.min(1, Math.max(0, opacity)) } : null;
+};
 
-  if (match) {
-    const lightness = Number(match[1]) / (match[2] === '%' ? 100 : 1);
-    return fromOklab(lightness, Number(match[3]), Number(match[4]), readAlpha(match[5], match[6]));
+const readArgument = (text: string): Argument | null => {
+  const match = ARGUMENT.exec(text);
+
+  if (!match) {
+    return null;
   }
 
-  match = OKLCH.exec(value);
+  return match[1] === undefined ? { value: 0, unit: 'none' } : { value: Number(match[1]), unit: match[2] ?? '' };
+};
 
-  if (match) {
-    const lightness = Number(match[1]) / (match[2] === '%' ? 100 : 1);
-    const chroma = Number(match[3]);
-    const hue = (Number(match[4]) * Math.PI) / 180;
-    return fromOklab(lightness, chroma * Math.cos(hue), chroma * Math.sin(hue), readAlpha(match[5], match[6]));
+/** Whether an argument is a number or a percentage, rather than an angle. */
+const isAmount = (part: Argument): boolean => part.unit === '' || part.unit === '%' || part.unit === 'none';
+
+/** An argument as a number, a percentage being of `whole`; NaN for an angle. */
+const amount = (part: Argument, whole: number): number => {
+  if (!isAmount(part)) {
+    return Number.NaN;
   }
 
-  return null;
+  return part.unit === '%' ? (part.value / 100) * whole : part.value;
+};
+
+/** Degrees in each unit a hue can have. */
+const DEGREES = new Map([['', 1], ['none', 1], ['deg', 1], ['grad', 0.9], ['rad', 180 / Math.PI], ['turn', 360]]);
+
+/** An argument as a hue, in degrees; NaN for a percentage. */
+const hue = (part: Argument): number => part.value * (DEGREES.get(part.unit) ?? Number.NaN);
+
+/** A color function's sRGB channels, or `null` for a function or space it isn't. */
+const colorChannels = (name: string, space: string | undefined, [first, second, third]: Argument[]): number[] | null => {
+  switch (name) {
+    case 'rgb':
+    case 'rgba': {
+      // A channel is out of 255, or out of 100 when written as a percentage.
+      const channel = (part: Argument) => (part.unit === '%' ? part.value / 100 : amount(part, 255) / 255);
+      return [channel(first), channel(second), channel(third)];
+    }
+    case 'hsl':
+    case 'hsla':
+      return fromHsl(hue(first), amount(second, 100) / 100, amount(third, 100) / 100);
+    case 'hwb':
+      return fromHwb(hue(first), amount(second, 100) / 100, amount(third, 100) / 100);
+    case 'lab':
+      return fromLab(amount(first, 100), amount(second, 125), amount(third, 125));
+    case 'lch': {
+      const angle = (hue(third) * Math.PI) / 180;
+      const chroma = amount(second, 150);
+      return fromLab(amount(first, 100), chroma * Math.cos(angle), chroma * Math.sin(angle));
+    }
+    case 'oklab': {
+      const color = fromOklab(amount(first, 1), amount(second, 0.4), amount(third, 0.4), 1);
+      return [color.red, color.green, color.blue];
+    }
+    case 'oklch': {
+      const angle = (hue(third) * Math.PI) / 180;
+      const chroma = amount(second, 0.4);
+      const color = fromOklab(amount(first, 1), chroma * Math.cos(angle), chroma * Math.sin(angle), 1);
+      return [color.red, color.green, color.blue];
+    }
+    case 'color':
+      return space === undefined ? null : fromSpace(space, [amount(first, 1), amount(second, 1), amount(third, 1)]);
+    default:
+      return null;
+  }
+};
+
+/** HSL in sRGB, as CSS Color 4 converts it: `saturation` and `lightness` from 0 to 1. */
+const fromHsl = (degrees: number, saturation: number, lightness: number): number[] => {
+  const turn = ((degrees % 360) + 360) % 360;
+  const light = Math.min(1, Math.max(0, lightness));
+  const reach = Math.min(1, Math.max(0, saturation)) * Math.min(light, 1 - light);
+
+  const channel = (offset: number) => {
+    const step = (offset + turn / 30) % 12;
+    return light - reach * Math.max(-1, Math.min(step - 3, 9 - step, 1));
+  };
+
+  return [channel(0), channel(8), channel(4)];
+};
+
+/** HWB in sRGB: the pure hue, with `whiteness` and `blackness` (0 to 1) mixed in; a gray when they add up to 1 or more. */
+const fromHwb = (degrees: number, whiteness: number, blackness: number): number[] => {
+  const white = Math.max(0, whiteness);
+  const black = Math.max(0, blackness);
+
+  if (white + black >= 1) {
+    const gray = white / (white + black);
+    return [gray, gray, gray];
+  }
+
+  return fromHsl(degrees, 1, 0.5).map((channel) => channel * (1 - white - black) + white);
+};
+
+type Matrix = readonly [readonly number[], readonly number[], readonly number[]];
+
+const multiply = (matrix: Matrix, vector: number[]): number[] => {
+  return matrix.map((row) => row[0] * vector[0] + row[1] * vector[1] + row[2] * vector[2]);
+};
+
+// The matrices and white points of CSS Color 4's sample code.
+const XYZ_TO_LINEAR_SRGB: Matrix = [
+  [3.2409699419045226, -1.537383177570094, -0.4986107602930034],
+  [-0.9692436362808796, 1.8759675015077202, 0.04155505740717559],
+  [0.05563007969699366, -0.20397695888897652, 1.0569715142428786],
+];
+
+/** From D50's white, which CIE Lab and ProPhoto use, to D65's (Bradford). */
+const D50_TO_D65: Matrix = [
+  [0.955473421488075, -0.02309845494876471, 0.06325924320057072],
+  [-0.0283697093338637, 1.0099953980813041, 0.021041441191917323],
+  [0.012314014864481998, -0.020507649298898964, 1.330365926242124],
+];
+
+const D50_WHITE = [0.3457 / 0.3585, 1, (1 - 0.3457 - 0.3585) / 0.3585];
+
+/**
+ * The spaces `color()` names: how each turns its channels into linear
+ * light, and its matrix to XYZ, under D65's white or D50's.
+ */
+const SPACES = new Map<string, { linear: (channel: number) => number; toXyz: Matrix; d50?: true }>(Object.entries({
+  'display-p3': {
+    linear: (channel) => toLinear(channel),
+    toXyz: [
+      [0.4865709486482162, 0.26566769316909306, 0.1982172852343625],
+      [0.2289745640697488, 0.6917385218365064, 0.079286914093745],
+      [0, 0.04511338185890264, 1.043944368900976],
+    ],
+  },
+  'a98-rgb': {
+    linear: (channel) => Math.sign(channel) * Math.abs(channel) ** (563 / 256),
+    toXyz: [
+      [0.5766690429101305, 0.1855582379065463, 0.1882286462349947],
+      [0.29734497525053605, 0.6273635662554661, 0.07529145849399788],
+      [0.02703136138641234, 0.07068885253582723, 0.9913375368376388],
+    ],
+  },
+  'prophoto-rgb': {
+    linear: (channel) => (Math.abs(channel) <= 16 / 512 ? channel / 16 : Math.sign(channel) * Math.abs(channel) ** 1.8),
+    toXyz: [
+      [0.7977666449006423, 0.13518129740053308, 0.0313477341283922],
+      [0.2880748288194013, 0.711835234241873, 0.00008993693872564],
+      [0, 0, 0.8251046025104602],
+    ],
+    d50: true,
+  },
+  rec2020: {
+    linear: (channel) => {
+      const alpha = 1.09929682680944;
+      const beta = 0.018053968510807;
+      return Math.abs(channel) < beta * 4.5 ? channel / 4.5 : Math.sign(channel) * ((Math.abs(channel) + alpha - 1) / alpha) ** (1 / 0.45);
+    },
+    toXyz: [
+      [0.6369580483012914, 0.14461690358620832, 0.1688809751641721],
+      [0.2627002120112671, 0.6779980715188708, 0.05930171646986196],
+      [0, 0.028072693049087428, 1.060985057710791],
+    ],
+  },
+}));
+
+/** A `color()` in sRGB, or `null` for a space CSS doesn't have. */
+const fromSpace = (space: string, channels: number[]): number[] | null => {
+  if (space === 'srgb') {
+    return channels;
+  }
+
+  if (space === 'srgb-linear') {
+    return channels.map(fromLinear);
+  }
+
+  if (space === 'xyz' || space === 'xyz-d65' || space === 'xyz-d50') {
+    return fromXyz(space === 'xyz-d50' ? multiply(D50_TO_D65, channels) : channels);
+  }
+
+  const defined = SPACES.get(space);
+
+  if (!defined) {
+    return null;
+  }
+
+  const xyz = multiply(defined.toXyz, channels.map(defined.linear));
+  return fromXyz(defined.d50 ? multiply(D50_TO_D65, xyz) : xyz);
+};
+
+/** XYZ under D65's white in sRGB. */
+const fromXyz = (xyz: number[]): number[] => multiply(XYZ_TO_LINEAR_SRGB, xyz).map(fromLinear);
+
+/** CIE Lab (D50) in sRGB. */
+const fromLab = (lightness: number, a: number, b: number): number[] => {
+  const kappa = 24389 / 27;
+  const epsilon = 216 / 24389;
+  const middle = (lightness + 16) / 116;
+  const first = a / 500 + middle;
+  const last = middle - b / 200;
+  const x = first ** 3 > epsilon ? first ** 3 : (116 * first - 16) / kappa;
+  const y = lightness > kappa * epsilon ? middle ** 3 : lightness / kappa;
+  const z = last ** 3 > epsilon ? last ** 3 : (116 * last - 16) / kappa;
+  return fromXyz(multiply(D50_TO_D65, [x * D50_WHITE[0], y, z * D50_WHITE[2]]));
 };
 
 const parseHex = (digits: string): Rgb | null => {
@@ -144,26 +365,21 @@ const parseHex = (digits: string): Rgb | null => {
   return { red: channel(0), green: channel(2), blue: channel(4), alpha: expanded.length === 8 ? channel(6) : 1 };
 };
 
-const readAlpha = (value: string | undefined, percent: string | undefined): number => {
-  if (value === undefined) {
-    return 1;
-  }
-
-  return Number(value) / (percent === '%' ? 100 : 1);
-};
-
 export const toHex = (color: Rgb): string => {
   const channel = (value: number) => Math.round(Math.min(1, Math.max(0, value)) * 255).toString(16).padStart(2, '0');
   const alpha = color.alpha < 1 ? channel(color.alpha) : '';
   return `#${channel(color.red)}${channel(color.green)}${channel(color.blue)}${alpha}`;
 };
 
+/** An sRGB channel in linear light; one below 0, from a color sRGB can't show, mirrors one above. */
 const toLinear = (channel: number): number => {
-  return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  const size = Math.abs(channel);
+  return size <= 0.04045 ? channel / 12.92 : Math.sign(channel) * ((size + 0.055) / 1.055) ** 2.4;
 };
 
 const fromLinear = (channel: number): number => {
-  return channel <= 0.0031308 ? channel * 12.92 : 1.055 * channel ** (1 / 2.4) - 0.055;
+  const size = Math.abs(channel);
+  return size <= 0.0031308 ? channel * 12.92 : Math.sign(channel) * (1.055 * size ** (1 / 2.4) - 0.055);
 };
 
 const toOklab = (color: Rgb): [number, number, number] => {
@@ -296,9 +512,31 @@ export const mixOklab = (first: Rgb, second: Rgb, amount: number): Rgb => {
   );
 };
 
-/** WCAG relative luminance (0–1) of a color's sRGB channels, ignoring alpha. */
+/** A channel as it's shown: a color sRGB can't show is clipped to it. */
+const shown = (channel: number): number => Math.min(1, Math.max(0, channel));
+
+/** WCAG relative luminance (0–1) of a color's sRGB channels, as they're shown, ignoring alpha. */
 export const relativeLuminance = (color: Rgb): number => {
-  return 0.2126 * toLinear(color.red) + 0.7152 * toLinear(color.green) + 0.0722 * toLinear(color.blue);
+  return 0.2126 * toLinear(shown(color.red)) + 0.7152 * toLinear(shown(color.green)) + 0.0722 * toLinear(shown(color.blue));
+};
+
+/** `front` painted over an opaque `back`, as browsers blend them: what shows where a translucent color is drawn. */
+export const over = (front: Rgb, back: Rgb): Rgb => {
+  const alpha = shown(front.alpha);
+  const blend = (top: number, bottom: number) => shown(top) * alpha + shown(bottom) * (1 - alpha);
+  return { red: blend(front.red, back.red), green: blend(front.green, back.green), blue: blend(front.blue, back.blue), alpha: 1 };
+};
+
+/**
+ * What a map is drawn on, opaque: the theme's `surface`, and where it shows
+ * through, the page the theme is made for, white under dark `text` and
+ * black under light text. A translucent node is seen over it.
+ */
+export const backdropColor = (tokens: Record<string, string>): Rgb => {
+  const text = parseColor(resolveColor(tokens.text ?? '', tokens));
+  const page = text && relativeLuminance(text) >= 0.18 ? { red: 0, green: 0, blue: 0, alpha: 1 } : { red: 1, green: 1, blue: 1, alpha: 1 };
+  const surface = parseColor(resolveColor(tokens.surface ?? 'transparent', tokens));
+  return surface ? over(surface, page) : page;
 };
 
 /** WCAG contrast ratio (1–21) between two opaque colors. */
@@ -309,15 +547,18 @@ export const contrastRatio = (first: Rgb, second: Rgb): number => {
 
 /**
  * Whether `lightText` reads better than `darkText` on `fill`: the one with
- * more contrast wins, a tie going to the light text. When the text colors
+ * more contrast wins, a tie going to the light text. A translucent fill is
+ * seen over `backdrop` (`backdropColor`), when given. When the text colors
  * can't be parsed, light text goes on fills darker than mid-gray.
  */
-export const prefersLightText = (fill: string, lightText: string, darkText: string): boolean => {
-  const background = parseColor(fill);
+export const prefersLightText = (fill: string, lightText: string, darkText: string, backdrop?: Rgb): boolean => {
+  const parsed = parseColor(fill);
 
-  if (!background) {
+  if (!parsed) {
     return false;
   }
+
+  const background = backdrop && parsed.alpha < 1 ? over(parsed, backdrop) : parsed;
 
   const light = parseColor(lightText);
   const dark = parseColor(darkText);
@@ -343,22 +584,35 @@ export const splitAlpha = (color: string): { color: string; opacity: number } =>
 /**
  * Resolves `var(--_orbit-token)` references and `color-mix(in oklab, …)`
  * into a hex color using concrete token values. When part of it can't be
- * read, such as an `hsl()` color, it's returned with the tokens it names
- * written out, so it doesn't depend on the page's stylesheet.
+ * read, such as a page's own `var(--brand)`, it's returned with the tokens
+ * it names written out, so it doesn't depend on the page's stylesheet.
  */
-export const resolveColor = (value: string, tokens: Record<string, string>): string => {
+export const resolveColor = (value: string, tokens: Record<string, string>): string => resolveMixes(value, tokens, MIX_DEPTH);
+
+/**
+ * How many mixes deep a color is read: Orbit puts one around a sibling's
+ * color and a theme's own tokens, and the colors people write rarely nest
+ * more than two. Each level reads all of what's inside it again, so a color
+ * nested 12,000 deep took ten seconds, and a theme token that names itself
+ * overflowed the stack. A mix nested deeper is returned as written, with its
+ * tokens written out.
+ */
+export const MIX_DEPTH = 8;
+
+const resolveMixes = (value: string, tokens: Record<string, string>, depth: number): string => {
   const substituted = value.replace(/var\(--_?orbit-([a-z0-9-]+)(?:\s*,\s*([^()]+))?\)/gi, (whole, token: string, fallback?: string) => {
     return tokens[token] ?? fallback?.trim() ?? whole;
   });
 
-  const mix = /^color-mix\(\s*in\s+oklab\s*,\s*(.+?)\s+(\d*\.\d+|\d+)%\s*,\s*(.+?)\s*\)$/i.exec(substituted.trim());
+  const mix = depth > 0 ? readMix(substituted.trim()) : null;
 
   if (mix) {
-    const first = parseColor(resolveColor(mix[1], tokens));
-    const second = parseColor(resolveColor(mix[3], tokens));
+    const first = parseColor(resolveMixes(mix.first, tokens, depth - 1));
+    const second = parseColor(resolveMixes(mix.second, tokens, depth - 1));
 
-    if (first && second) {
-      return toHex(mixOklab(first, second, Number(mix[2]) / 100));
+    if (first && second && mix.share !== null) {
+      const mixed = mixOklab(first, second, mix.share);
+      return toHex({ ...mixed, alpha: mixed.alpha * mix.alpha });
     }
 
     return substituted;
@@ -366,4 +620,53 @@ export const resolveColor = (value: string, tokens: Record<string, string>): str
 
   const parsed = parseColor(substituted);
   return parsed ? toHex(parsed) : substituted;
+};
+
+const MIX = /^color-mix\(\s*in\s+oklab\s*,(.*)\)$/i;
+const MIX_AMOUNT = new RegExp(String.raw`\s(${NUMBER})%$`);
+
+/**
+ * The two colors of a `color-mix(in oklab, …)`, each perhaps with a
+ * percentage, and how much of the first the mix has (`null` when the
+ * percentages can't be), as CSS reads them: the first's 50% without either,
+ * and an alpha of what they add up to when that's under 100%.
+ */
+const readMix = (value: string): { first: string; second: string; share: number | null; alpha: number } | null => {
+  const inside = MIX.exec(value)?.[1];
+  const parts = inside === undefined ? [] : topLevelParts(inside);
+
+  if (parts.length !== 2) {
+    return null;
+  }
+
+  const [first, second] = parts.map((part) => {
+    const amount = MIX_AMOUNT.exec(part);
+    return amount ? { color: part.slice(0, amount.index).trim(), amount: Number(amount[1]) / 100 } : { color: part, amount: undefined };
+  });
+
+  const firstAmount = first.amount ?? (second.amount === undefined ? 0.5 : 1 - second.amount);
+  const secondAmount = second.amount ?? 1 - firstAmount;
+  const total = firstAmount + secondAmount;
+  const fair = [firstAmount, secondAmount].every((share) => share >= 0 && share <= 1) && total > 0;
+  return { first: first.color, second: second.color, share: fair ? firstAmount / total : null, alpha: Math.min(1, total) };
+};
+
+/** `value` split at the commas outside its parentheses, each part trimmed. */
+const topLevelParts = (value: string): string[] => {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    depth += character === '(' ? 1 : character === ')' ? -1 : 0;
+
+    if (character === ',' && depth === 0) {
+      parts.push(value.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+
+  parts.push(value.slice(start).trim());
+  return parts;
 };

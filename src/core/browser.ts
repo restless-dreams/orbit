@@ -3,6 +3,8 @@ const supports = (property: string, value: string): boolean => {
   return typeof css?.supports !== 'function' || css.supports(property, value);
 };
 
+const drawnColors = new Map<string, boolean>();
+
 /**
  * What the browser draws with, checked once. A few effects need newer CSS:
  * older browsers, such as the WebViews of phones that don't update theirs,
@@ -15,6 +17,23 @@ export const browser = {
 
   /** The `translate` property (Chromium 104, Safari 14.1, Firefox 72). Without it, overlays are centered through their transform. */
   translates: supports('translate', '1px'),
+
+  /**
+   * Whether the browser draws `color` as it's written, asked once per
+   * color. Older ones lack `hwb()` (Chromium 101, Firefox 96), and `lab()`,
+   * `lch()`, `oklab()`, `oklch()` and `color()` (Chromium 111, Safari 15.4,
+   * Firefox 113), and draw a node in one of them black.
+   */
+  drawsColor: (color: string): boolean => {
+    let drawn = drawnColors.get(color);
+
+    if (drawn === undefined) {
+      drawn = supports('color', color);
+      drawnColors.set(color, drawn);
+    }
+
+    return drawn;
+  },
 };
 
 const coarseQueries = new WeakMap<Window, MediaQueryList>();

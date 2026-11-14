@@ -809,7 +809,7 @@ describe('colors', () => {
   });
 
   test('getNodeColor() reports the color a node is drawn with', () => {
-    const { renderer } = mount('# Root\n\n## One\n- First\n- Second\n## Two\n## Red <!-- orbit color: "#FF0000" -->\n## Named <!-- orbit color: tomato -->\n## Other <!-- orbit color: "hsl(10 80% 60%)" -->');
+    const { renderer } = mount('# Root\n\n## One\n- First\n- Second\n## Two\n## Red <!-- orbit color: "#FF0000" -->\n## Named <!-- orbit color: tomato -->\n## Other <!-- orbit color: "hsl(10 80% 60%)" -->\n## Page <!-- orbit color: "var(--brand)" -->');
     expect(renderer.getNodeColor('root')).toBe('#fad86f');
     expect(renderer.getNodeColor('one')).toBe('#febab6');
     expect(renderer.getNodeColor('first')).toBe('#febab6');
@@ -818,8 +818,9 @@ describe('colors', () => {
     expect(renderer.getNodeColor('two')).toBe('#99e0ba');
     expect(renderer.getNodeColor('red')).toBe('#ff0000');
     expect(renderer.getNodeColor('named')).toBe('#ff6347');
+    expect(renderer.getNodeColor('other')).toBe('#eb6347');
     // A color Orbit can't read, as written.
-    expect(renderer.getNodeColor('other')).toBe('hsl(10 80% 60%)');
+    expect(renderer.getNodeColor('page')).toBe('var(--brand)');
     expect(renderer.getNodeColor('nowhere')).toBeNull();
   });
 
@@ -854,6 +855,16 @@ describe('colors', () => {
     const label = (text: string) => Array.from(host.querySelectorAll('.orbit-label')).find((element) => element.textContent?.includes(text));
     expect(label('Deep')?.classList.contains('orbit-label--light')).toBe(true);
     expect(label('Pale')?.classList.contains('orbit-label--light')).toBe(false);
+  });
+
+  test('labels read every CSS color form, and a translucent one over what the map is drawn on', () => {
+    const forms = ['hsl(160 70% 14%)', 'hwb(160 4% 76%)', 'lab(22 -18 4)', 'lch(22 18 167)', 'color(display-p3 0.1 0.24 0.18)', '#0b3d2e33'];
+    const { host } = mount(`# Root\n\n${forms.map((color, index) => `## Idea ${index} <!-- orbit color: "${color}" -->`).join('\n')}`);
+    const light = (index: number) => Array.from(host.querySelectorAll('.orbit-label')).find((element) => element.textContent?.includes(`Idea ${index}`))?.classList.contains('orbit-label--light');
+    // Dark greens, written in each form CSS has: light text.
+    expect(forms.slice(0, 5).map((color, index) => `${color}: ${light(index)}`)).toEqual(forms.slice(0, 5).map((color) => `${color}: true`));
+    // The same green at 20% is a pale disc on paper's white page: dark text.
+    expect(light(5)).toBe(false);
   });
 });
 

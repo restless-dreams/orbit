@@ -859,6 +859,7 @@ The full list is exported as `THEME_TOKENS`, and `themeTokens(name)` returns a t
 Orbit is made for current browsers, and draws in older ones down to Chromium 99, which some phones' WebViews still run: every change is checked in Chromium 99 itself. A few effects need newer CSS, and older browsers get plainer versions instead of broken ones:
 
 - without `color-mix()` (Chromium 111, Safari 16.2, Firefox 113), sibling ideas keep their branch's color instead of a shade of it, and rims, rings, shadows and halos take the theme's own colors;
+- without `hwb()` (Chromium 101, Firefox 96), or `lab()`, `lch()`, `oklab()`, `oklch()` and `color()` (Chromium 111, Safari 15.4, Firefox 113), a node or palette color written in one is drawn in the sRGB color it stands for;
 - without the `translate` property (Chromium 104), overlays are centered through their transform;
 - without the `dvh` unit (Chromium 108), the detail sheet sizes by `vh`.
 
@@ -1163,6 +1164,8 @@ Other words get a neutral dot. Checkboxes set `todo` (`[ ]`), `done` (`[x]`) and
 ### Colors
 
 The root takes the palette's first color: the theme's, or the frontmatter's `palette`. The top-level nodes take the others in turn, cycling, and deeper nodes take shades of their branch's color, so siblings stay apart. A node's own `color` wins, then its type's.
+
+A color is any CSS color: a name, hex, `rgb()`, `hsl()`, `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()` or `color()` (`display-p3` and CSS's other spaces). Orbit reads each one to pick a name's color that reads on it, a translucent color as it shows over the map's background, and to write exports and print in plain colors. A browser too old for one, such as `lab()` before Chromium 111, draws it in the sRGB color it stands for.
 
 `paletteColor` gives a node one of the palette's colors by number, so it still changes with the theme. The top-level nodes without one take turns with the colors no top-level node has by number: give two nodes the same number for them to share a color.
 

@@ -120,6 +120,21 @@
     host.remove();
     return laidOut;
   });
+  await check('draws colors newer than it in the colors they name, with labels that read on them', async () => {
+    // lab() and color() are Chromium 111's, hwb() 101's: each a dark blue.
+    const host = document.createElement('div');
+    host.style.cssText = 'width: 600px; height: 400px';
+    document.body.appendChild(host);
+    const colored = createOrbitMap(host, '# Root\n## Deep <!-- orbit color: "lab(15 50 -80)" -->\n## Wide <!-- orbit color: "color(display-p3 0 0 0.5)" -->\n## Plain <!-- orbit color: "hwb(240 0% 50%)" -->\n', { transitionDuration: 0, theme: 'paper' });
+    await frame();
+    await frame();
+    const fill = (id) => getComputedStyle(host.querySelector(`[data-orbit-node-id="${id}"] .orbit-node__disc`)).fill;
+    const light = (text) => Array.from(host.querySelectorAll('.orbit-label')).some((label) => label.textContent.includes(text) && label.classList.contains('orbit-label--light'));
+    const drawn = [fill('deep'), fill('wide'), fill('plain'), light('Deep'), light('Wide'), light('Plain')];
+    colored.destroy();
+    host.remove();
+    return drawn.join(' ') === 'rgb(0, 0, 158) rgb(0, 0, 133) rgb(0, 0, 128) true true true' || drawn;
+  });
   await check('draws <orbit-map>', async () => {
     defineOrbitMapElement();
     await frame();

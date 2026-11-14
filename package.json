@@ -1,6 +1,6 @@
 {
   "name": "@restless-dreams/orbit",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Markdown-first orbit/solar-system mind map renderer.",
   "keywords": [
     "markdown",

@@ -6,7 +6,7 @@
 
 import type { Display, DisplayNode } from './display.js';
 import { worldToScreen, type Viewport } from './camera.js';
-import { mixOklab, parseColor, prefersLightText, resolveColor, splitAlpha, toHex } from './colors.js';
+import { backdropColor, mixOklab, parseColor, prefersLightText, resolveColor, splitAlpha, toHex, type Rgb } from './colors.js';
 import { FILES_BADGE, PAPERCLIP, SHADE_STOPS, SHADOW_BLUR, drawsFlat, filesBadgeWidth, filesBesideSound, insideLabelLayout, nodeThumbnail, readShadeCircle, ringPath } from './views.js';
 import { labelOrder, outsideLabelBox, planLabels, type PlannedLabel } from './labels.js';
 import { hasMediaSource } from '../media.js';
@@ -69,9 +69,16 @@ const DRAWING_PREFIX = 'orbit-export';
 /** Theme values read as plain colors, numbers and mixes. */
 class ThemeReader {
   readonly tokens: Record<string, string>;
+  private resolvedBackdrop: Rgb | null = null;
 
   constructor(tokens: Record<string, string>) {
     this.tokens = tokens;
+  }
+
+  /** What the map is drawn on, under translucent nodes (`backdropColor`). */
+  backdrop(): Rgb {
+    this.resolvedBackdrop ??= backdropColor(this.tokens);
+    return this.resolvedBackdrop;
   }
 
   value(name: string, fallback = ''): string {
@@ -485,7 +492,7 @@ const exportLabel = (plan: PlannedLabel, fill: string, theme: ThemeReader, icon:
   const lineHeight = fontSize * 1.22;
   const lightText = theme.token('node-text-inverse', '#ffffff');
   const darkText = theme.token(isSun ? 'root-text' : 'node-text', '#1b2333');
-  const textColor = prefersLightText(fill, lightText, darkText) ? lightText : darkText;
+  const textColor = prefersLightText(fill, lightText, darkText, theme.backdrop()) ? lightText : darkText;
   const firstBaseline = y - ((lines.length - 1) * lineHeight) / 2 + fontSize * 0.35;
   const spans = lines
     .map((line, index) => `<tspan x="${round(x)}" y="${round(firstBaseline + index * lineHeight)}">${escapeXml(line)}</tspan>`)

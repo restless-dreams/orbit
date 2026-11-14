@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { contrastRatio, mixOklab, parseColor, prefersLightText, resolveColor, splitAlpha, toHex } from '../src/core/engine/colors';
+import { backdropColor, contrastRatio, MIX_DEPTH, mixOklab, parseColor, prefersLightText, resolveColor, splitAlpha, toHex } from '../src/core/engine/colors';
 import { Glide, PointVelocityTracker } from '../src/core/engine/glide';
 import { COUNT_HEIGHT, COUNT_POSITION, insideFontSize, insideLabelLayout, labelPlacement, measureCount, ringPath, type InsideLabelLayout } from '../src/core/engine/views';
 import { INSIDE_ESTIMATE } from '../src/core/engine/text-measure';
+import { themeTokens } from '../src/core/themes';
 
 /** Names of the lengths maps have: one word or a few, short and long. */
 const FIT_NAMES = [
@@ -118,8 +119,112 @@ describe('colors', () => {
 
   test('writes out the tokens of a mix it can\'t read, so it doesn\'t depend on the page', () => {
     const tokens = { 'shade-light': '#FFFFFF' };
-    expect(resolveColor('color-mix(in oklab, hsl(10 80% 60%) 78%, var(--_orbit-shade-light))', tokens)).toBe('color-mix(in oklab, hsl(10 80% 60%) 78%, #FFFFFF)');
-    expect(resolveColor('hsl(10 80% 60%)', tokens)).toBe('hsl(10 80% 60%)');
+    expect(resolveColor('color-mix(in oklab, var(--brand) 78%, var(--_orbit-shade-light))', tokens)).toBe('color-mix(in oklab, var(--brand) 78%, #FFFFFF)');
+    expect(resolveColor('var(--brand)', tokens)).toBe('var(--brand)');
+  });
+
+  test('reads every color function CSS has, as Chromium converts them to sRGB', () => {
+    // Chromium 154's own conversions, unclipped: what it reports for color-mix(in srgb, <color> 100%, red).
+    const chromium: Record<string, number[]> = {
+      'hsl(240 100% 25%)': [0, 0, 0.5],
+      'hsl(240, 100%, 25%)': [0, 0, 0.5],
+      'hsla(10, 80%, 60%, 0.5)': [0.92, 0.386667, 0.28, 0.5],
+      'hsl(0.5turn 50% 40%)': [0.2, 0.6, 0.6],
+      'hsl(3.1416rad 50% 40%)': [0.2, 0.599997, 0.6],
+      'hsl(200grad 50% 40%)': [0.2, 0.6, 0.6],
+      'hsl(240 100 25)': [0, 0, 0.5],
+      'hwb(240 0% 50%)': [0, 0, 0.5],
+      'hwb(120 30% 80%)': [0.272727, 0.272727, 0.272727],
+      'hwb(30 10% 20% / 0.5)': [0.8, 0.45, 0.1, 0.5],
+      'lab(15 50 -80)': [-0.0188156, -0.0254337, 0.62094],
+      'lab(50% 40% -20%)': [0.716251, 0.312626, 0.639128],
+      'lab(70 20 30 / 25%)': [0.853694, 0.615007, 0.460913, 0.25],
+      'lch(15 90 300)': [-0.0851832, 0.0177427, 0.60767],
+      'lch(60 50 20deg)': [0.876021, 0.419903, 0.460342],
+      'lch(50% 50% 0.25turn)': [0.542765, 0.46055, -0.156151],
+      'lch(50 30 none)': [0.649523, 0.385925, 0.47158],
+      'oklab(50% 40% -20%)': [0.606646, 0.180425, 0.553012],
+      'oklch(60% 50% 200)': [-0.461784, 0.623015, 0.685185],
+      'color(display-p3 0 0 0.5)': [0.0000110701, 0.0000312609, 0.522138],
+      'color(display-p3 1 0 0)': [1.09302, -0.22669, -0.150073],
+      'color(display-p3 0.2 0.6 0.4 / 0.8)': [-0.193654, 0.6102, 0.381465, 0.8],
+      'color(display-p3 50% 20% 10%)': [0.54172, 0.173732, 0.0529418],
+      'color(srgb-linear 0.2 0.5 0.8)': [0.484543, 0.735394, 0.906361],
+      'color(a98-rgb 0.4 0.6 0.2)': [0.264196, 0.605552, 0.134666],
+      'color(prophoto-rgb 0.4 0.6 0.2)': [0.320587, 0.699326, 0.0177205],
+      'color(rec2020 0.4 0.6 0.2)': [0.289748, 0.659613, 0.160753],
+      'color(xyz 0.2 0.3 0.4)': [-0.115147, 0.654269, 0.644341],
+      'color(xyz-d50 0.2 0.3 0.4)': [-0.259227, 0.659534, 0.740507],
+      'color(xyz-d65 0.2 0.3 0.4)': [-0.115147, 0.654269, 0.644341],
+    };
+
+    for (const [written, [red, green, blue, alpha = 1]] of Object.entries(chromium)) {
+      const color = parseColor(written);
+      expect(color).not.toBeNull();
+      const off = Math.max(...[[color!.red, red], [color!.green, green], [color!.blue, blue], [color!.alpha, alpha]].map(([ours, theirs]) => Math.abs(ours - theirs)));
+      expect(`${written}: ${off < 0.001 ? 'as Chromium' : `off by ${off}`}`).toBe(`${written}: as Chromium`);
+    }
+
+    // Shown, and written in hex, a color sRGB can't show is clipped, as Chromium paints it.
+    expect(toHex(parseColor('lab(15 50 -80)')!)).toBe('#00009e');
+    expect(toHex(parseColor('color(display-p3 1 0 0)')!)).toBe('#ff0000');
+    expect(toHex(parseColor('rgb(none 100 200)')!)).toBe('#0064c8');
+  });
+
+  test('reads a color function only as CSS writes it', () => {
+    const unread = [
+      // Commas only in rgb() and hsl(), all of them or none, and no missing components there.
+      'hsl(240, 100% 25%)', 'lab(15, 50, -80)', 'rgb(none, 0, 0)', 'rgb(1, 2, 3 / 0.5)',
+      // Angles only for hues, percentages not for them.
+      'hsl(240deg 100deg 25%)', 'hsl(50% 100% 25%)', 'lab(15deg 50 -80)', 'rgb(1 2 3 / 50deg)',
+      // Three channels, one alpha, a space CSS has.
+      'color(display-p3 0 0)', 'lab(15 50 -80 / 0.5 / 1)', 'color(display-p4 0 0 0)', 'color(0 0 0)', 'hwb(240 0%)',
+      // What only a page can tell.
+      'currentcolor', 'var(--brand)', 'color(--brand 0 0 0)', 'light-dark(white, black)', 'rgb(calc(1) 2 3)',
+    ];
+
+    for (const written of unread) {
+      expect(`${written}: ${parseColor(written) === null ? 'unread' : 'read'}`).toBe(`${written}: unread`);
+    }
+  });
+
+  test('mixes colors whose arguments have commas, with the percentages CSS allows', () => {
+    const navy = parseColor('#000080')!;
+    const white = parseColor('#ffffff')!;
+    expect(resolveColor('color-mix(in oklab, hsl(240, 100%, 25%) 78%, #ffffff)', {})).toBe(toHex(mixOklab(navy, white, 0.78)));
+    expect(resolveColor('color-mix(in oklab, navy, white 22%)', {})).toBe(toHex(mixOklab(navy, white, 0.78)));
+    expect(resolveColor('color-mix(in oklab, navy, white)', {})).toBe(toHex(mixOklab(navy, white, 0.5)));
+    expect(resolveColor('color-mix(in oklab, navy 30%, white 30%)', {})).toBe(toHex({ ...mixOklab(navy, white, 0.5), alpha: 0.6 }));
+    expect(resolveColor('color-mix(in oklab, navy 150%, white)', {})).toBe('color-mix(in oklab, navy 150%, white)');
+  });
+
+  test('reads mixes nested as deep as people write them, and returns a deeper one as written, quickly', () => {
+    const nested = (depth: number): string => {
+      let color = 'red';
+
+      for (let level = 0; level < depth; level += 1) {
+        color = `color-mix(in oklab, ${color} 50%, blue)`;
+      }
+
+      return color;
+    };
+
+    let mixed = 'red';
+
+    for (let level = 0; level < MIX_DEPTH; level += 1) {
+      mixed = resolveColor(`color-mix(in oklab, ${mixed} 50%, blue)`, {});
+    }
+
+    expect(resolveColor(nested(MIX_DEPTH), {})).toBe(mixed);
+    expect(resolveColor(nested(MIX_DEPTH + 1), {})).toBe(nested(MIX_DEPTH + 1));
+    // Read level by level, each reading all of what's inside it, a color nested 12,000 deep (430 KB) took ten seconds.
+    const deep = nested(12_000);
+    const started = performance.now();
+    expect(resolveColor(deep, {}) === deep).toBe(true);
+    expect(performance.now() - started).toBeLessThan(1_000);
+    // A theme token that names itself overflowed the stack.
+    const looping = 'color-mix(in oklab, var(--_orbit-color-1), white)';
+    expect(resolveColor('var(--_orbit-color-1)', { 'color-1': looping })).toBe(looping);
   });
 
   test('measures WCAG contrast', () => {
@@ -136,6 +241,22 @@ describe('colors', () => {
     expect(prefersLightText('', '#ffffff', '#000000')).toBe(false);
     // Text colors it can't read: light text on fills darker than mid-gray.
     expect(prefersLightText('#222222', 'var(--x)', 'currentColor')).toBe(true);
+  });
+
+  test('sees a translucent fill over what the map is drawn on', () => {
+    // A navy at 20%: pale over paper's white page, dark over night's sky.
+    const paper = backdropColor(themeTokens('paper'));
+    const night = backdropColor(themeTokens('night'));
+    expect(toHex(paper)).toBe('#ffffff');
+    expect(toHex(night)).toBe(themeTokens('night').surface.toLowerCase());
+    expect(prefersLightText('#00008033', '#ffffff', '#1f2733', paper)).toBe(false);
+    expect(prefersLightText('#00008033', '#ffffff', '#1f2733', night)).toBe(true);
+    expect(prefersLightText('hsl(240 100% 25% / 0.2)', '#ffffff', '#1f2733', paper)).toBe(false);
+    // An opaque fill is what it is, wherever it's drawn.
+    expect(prefersLightText('#000080', '#ffffff', '#1f2733', paper)).toBe(true);
+    // A translucent surface lets the page show through: white under dark text, black under light.
+    expect(toHex(backdropColor({ surface: 'rgb(0 0 0 / 0.5)', text: '#1f2733' }))).toBe('#7f7f7f');
+    expect(toHex(backdropColor({ surface: 'transparent', text: '#f4f6ff' }))).toBe('#000000');
   });
 
   test('splits a color into an opaque value and an opacity', () => {

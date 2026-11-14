@@ -14,6 +14,7 @@ import { branchNumbers, branchPalette, isPaletteNumber, paletteColorOf } from '.
 import { calculateAllLayout, calculateFocusLayout, getOrbitRings, MOON_LIMIT, moonPlacement } from '../layout.js';
 import { findNodeById } from '../utils.js';
 import { browser } from '../browser.js';
+import { parseColor, toHex } from './colors.js';
 import { fitAround, type Camera, type Insets, type Similarity, type Viewport, applySimilarity } from './camera.js';
 
 export type NodeRole = 'sun' | 'planet' | 'moon' | 'node';
@@ -215,7 +216,8 @@ const RING_GAP_PADDING = 7;
  * `branchNumbers`); deeper nodes use their branch's color, mixed toward the
  * theme's `shade-light` or `shade-dark` by position so siblings stay
  * distinguishable. A node's own color always wins: its `color`, or its
- * type's (see `ownColor`); then its `paletteColor`.
+ * type's (see `ownColor`); then its `paletteColor`. A color the browser
+ * can't draw, such as `lab()` in an older WebView, comes in hex instead.
  */
 export const assignNodeColors = (
   tree: OrbitNode,
@@ -223,13 +225,20 @@ export const assignNodeColors = (
   ownColor: (node: OrbitNode) => string | undefined = (node) => node.color,
 ): Map<string, string> => {
   const colors = new Map<string, string>();
-  const branchColors = branchPalette(palette);
+  const drawnPalette = palette.map(drawableColor);
+
+  const own = (node: OrbitNode): string | undefined => {
+    const color = ownColor(node);
+    return color === undefined ? undefined : drawableColor(color);
+  };
+
+  const branchColors = branchPalette(drawnPalette);
   const numbers = branchNumbers(tree.children, branchColors.length);
-  const chosen = (node: OrbitNode): string | undefined => ownColor(node) ?? (isPaletteNumber(node.paletteColor) ? paletteColorOf(branchColors, node.paletteColor) : undefined);
-  colors.set(tree.id, chosen(tree) ?? palette[0]);
+  const chosen = (node: OrbitNode): string | undefined => own(node) ?? (isPaletteNumber(node.paletteColor) ? paletteColorOf(branchColors, node.paletteColor) : undefined);
+  colors.set(tree.id, chosen(tree) ?? drawnPalette[0]);
 
   for (const branch of tree.children) {
-    const branchColor = ownColor(branch) ?? paletteColorOf(branchColors, numbers.get(branch) as number);
+    const branchColor = own(branch) ?? paletteColorOf(branchColors, numbers.get(branch) as number);
     colors.set(branch.id, branchColor);
 
     const visit = (node: OrbitNode, inherited: string) => {
@@ -244,6 +253,16 @@ export const assignNodeColors = (
   }
 
   return colors;
+};
+
+/** `color` as the browser draws it: written as it is, or in hex where the browser can't read it and Orbit can. */
+const drawableColor = (color: string): string => {
+  if (browser.drawsColor(color)) {
+    return color;
+  }
+
+  const parsed = parseColor(color);
+  return parsed ? toHex(parsed) : color;
 };
 
 /** How much of the branch color each sibling keeps, and what the rest is mixed with. */

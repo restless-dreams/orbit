@@ -779,6 +779,8 @@ export class OrbitSVGRenderer {
         return id !== null && this.openNodeContext(id, point, true);
       },
       onHold: (point, target) => this.liftNode(nodeIdFrom(target), point),
+      // A long press means nothing on the +: held as long as it was, it adds an idea.
+      onHeldTap: (_point, target) => this.spotlit === null && isAddSlot(target) && this.editNewNode(),
       onNodeDrag: (point, phase) => this.dragNode(point, phase),
       onDraggingChange: (dragging) => {
         this.dragging = dragging;

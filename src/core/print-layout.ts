@@ -18,7 +18,7 @@ import { currentOptions } from './renderer/options.js';
 import { ensureStyles } from './styles.js';
 import { expandTheme, mergeThemes, resolvePalette, resolveThemeTokens, themeName, type OrbitThemeName } from './themes.js';
 import { guardUrl, resolveUrl } from './url-guard.js';
-import { resolveColor } from './engine/colors.js';
+import { parseColor, resolveColor, toHex } from './engine/colors.js';
 import { assignNodeColors } from './engine/scene.js';
 import { renderNoteMarkdown } from './ui/note-markdown.js';
 import { createIcon } from './ui/icons.js';
@@ -145,7 +145,7 @@ export const renderPrintLayout = (container: HTMLElement, input: string | OrbitD
   const title = options.title ?? (map.options.title || map.root.text || words.text('untitledMap'));
   const article = element('article', 'orbit-print');
   article.lang = words.locale;
-  article.style.cssText = themeProperties(tokens);
+  setThemeProperties(article, tokens, resolveThemeTokens(themeName(theme)));
   const heading = element('h1', 'orbit-print__title');
   appendName(heading, map.root, title, layout);
   article.append(heading, ...entryParts(map.root, layout));
@@ -475,20 +475,38 @@ const appendCaption = (figure: HTMLElement, text: string | undefined): void => {
   }
 };
 
-/** The theme's text, fonts and chip colors for the layout, resolved to plain values. Page CSS can set the public ones. */
-const themeProperties = (tokens: Record<string, string>): string => {
-  const value = (token: string, fallback: string) => resolveColor(tokens[token] ?? fallback, tokens);
+/**
+ * Sets the theme's text, fonts and chip colors on the layout, resolved to
+ * plain values, each in a property of its own. Page CSS can set the public
+ * ones. A theme object's tokens are text the page passes in: a color is
+ * written as Orbit reads it, in hex, and a value that isn't a color Orbit
+ * reads keeps the print theme's own (`preset`), so no token adds
+ * declarations or something to load.
+ */
+const setThemeProperties = (article: HTMLElement, tokens: Record<string, string>, preset: Record<string, string>): void => {
+  const color = (token: string, fallback: string) => plainColor(tokens[token], tokens) ?? plainColor(preset[token], preset) ?? fallback;
   const font = (token: string, fallback: string) => resolveFont(tokens[token] ?? fallback, tokens);
-  return [
-    `--_orbit-print-text: ${value('text', '#1F2733')};`,
-    `--_orbit-print-muted-text: ${value('muted-text', '#5B6474')};`,
-    `--_orbit-print-link-text: ${value('link-text', value('text', '#1F2733'))};`,
-    `--_orbit-print-chip-background: ${value('chip-background', '#EEF0F4')};`,
-    `--_orbit-print-chip-text: ${value('chip-text', value('text', '#1F2733'))};`,
-    `--_orbit-print-border: ${value('sheet-border', '#D9DDE3')};`,
-    `--_orbit-print-font: ${font('font-family', 'sans-serif')};`,
-    `--_orbit-print-display-font: ${font('display-font', font('font-family', 'sans-serif'))};`,
-  ].join(' ');
+  const text = color('text', '#1f2733');
+  const properties: [string, string][] = [
+    ['text', text],
+    ['muted-text', color('muted-text', '#5b6474')],
+    ['link-text', color('link-text', text)],
+    ['chip-background', color('chip-background', '#eef0f4')],
+    ['chip-text', color('chip-text', text)],
+    ['border', color('sheet-border', '#d9dde3')],
+    ['font', font('font-family', 'sans-serif')],
+    ['display-font', font('display-font', font('font-family', 'sans-serif'))],
+  ];
+
+  for (const [name, value] of properties) {
+    article.style.setProperty(`--_orbit-print-${name}`, value);
+  }
+};
+
+/** A color as Orbit reads it, in hex, with the tokens it refers to written out; nothing for a value that isn't one. */
+const plainColor = (value: string | undefined, tokens: Record<string, string>): string | undefined => {
+  const parsed = value === undefined ? null : parseColor(resolveColor(value, tokens));
+  return parsed ? toHex(parsed) : undefined;
 };
 
 /** A font token with the tokens it refers to written out: `var(--_orbit-sans-font)` becomes the fonts it names. */

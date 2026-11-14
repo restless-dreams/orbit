@@ -122,6 +122,46 @@ describe('the + in the orbit', () => {
     expect(renderer.getDocument()!.root.children.map((child) => child.text)).toEqual(['Food', 'Museums', 'Beaches', 'Night markets', 'Ferry ride']);
   });
 
+  test('a touch held on it adds an idea however long it lasts, though browsers send no click after a long press', async () => {
+    const opened: OrbitEditorEvent[] = [];
+    const { host, renderer } = mount(MAP, { editable: true, longPressDelay: 60, onEditorOpen: (event) => opened.push(event) });
+    const at = onScreen(renderer, (internals(renderer) as unknown as EditorInternals).display.addSlot!);
+    const touch = (type: string, time: number, offset = 0) => plus(host).dispatchEvent(pointer(type, { x: at.x + offset, y: at.y, time, kind: 'touch' }));
+
+    // A short tap adds through its click, as before.
+    touch('pointerdown', 1);
+    touch('pointerup', 80);
+    expect(opened).toHaveLength(0);
+    click(plus(host));
+    expect(opened).toHaveLength(1);
+    renderer.stopEditing(false);
+
+    // Held past Orbit's long press, it adds as it's let go, a little off where it began; a click that comes anyway adds nothing more.
+    touch('pointerdown', 1000);
+    await Bun.sleep(120);
+    touch('pointerup', 2000, 5);
+    expect(opened).toHaveLength(2);
+    expect(opened[1].parent?.id).toBe('trip');
+    expect(field(host).hidden).toBe(false);
+    expect(click(plus(host)).defaultPrevented).toBe(true);
+    expect(opened).toHaveLength(2);
+    renderer.stopEditing(false);
+
+    // The browser's own long press, which it says with a context menu, can come before Orbit's.
+    touch('pointerdown', 3000);
+    plus(host).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: at.x, clientY: at.y }));
+    touch('pointerup', 3030);
+    expect(opened).toHaveLength(3);
+    renderer.stopEditing(false);
+
+    // Moved off it, it's no tap.
+    touch('pointerdown', 4000);
+    await Bun.sleep(120);
+    touch('pointermove', 4600, 30);
+    touch('pointerup', 4700, 30);
+    expect(opened).toHaveLength(3);
+  });
+
   test('Escape, or Enter with nothing typed, stops adding', () => {
     const closed = mock<(event: OrbitEditorEvent) => void>(() => undefined);
     const { host, renderer } = mount(MAP, { editable: true, onEditorClose: closed });

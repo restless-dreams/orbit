@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { PRINT_THEMES, printTheme, renderPrintLayout } from '../src/core/print-layout';
 import { registerTheme, themeTokens } from '../src/core/themes';
 import type { OrbitPrintOptions } from '../src/core/print-layout';
+import printStyles from '../src/core/styles/print.scss';
 
 const MAP = `---
 title: Weekend in Lisbon
@@ -180,6 +181,40 @@ describe('renderPrintLayout', () => {
     // Night prints as paper: its text, and planets in paper's colors.
     expect(layout.style.getPropertyValue('--_orbit-print-text')).toBe(themeTokens('paper').text.toLowerCase());
     expect(layout.querySelector('svg')!.innerHTML).not.toContain(`fill="${themeTokens('night').surface}"`);
+  });
+
+  it('takes a theme object\'s colors only as colors, each in its own property', () => {
+    const paper = themeTokens('paper');
+    const hostile = {
+      // A declaration after the color, which set in the layout's style text hid it or loaded an image.
+      text: 'red; display: none',
+      'chip-background': 'red; background-image: url(https://example.com/chip.png)',
+      'muted-text': 'url(https://example.com/muted.png)',
+      // A quote that would run on over the declarations after it.
+      'sheet-border': '"',
+      // A color it reads is kept, in hex.
+      'link-text': 'hsl(240 100% 25%)',
+    };
+    const layout = layOut('# Root\n## A\n', { theme: { preset: 'paper', tokens: hostile }, picture: false });
+    expect(layout.style.display).toBe('');
+    expect(layout.style.backgroundImage).toBe('');
+    expect(layout.getAttribute('style')).not.toContain('url(');
+    const property = (name: string) => layout.style.getPropertyValue(`--_orbit-print-${name}`);
+    // The others keep the print theme's own colors.
+    expect(property('text')).toBe(paper.text.toLowerCase());
+    expect(property('chip-background')).toBe(paper['chip-background'].toLowerCase());
+    expect(property('muted-text')).toBe(paper['muted-text'].toLowerCase());
+    expect(property('link-text')).toBe('#000080');
+    expect(property('border')).toMatch(/^#[0-9a-f]{6,8}$/);
+    expect(property('font')).not.toBe('');
+  });
+
+  it('paints a map\'s colors as colors, so a url() in one loads nothing', () => {
+    const layout = layOut('# Root\n## A <!-- orbit color: "url(https://example.com/dot.png)", status: done -->\n', { picture: false });
+    expect(layout.querySelector<HTMLElement>('.orbit-print__dot')).not.toBeNull();
+    expect(printStyles).toMatch(/\.orbit-print__dot\{[^}]*background-color:var\(--orbit-print-dot\)/);
+    expect(printStyles).toMatch(/\.orbit-print__chip--status::before\{[^}]*background-color:var\(--orbit-print-status\)/);
+    expect(printStyles).not.toMatch(/background:var\(--orbit-print-(?:dot|status)\)/);
   });
 });
 

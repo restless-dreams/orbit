@@ -294,6 +294,8 @@ Other words get a neutral dot. Checkboxes set `todo` (`[ ]`), `done` (`[x]`) and
 
 The root takes the palette's first color: the theme's, or the frontmatter's `palette`. The top-level nodes take the others in turn, cycling, and deeper nodes take shades of their branch's color, so siblings stay apart. A node's own `color` wins, then its type's.
 
+A color is any CSS color: a name, hex, `rgb()`, `hsl()`, `hwb()`, `lab()`, `lch()`, `oklab()`, `oklch()` or `color()` (`display-p3` and CSS's other spaces). Orbit reads each one to pick a name's color that reads on it, a translucent color as it shows over the map's background, and to write exports and print in plain colors. A browser too old for one, such as `lab()` before Chromium 111, draws it in the sRGB color it stands for.
+
 `paletteColor` gives a node one of the palette's colors by number, so it still changes with the theme. The top-level nodes without one take turns with the colors no top-level node has by number: give two nodes the same number for them to share a color.
 
 Edits keep the colors of the nodes around them, on screen and through the map tools: adding, moving or removing a top-level node writes `paletteColor` where a color would change otherwise, as few times as it can.

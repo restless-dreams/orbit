@@ -434,6 +434,33 @@ describe('the player', () => {
     player.destroy();
   });
 
+  test('starts startAt seconds in once it knows its length, unless it was sent somewhere else before', () => {
+    const open = () => new AudioPlayer({
+      source: 'memo.m4a',
+      autoplay: false,
+      controls: true,
+      startAt: 30,
+      title: 'Memo',
+      words: new OrbitWords('en'),
+      size: 'inline',
+      onState: () => undefined,
+      onError: () => undefined,
+    });
+
+    const untouched = open();
+    const audio = untouched.element.querySelector<HTMLAudioElement>('.orbit-audio__element')!;
+    audio.dispatchEvent(new Event('loadedmetadata'));
+    expect(audio.currentTime).toBe(30);
+    untouched.destroy();
+
+    const sent = open();
+    const sentAudio = sent.element.querySelector<HTMLAudioElement>('.orbit-audio__element')!;
+    sent.seek(5);
+    sentAudio.dispatchEvent(new Event('loadedmetadata'));
+    expect(sentAudio.currentTime).toBe(5);
+    sent.destroy();
+  });
+
   test('says how long the sound is once it knows', () => {
     const player = new AudioPlayer({
       source: 'memo.m4a',

@@ -71,8 +71,10 @@ const HIDDEN = /[\u{100000}-\u{10fffd}]/gu;
 /** The last code point the reveal pattern reads: how many tokens one line can hide. */
 const HIDDEN_LIMIT = 0x10fffd - HIDDEN_BASE + 1;
 // A hashtag at the end, after a space: `#frontend`, `#sprint-3`, `#team/web`.
-// It needs a letter, so `#42` stays text; `C#` has no space before it.
-const TRAILING_TAG = /\s+#([\p{L}\p{N}_][\p{L}\p{N}_/-]*)$/u;
+// It needs a letter, so `#42` stays text; `C#` has no space before it. The
+// spaces are tried only from their first: from each of them, a long run of
+// spaces with no tag after it took time growing with the square of its length.
+export const TRAILING_TAG = /(?<!\s)\s+#([\p{L}\p{N}_][\p{L}\p{N}_/-]*)$/u;
 const CODE_SPAN = /(`+)(?!`)([\s\S]*?[^`])\1(?!`)/g;
 // The destination allows one level of balanced parentheses, as in CommonMark.
 const TITLE_LINK = /(!?)\[([^\]]*)\]\(\s*((?:[^\s()]|\([^\s()]*\))+)(?:\s+"[^"]*")?\s*\)/g;
@@ -111,7 +113,7 @@ export const parseTitle = (raw: string): TitleParts => {
   };
 
   let text = raw.trim().replace(ESCAPE, (_match, character: string) => hide(character));
-  text = text.replace(HIDDEN_COMMENT, (_match, before: string, _body: string, after: string) => (before || after ? ' ' : '')).trim();
+  text = withoutHiddenComments(text).trim();
   const parts: Omit<TitleParts, 'text'> = {};
 
   const task = TASK_MARKER.exec(text);
@@ -244,11 +246,17 @@ interface ListItem {
 type ContentType = 'image' | 'video' | 'embed' | 'none';
 const CONTENT_TYPES = new Set<ContentType>(['image', 'video', 'embed', 'none']);
 
-const HEADER = /^ {0,3}(#{1,6})\s+(.*\S)\s*$/;
+// A heading's and a list item's text start at their first letter: written
+// as `\s+(.*\S)`, the space before it and `.*` could share a long run of
+// spaces in every way, and a marker followed only by spaces took seconds.
+export const HEADER = /^ {0,3}(#{1,6})\s+(\S(?:.*\S)?)\s*$/;
 const HEADER_START = /^ {0,3}#{1,6}\s+/;
+// A heading's optional closing sequence, `## Title ##`, tried only from the
+// first of the spaces before it, as `TRAILING_TAG` is.
+export const CLOSING_HASHES = /(?<!\s)\s+#+$/;
 const SETEXT_UNDERLINE = /^ {0,3}(?:=+|-+)\s*$/;
 const THEMATIC_BREAK = /^ {0,3}([-*_])(?:\s*\1){2,}\s*$/;
-const LIST_ITEM = /^(\s*)(?:[-*+]|\d{1,9}[.)])\s+(.*\S)\s*$/;
+export const LIST_ITEM = /^(\s*)(?:[-*+]|\d{1,9}[.)])\s+(\S(?:.*\S)?)\s*$/;
 // A list may interrupt a paragraph only with a bullet or an ordered list
 // starting at 1, as in CommonMark, so "2024. A good year" stays prose.
 const LIST_INTERRUPTS_PARAGRAPH = /^\s*(?:[-*+]|1[.)])\s+\S/;
@@ -258,8 +266,6 @@ const FENCE = /^ {0,3}(```|~~~)/;
 const INLINE_ATTRIBUTES = /^(.*\S)\s+<!--\s*orbit:?\s+([\s\S]*?)\s*-->\s*$/i;
 /** A heading or list item with no text, only attributes: an idea without a name yet, say one holding a picture. */
 const ONLY_ATTRIBUTES = /^()<!--\s*orbit:?\s+([\s\S]*?)\s*-->\s*$/i;
-/** Any other HTML comment, hidden as markdown hides it; a backslash before `<` keeps it as text. */
-const HIDDEN_COMMENT = /(\s*)(?<!\\)<!--([\s\S]*?)-->(\s*)/g;
 const WRAPPED_LINE = /^\[!\[([^\]]*)\]\(([^)]+)\)\]\(([^)]+)\)$/;
 const IMAGE_LINE = /^!\[([^\]]*)\]\(([^)]+)\)$/;
 const LINK_LINE = /^\[([^\]]*)\]\(([^)]+)\)$/;
@@ -409,7 +415,7 @@ const tokenize = (lines: SourceLine[], options: TokenizeOptions): Block[] => {
 
     if (header) {
       // Drop an optional closing sequence: `## Title ##`.
-      blocks.push(...headerBlocks(header[1].length, header[2].replace(/\s+#+$/, ''), line, line, false));
+      blocks.push(...headerBlocks(header[1].length, header[2].replace(CLOSING_HASHES, ''), line, line, false));
       index += 1;
       continue;
     }
@@ -1459,13 +1465,87 @@ const lastLineOf = (items: ListItem[]): number => {
   return last ? last.last : item.line;
 };
 
+/** An HTML comment in a title, which markdown hides. */
+export interface HiddenComment {
+  /** Where it starts, with the spaces before it. */
+  start: number;
+
+  /** Where it ends, with the spaces after it. */
+  end: number;
+
+  /** What's between `<!--` and `-->`. */
+  body: string;
+
+  /** Whether spaces were around it, which leaves a space where it was. */
+  spaced: boolean;
+}
+
+const SPACE = /\s/;
+
+/**
+ * The HTML comments in `text`, which markdown hides; a backslash before `<`
+ * keeps one as text. Each takes the spaces around it, those after it up to
+ * the next comment. They're found with `indexOf`: a pattern starting with the
+ * spaces before a comment tried each of a long run of them as the start, and
+ * took time growing with the square of its length.
+ */
+export const hiddenComments = (text: string): HiddenComment[] => {
+  const comments: HiddenComment[] = [];
+  let from = 0;
+  let open = text.indexOf('<!--');
+
+  while (open !== -1) {
+    if (text[open - 1] === '\\') {
+      open = text.indexOf('<!--', open + 1);
+      continue;
+    }
+
+    const close = text.indexOf('-->', open + 4);
+
+    // Nothing after it closes it, nor any comment after it.
+    if (close === -1) {
+      break;
+    }
+
+    let start = open;
+    let end = close + 3;
+
+    while (start > from && SPACE.test(text[start - 1])) {
+      start -= 1;
+    }
+
+    while (end < text.length && SPACE.test(text[end])) {
+      end += 1;
+    }
+
+    comments.push({ start, end, body: text.slice(open + 4, close), spaced: start < open || end > close + 3 });
+    from = end;
+    open = text.indexOf('<!--', end);
+  }
+
+  return comments;
+};
+
+/** `text` without its hidden comments: each leaves a space where spaces were around it. */
+const withoutHiddenComments = (text: string): string => {
+  let shown = '';
+  let from = 0;
+
+  for (const comment of hiddenComments(text)) {
+    shown += text.slice(from, comment.start) + (comment.spaced ? ' ' : '');
+    from = comment.end;
+  }
+
+  return shown + text.slice(from);
+};
+
 /**
  * Notes a comment that sets nothing because it lacks the `orbit` keyword,
  * although it reads like attributes: `<!-- status: done -->`.
  */
 const noteAttributeComments = (text: string, line: number, diagnostics: DiagnosticCollector): void => {
-  for (const match of text.matchAll(HIDDEN_COMMENT)) {
-    const body = match[2].trim();
+  for (const comment of hiddenComments(text)) {
+    const body = comment.body.trim();
     const key = /^([A-Za-z]+)\s*:/.exec(body)?.[1];
 
     if (key !== undefined && (NODE_ATTRIBUTE_KEYS as readonly string[]).includes(key)) {
